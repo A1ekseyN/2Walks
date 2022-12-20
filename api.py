@@ -56,22 +56,3 @@ def steps_today_update():
 #            energy_today = data["energy"]
             print('End')
         return steps_today
-
-
-
-#steps_today_update()
-#steps_today_update_manual()
-
-
-#print(steps_today_api)
-
-
-# Under Authorized JavaScript origins, enter the base URL of the site from which requests will originate (for example https://developers.google.com is the URL used by the OAuth Playground).
-# Under Authorized redirect URI, enter the URL of the site where responses will be handled (for example https://developers.google.com/oauthplayground is the URL used by the OAuth Playground).
-# Click Create. Your new OAuth 2.0 Client ID and secret appear in the list of IDs for your project. An OAuth 2.0 Client ID is a string of characters, something like this:
-
-# Client ID:
-# 530925798695-83qbiqqcc9hj4dnup9pmll93lm8p0pfv.apps.googleusercontent.com
-
-#Client Secret:
-# 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

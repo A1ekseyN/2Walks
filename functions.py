@@ -2,8 +2,6 @@
 from datetime import datetime
 from api import steps_today_update
 import requests
-import pickle
-from characteristics import char_characteristic
 
 
 def load_game():
@@ -118,5 +116,3 @@ def location_change_map():
     # Функция для перехода между локациями на глобальной карте.
     char_characteristic['energy'] -= 5
     char_characteristic['steps_today_used'] += 150
-
-
