@@ -1,0 +1,32 @@
+19.02.2022
+Version: 0.0.1f
+- Small changes
+
+
+18.02.2022
+Version: 0.0.1e
+- Small changes
+- Add manual steps update (Need to test)
+
+
+17.02.2022
+Version: 0.0.1d
+- Add function for steps.
+- Change (переменные) names.
+- Add characteristics for save file.
+- Add characteristics view for button 'c'.
+- Other small changes.
+
+
+16.12.2022
+Version: 0.0.1c
+- Add functions.py file.
+- Add color for Steps and Energy.
+- Add check last enter date. For API connection, and check for today steps.
+- Add locations.py file. With Locations functions
+- Change Energy algoritmic
+- Small text changes
+- Add file with known bugs
+
+
+Изменение старше 16.12.2022 не попадают в changelog.
