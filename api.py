@@ -41,18 +41,12 @@ def steps_today_update():
     else:
         # Если дата не изменилась, то забирам данные о кол-ве загов из переменной.
         # Сделать, чтобы данные забирались из файла.
+        # По сути эта часть функции не нужна, и ее можно перенести в characteristics.py
         print('-- Кол-во шагов не обновлялось.\n-- Шаги взяты из файла api.py + characteristic.txt')
         with open('characteristic.txt', 'rb') as f:
             data = pickle.load(f)
-            print('Load')
-            print('Game Data')
-            print(data)
+            print(f'\nLoad Game Data: {data}')
             print(f'Steps: {data["steps_today"]}')
-            print(f"Steps_type: {type(data['steps_today'])}")
-
             steps_today = data["steps_today"]
-            print('Loading char_info.')
-            print(f'Energy: {data["energy"]}')
-#            energy_today = data["energy"]
-            print('End')
+            print(f'Load Successfully.')
         return steps_today

@@ -1,4 +1,4 @@
-# Version - 0.0.1d
+# Version - 0.0.1f
 
 
 from colorama import Fore, Style
@@ -8,13 +8,7 @@ from functions import save_game_date_last_enter, char_info, location_change_map,
 from characteristics import *
 
 
-loc = char_characteristic['loc']
-en = char_characteristic['energy']
-stp_can_use = char_characteristic['steps_can_use']
-print(loc)
-print(en)
-print(stp_can_use)
-#loc = 'home', 'gym', 'shop', 'work', 'adventure', 'garage', 'auto_dialer, 'bank'
+#loc = char_characteristic['loc']
 
 
 def energy_time_charge():
@@ -47,17 +41,19 @@ def game():
     while True:
         def location_selection():
             # Функция для выбора локации на карте
+            global start_game
             global loc
             global steps_today
             global energy
+            global char_characteristic
 
             while True:
                 save_game_date_last_enter()     # Проверка даты последнего захода в игру.
                 energy_time_charge()
-                load_characteristic()
+#                load_characteristic()
                 print(f'\nSteps: {Fore.LIGHTCYAN_EX}{steps()}{Style.RESET_ALL}; '
                       f'Energy: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (+ 1 эн. через: {60 - (time.time() - energy_time):,.0f} sec.)')
-                print(f'Вы находитесь в локации {Fore.GREEN}{loc}{Style.RESET_ALL}.')
+                print(f'Вы находитесь в локации {Fore.GREEN}{char_characteristic["loc"]}{Style.RESET_ALL}.')
                 print(f'Вы можете пойти в локацию:'
                       f'\n\t1. Домой (Не работает)'
                       f'\n\t2. Спортзал (Не работает)'
@@ -69,37 +65,37 @@ def game():
                       f'\n\t8. Банк (Не работает)'
                       f'\n\t0. Обновить кол-во шагов')
                 print(f'\tm. Меню // i. Инвентарь // c. Характеристики'
-                      f'\n\ts. Save Game'
-                      f'\n\tl. Load Game')
+                      f'\n\ts. Save Game')
+#                      f'\n\te. Save & Exit')
                 try:
                     temp_number = input('Введите цифры куда вы хотите пойти: ')
                 except:
                     print('\nPlease enter digit or letter.')
                     continue
 
-                if temp_number == '1' and loc != 'home':
-                    loc = 'home'
+                if temp_number == '1' and char_characteristic['loc'] != 'home':
+                    char_characteristic['loc'] = 'home'
                     location_change_map()
-                elif temp_number == '2' and loc != 'gym':
-                    loc = 'gym'
+                elif temp_number == '2' and char_characteristic['loc'] != 'gym':
+                    char_characteristic['loc'] = 'gym'
                     location_change_map()
-                elif temp_number == '3' and loc != 'shop':
-                    loc = 'shop'
+                elif temp_number == '3' and char_characteristic['loc'] != 'shop':
+                    char_characteristic['loc'] = 'shop'
                     location_change_map()
-                elif temp_number == '4' and loc != 'work':
-                    loc = 'work'
+                elif temp_number == '4' and char_characteristic['loc'] != 'work':
+                    char_characteristic['loc'] = 'work'
                     location_change_map()
-                elif temp_number == '5' and loc != 'adventure':
-                    loc = 'adventure'
+                elif temp_number == '5' and char_characteristic['loc'] != 'adventure':
+                    char_characteristic['loc'] = 'adventure'
                     location_change_map()
-                elif temp_number == '6' and loc != 'garage':
-                    loc = 'garage'
+                elif temp_number == '6' and char_characteristic['loc'] != 'garage':
+                    char_characteristic['loc'] = 'garage'
                     location_change_map()
-                elif temp_number == '7' and loc != 'auto_dialer':
-                    loc = 'auto_dialer'
+                elif temp_number == '7' and char_characteristic['loc'] != 'auto_dialer':
+                    char_characteristic['loc'] = 'auto_dialer'
                     location_change_map()
-                elif temp_number == '8' and loc != 'bank':
-                    loc = 'bank'
+                elif temp_number == '8' and char_characteristic['loc'] != 'bank':
+                    char_characteristic['loc'] = 'bank'
                     location_change_map()
                 elif temp_number == '0':
                     # Обновление кол-ва шагов через API
@@ -115,29 +111,36 @@ def game():
                     char_info()
                 elif temp_number == 's' or temp_number == 'ы':
                     save_characteristic()
-                elif temp_number == 'l' or temp_number == 'д':
-                    load_characteristic()
+#                elif temp_number == 'l' or temp_number == 'д':
+#                    load_characteristic()
+                # Дописать функционал по закрытию игры с кнопки 'e'.
+                # Через break и global переменную не работает.
+#                elif temp_number == 'e' or temp_number == 'у':
+#                    save_characteristic()
 
-        if loc == 'home':
-            print('-- Home Location.')
+        if char_characteristic['loc'] == 'home':
+            print('\n--- Home Location ---')
             location_selection()
-        elif loc == 'shop':
-            print('-- Shop Location.')
+        elif char_characteristic['loc'] == 'gym':
+            print('\n--- Gym Location ---')
             location_selection()
-        elif loc == 'work':
-            print('-- Work Location.')
+        elif char_characteristic['loc'] == 'shop':
+            print('\n--- Shop Location ---')
             location_selection()
-        elif loc == 'adventure':
-            print('-- Adventure Location.')
+        elif char_characteristic['loc'] == 'work':
+            print('\n--- Work Location ---')
             location_selection()
-        elif loc == 'garage':
-            print('-- Garage Location.')
+        elif char_characteristic['loc'] == 'adventure':
+            print('\n--- Adventure Location ---')
             location_selection()
-        elif loc == 'auto_dialer':
-            print('-- Auto Dialer Location.')
+        elif char_characteristic['loc'] == 'garage':
+            print('\n--- Garage Location ---')
             location_selection()
-        elif loc == 'bank':
-            print('-- Bank Location.')
+        elif char_characteristic['loc'] == 'auto_dialer':
+            print('\n--- Auto Dialer Location ---')
+            location_selection()
+        elif char_characteristic['loc'] == 'bank':
+            print('\n--- Bank Location ---')
             location_selection()
 
 game()

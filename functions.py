@@ -2,22 +2,17 @@
 from datetime import datetime
 from api import steps_today_update
 import requests
+import pickle
+from characteristics import char_characteristic
 
 
 def load_game():
     # Функция для загрузки прогресса в игры при запуске программы.
-    # Тестовая функция
-    print('Loadning.')
-    with open('characteristic.txt', 'rb') as f:
-        d = f
-
     pass
 
 
 def save_game():
     # Функция для сохранения игры.
-#    save_game_file = ('save.txt', 'w')
-#    save_game_file.write(energy)
     pass
 
 
@@ -47,22 +42,22 @@ def save_game_date_last_enter():
 
     elif str(now_date) == last_enter_date:
         # Текущая дата, и дата последнего входа в игру совпадает.
-        print('Test')
-        print(char_characteristic['steps_can_use'])
-        print(type(char_characteristic['steps_can_use']))
-        temp_steps_today = char_characteristic['steps_today']
-        temp_steps_today_used = char_characteristic['steps_today_used']
-        print(f'temp_steps_today: {temp_steps_today} // {type(temp_steps_today)}')
-        print(f'temp_steps_today_used: {temp_steps_today_used} // {type(temp_steps_today_used)}')
-        temp_temp = temp_steps_today - temp_steps_today_used
-        print(f'temp_temp: {temp_temp} // {type(temp_temp)}')
+#        print('Test save_game_date_last_enter')
+#        print(char_characteristic['steps_can_use'])
+#        print(type(char_characteristic['steps_can_use']))
+#        temp_steps_today = char_characteristic['steps_today']
+#        temp_steps_today_used = char_characteristic['steps_today_used']
+#        print(f'temp_steps_today: {temp_steps_today} // {type(temp_steps_today)}')
+#        print(f'temp_steps_today_used: {temp_steps_today_used} // {type(temp_steps_today_used)}')
+#        temp_temp = temp_steps_today - temp_steps_today_used
+#        print(f'temp_temp: {temp_temp} // {type(temp_temp)}')
 
-        print(f'char_ch: {char_characteristic["steps_can_use"]}')
+#        print(f'char_ch: {char_characteristic["steps_can_use"]}')
 
-        char_characteristic['steps_can_use'] = temp_temp
-        print(f"Steps_can_use: {char_characteristic['steps_can_use']}")
+#        char_characteristic['steps_can_use'] = temp_temp
+#        print(f"Steps_can_use: {char_characteristic['steps_can_use']}")
 
-#        char_characteristic['steps_can_use'] = char_characteristic['steps_today'] - char_characteristic['steps_today_used']
+        char_characteristic['steps_can_use'] = char_characteristic['steps_today'] - char_characteristic['steps_today_used']
     else:
         print('Error (save_game_date_last_enter).')
 
@@ -84,7 +79,7 @@ def steps_today_update_manual():
         steps_today = result_steps_today['steps_count'][0]['value']
         print('--- Запрос NoCodeApi успешный. ---\n')
         char_characteristic['steps_today'] = result_steps_today['steps_count'][0]['value']
-        print(f'Steps Update: {char_characteristic["steps_today"]}')
+#        print(f'Steps Update: {char_characteristic["steps_today"]}')
         return char_characteristic['steps_today']
     except:
         print('\n--- Ошибка API соеднинения. Обновление данных о кол-ве шагов не произошло ---\n')
