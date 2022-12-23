@@ -2,41 +2,37 @@
 
 
 from colorama import Fore, Style
-from api import steps_today_update
-import time
-from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual
+from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp
 from characteristics import *
-
-
-#loc = char_characteristic['loc']
 
 
 def energy_time_charge():
     # Функция для восстановления энергии со временем
-#    global energy
-    global energy_time
+    # Нужно перенести в файл functions.py
+    global char_characteristic
 
-    ### !!!! Похоже, что функция, как-то не правильно работает.
-    # Вроде ошибка в формуле расчёта (там где / 30 / 10)
     if char_characteristic['energy'] < char_characteristic['energy_max']:
-        if time.time() - energy_time > 60:
-            char_characteristic['energy'] += round((time.time() - energy_time) / 60)
+#        if time.time() - energy_time > 60:
+#            char_characteristic['energy'] += round((time.time() - energy_time) / 60)
+#            print(f"Добавлено energy: {round((time.time() - energy_time) / 60)}")
+#            print(f"Счётчик времени: {time.time() - energy_time}")
+#            energy_time = time.time() # - (((time.time() - energy_time) - 60))    # Вроде делитель можно подобрать. Или погуглить как time.time считает время, вроде эпохами. Получается в качестве делителя нужно использовать время эпохи.
+        if timestamp_now() - char_characteristic['energy_time_stamp'] > 60:
+            # Bug: Нужно добавить деление остатка и минусовать его от 'energy_time_stamp'
+            # Bug: Поправить char_characteristic['energy'] += round (округление). Ошибка в округлении 1.6, округляет в большую сторону.
+            char_characteristic['energy'] += round((timestamp_now() - char_characteristic['energy_time_stamp']) // 60)
+            print('\n--- Energy Check!!! ---')
+            print(f"Добавлено energy: {round((timestamp_now() - char_characteristic['energy_time_stamp']) // 60)}")
+            print(f"Счётчик времени: {timestamp_now() - char_characteristic['energy_time_stamp']} sec.")
+            char_characteristic['energy_time_stamp'] = timestamp_now() - ((timestamp_now() - char_characteristic['energy_time_stamp']) % 60)
+#            energy_timestamp()     # Функция для обновления energy_time_stamp
 
-            print('--- Energy Check!!! ---')
-            print(f"Добавлено energy: {round((time.time() - energy_time) / 60)}")
-            print(f"Счётчик времени: {time.time() - energy_time}")
-
-            energy_time = time.time() # - (((time.time() - energy_time) - 60))    # Вроде делитель можно подобрать. Или погуглить как time.time считает время, вроде эпохами. Получается в качестве делителя нужно использовать время эпохи.
     if char_characteristic['energy'] > char_characteristic['energy_max']:
         char_characteristic['energy'] = char_characteristic['energy_max']
 
 
 def game():
     # Общая функция для игры
-    global loc
-#    global steps_today_api
-#    global steps_today
-    global energy
 
     while True:
         def location_selection():
@@ -44,15 +40,13 @@ def game():
             global start_game
             global loc
             global steps_today
-            global energy
             global char_characteristic
 
             while True:
                 save_game_date_last_enter()     # Проверка даты последнего захода в игру.
                 energy_time_charge()
-#                load_characteristic()
-                print(f'\nSteps: {Fore.LIGHTCYAN_EX}{steps()}{Style.RESET_ALL}; '
-                      f'Energy: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (+ 1 эн. через: {60 - (time.time() - energy_time):,.0f} sec.)')
+                print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps()} / {char_characteristic["steps_today"]}{Style.RESET_ALL}; '
+                      f'Energy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (+ 1 эн. через: {60 - (timestamp_now() - char_characteristic["energy_time_stamp"]):,.0f} sec.)')
                 print(f'Вы находитесь в локации {Fore.GREEN}{char_characteristic["loc"]}{Style.RESET_ALL}.')
                 print(f'Вы можете пойти в локацию:'
                       f'\n\t1. Домой (Не работает)'

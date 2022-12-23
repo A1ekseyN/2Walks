@@ -3,6 +3,9 @@ from datetime import datetime
 import pickle
 from api import steps_today_update
 
+# Переменная для текущего времени. Используется в подсчёте timestamp_last_enter.
+# Пока не используется
+now_timestamp = datetime.now().timestamp()
 
 ######## Game Ballance ########
 # Настройки игрового балланса #
@@ -38,12 +41,14 @@ def date_check_steps_today_used():
 
 char_characteristic = {
     'date_last_enter': None,    # Добавить дату последнего входа в игру
+    'timestamp_last_enter': now_timestamp,    # TimeStamp для расчёта игрового времени
     'steps_today' : steps_today,
     'steps_can_use': 60,
     'steps_today_used': date_check_steps_today_used(),  # Шаги потреченные за сегодня
     'loc' : load_characteristic()['loc'],
     'energy' : load_characteristic()['energy'],
     'energy_max' : 50,
+    'energy_time_stamp': load_characteristic()['energy_time_stamp'],      # Данные берутся из functions.py
     'stamina' : 0,
     'mechanics' : 0,
     'it_technologies' : 0,
@@ -62,14 +67,11 @@ def save_characteristic():
 #save_characteristic()
 #load_characteristic()
 
-#char_characteristic['energy'] = load_characteristic()['energy']
-
-
 
 # Основные характеристики
 energy = 50                 # Кол-во энергии
 energy_max = 50             # Max кол-во энергии
-energy_time = time.time()   # Переменная для отпечатка времени
+#energy_time = time.time()   # Переменная для отпечатка времени
 
 stamina = 0                 # Выносливость
 mechanics = 0               # Механика

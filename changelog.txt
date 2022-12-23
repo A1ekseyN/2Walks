@@ -1,3 +1,13 @@
+20.02.2022
+Version: 0.0.1g
+- Small changes on GitHub
+- Add TimeStamp for using timers
+- Add Energy calculation with timestamps (it's win!!!)
+- Add View of Energy calculation
+- Add View of Today Steps
+- Add symbols of Run Man(for steps) & Battery (energy)
+
+
 19.02.2022
 Version: 0.0.1f
 - Add save/load game function (characteristic.py)

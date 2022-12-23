@@ -1,4 +1,5 @@
 # Файл с функциями
+import time
 from datetime import datetime
 from api import steps_today_update
 import requests
@@ -111,3 +112,18 @@ def location_change_map():
     # Функция для перехода между локациями на глобальной карте.
     char_characteristic['energy'] -= 5
     char_characteristic['steps_today_used'] += 150
+
+
+def timestamp_now():
+    # Возвращает TimeStamp в данный момент.
+    timestamp_now = datetime.now().timestamp()
+    return timestamp_now
+
+
+def energy_timestamp():
+    # Функция для возвращения времени последнего обновления энергии.
+    global char_characteristic
+
+    char_characteristic['energy_time_stamp'] = datetime.now().timestamp()
+    print('Energy TimeStamp Update - Function')
+    return char_characteristic['energy_time_stamp']
