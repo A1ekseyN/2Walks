@@ -1,6 +1,7 @@
 import requests
 from datetime import datetime
 import pickle
+from settings import debug_mode
 
 
 #url = "https://www.googleapis.com/fitness/v1/users/me/dataSources"
@@ -45,8 +46,8 @@ def steps_today_update():
         print('-- Кол-во шагов не обновлялось.\n-- Шаги взяты из файла api.py + characteristic.txt')
         with open('characteristic.txt', 'rb') as f:
             data = pickle.load(f)
-            print(f'\nLoad Game Data: {data}')
-            print(f'Steps: {data["steps_today"]}')
+            if debug_mode:
+                print(f'\nLoading Game Data: {data}')
             steps_today = data["steps_today"]
-            print(f'Load Successfully.')
+            print(f'\nLoad Steps Today Count - Successfully.')
         return steps_today

@@ -1,7 +1,7 @@
-import time
 from datetime import datetime
 import pickle
 from api import steps_today_update
+from settings import debug_mode
 
 # Переменная для текущего времени. Используется в подсчёте timestamp_last_enter.
 # Пока не используется
@@ -22,7 +22,8 @@ def load_characteristic():
     global char_characteristic
     with open('characteristic.txt', 'rb') as f:
         char_characteristic = pickle.load(f)
-        print(f'Чтение сохранения: {char_characteristic}')
+        if debug_mode:
+            print(f'Чтение сохранения: {char_characteristic}')
         return char_characteristic
 
 
@@ -49,6 +50,7 @@ char_characteristic = {
     'energy' : load_characteristic()['energy'],
     'energy_max' : 50,
     'energy_time_stamp': load_characteristic()['energy_time_stamp'],      # Данные берутся из functions.py
+    'money': load_characteristic()['money'],
     'stamina' : 0,
     'mechanics' : 0,
     'it_technologies' : 0,
@@ -57,7 +59,8 @@ char_characteristic = {
 
 def save_characteristic():
     # Функция записи характеристик в файл
-    print(f'Сохраняем данные: {char_characteristic}')
+    if debug_mode:
+        print(f'Сохраняем данные: {char_characteristic}')
     with open('characteristic.txt', 'wb') as f:
         pickle.dump(char_characteristic, f)
     print('\nSave Successfully.')

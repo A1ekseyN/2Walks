@@ -1,4 +1,15 @@
-20.02.2022
+23.12.2022
+Version: 0.0.1h
+- Change dates in changelog.txt (02 month to 12 month)
+- Add money
+- Add some unicode symbols
+- Add location functions (Home, Gym, Shop, Work, Adventure, Garage, Auto-Dialer, Bank)
+- Small changes
+- Add settings.py для настроек игры
+- Add debug mode
+
+
+22.12.2022
 Version: 0.0.1g
 - Small changes on GitHub
 - Add TimeStamp for using timers
@@ -8,20 +19,20 @@ Version: 0.0.1g
 - Add symbols of Run Man(for steps) & Battery (energy)
 
 
-19.02.2022
+19.12.2022
 Version: 0.0.1f
 - Add save/load game function (characteristic.py)
 - Small changes
 - Add project on GitHub (https://github.com/A1ekseyN/2Walks)
 
 
-18.02.2022
+18.12.2022
 Version: 0.0.1e
 - Small changes
 - Add manual steps update (Need to test)
 
 
-17.02.2022
+17.12.2022
 Version: 0.0.1d
 - Add function for steps.
 - Change (переменные) names.
