@@ -49,11 +49,17 @@ char_characteristic = {
     'loc' : load_characteristic()['loc'],
     'energy' : load_characteristic()['energy'],
     'energy_max' : 50,
-    'energy_time_stamp': load_characteristic()['energy_time_stamp'],      # Данные берутся из functions.py
+    'energy_time_stamp': load_characteristic()['energy_time_stamp'],
     'money': load_characteristic()['money'],
     'stamina' : 0,
     'mechanics' : 0,
     'it_technologies' : 0,
+    'work': load_characteristic()['work'],
+    'work_salary': load_characteristic()['work_salary'],
+    'working': load_characteristic()['working'],
+    'working_hours': load_characteristic()['working_hours'],
+    'working_start': load_characteristic()['working_start'],
+    'working_end': load_characteristic()['working_end'],
 }
 
 

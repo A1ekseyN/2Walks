@@ -1,53 +1,33 @@
-# Version - 0.0.1h
+# Version - 0.0.1i
 
 
 from colorama import Fore, Style
-from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp
+from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge
 from characteristics import *
 from locations import *
-from settings import debug_mode
-
-def energy_time_charge():
-    # Функция для восстановления энергии со временем
-    # Нужно перенести в файл functions.py
-    global char_characteristic
-
-    if char_characteristic['energy'] < char_characteristic['energy_max']:
-#        if time.time() - energy_time > 60:
-#            char_characteristic['energy'] += round((time.time() - energy_time) / 60)
-#            print(f"Добавлено energy: {round((time.time() - energy_time) / 60)}")
-#            print(f"Счётчик времени: {time.time() - energy_time}")
-#            energy_time = time.time() # - (((time.time() - energy_time) - 60))    # Вроде делитель можно подобрать. Или погуглить как time.time считает время, вроде эпохами. Получается в качестве делителя нужно использовать время эпохи.
-        if timestamp_now() - char_characteristic['energy_time_stamp'] > 60:
-            # Bug: Нужно добавить деление остатка и минусовать его от 'energy_time_stamp'
-            # Bug: Поправить char_characteristic['energy'] += round (округление). Ошибка в округлении 1.6, округляет в большую сторону.
-            char_characteristic['energy'] += round((timestamp_now() - char_characteristic['energy_time_stamp']) // 60)
-            char_characteristic['energy_time_stamp'] = timestamp_now() - ((timestamp_now() - char_characteristic['energy_time_stamp']) % 60)
-            if debug_mode:
-                print('\n--- Energy Check!!! ---')
-                print(f"Добавлено energy: {round((timestamp_now() - char_characteristic['energy_time_stamp']) // 60)}")
-                print(f"Счётчик времени: {round(timestamp_now() - char_characteristic['energy_time_stamp'])} sec.")
-
-    if char_characteristic['energy'] > char_characteristic['energy_max']:
-        char_characteristic['energy'] = char_characteristic['energy_max']
+from work import work_check_done
 
 
 def game():
     # Общая функция для игры
-
     while True:
         def location_selection():
             # Функция для выбора локации на карте
-            global steps_today
             global char_characteristic
 
             while True:
                 save_game_date_last_enter()     # Проверка даты последнего захода в игру.
-                energy_time_charge()
+                energy_time_charge()            # Проверка и восстановление игровой энергии.
+                work_check_done()
+
                 print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps()} / {char_characteristic["steps_today"]}{Style.RESET_ALL}; '
                       f'Energy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (+ 1 эн. через: {abs(60 - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)')
-                print(f'$: {char_characteristic["money"]}')
+                print(f'Money 💰: {char_characteristic["money"]} $.')
                 print(f'Вы находитесь в локации {Fore.GREEN}{char_characteristic["loc"]}{Style.RESET_ALL}.')
+                if char_characteristic['working']:
+                    print(f'🏭 Место работы: {char_characteristic["work"]}.'
+                          f'\nКонец смены через: {char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
+
                 print(f'Вы можете пойти в локацию:'
                       f'\n\t1. 🏠 Домой (Не работает)'
                       f'\n\t2. 🏋️ Спортзал (Не работает)'

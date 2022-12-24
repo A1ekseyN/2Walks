@@ -4,18 +4,8 @@ import pickle
 from settings import debug_mode
 
 
-#url = "https://www.googleapis.com/fitness/v1/users/me/dataSources"
-#url = "https://www.googleapis.com/fitness/v1/users/me/dataSources"
-#url = "https://v1.nocodeapi.com/alexeyn/fit/kxgLPAuehlTGiEaC/aggregatesDatasets?dataTypeName=steps_count&timePeriod=today"
-#params = {}
-#r = requests.get(url = url, params = params)
-#result_steps_today = r.json()
-#steps_today = result_steps_today['steps_count'][0]['value']
-
-
 def steps_today_update():
     # Функция обновления кол-ва шагов за сегодня через API NoCodeAPI
-    global steps_today_api
     global steps_today
     global char_characteristic      # Нужно проверить или тут нужна эта переменная
 
@@ -25,15 +15,15 @@ def steps_today_update():
 
     if str(now_date) != last_enter_date:
         print('\nAPI запрос на обновление данных о кол-ве шагов.')
-
         try:
             url = "https://v1.nocodeapi.com/alexeyn/fit/kxgLPAuehlTGiEaC/aggregatesDatasets?dataTypeName=steps_count&timePeriod=today"
             params = {}
             r = requests.get(url=url, params=params)
             result_steps_today = r.json()
-            steps_today_api = result_steps_today['steps_count'][0]['value']     # Возможно, эта переменная не нужна.
             steps_today = result_steps_today['steps_count'][0]['value']
             print('--- Запрос NoCodeApi успешный. ---\n')
+            print(f'Steps: {steps_today}')
+            print(result_steps_today['steps_count'][0]['value'])
             return steps_today
         except:
             print('\n--- Ошибка API соеднинения. Обновление данных о кол-ве шагов не произошло ---\n')

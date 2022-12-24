@@ -1,7 +1,21 @@
-a = 1671720576
-b = 1671720376
+import time
+from datetime import datetime, timedelta
+from work import work_check_done
 
-print((a - b) // 60)
-print((a - b) % 60)
-print(a % b)
-print(a - b)
+a = datetime.now().timestamp()
+print(a)
+#b = datetime.now().timetuple()
+#c = datetime.now().timestamp()
+#d = datetime.fromtimestamp(c)
+
+#print(d)
+#print(d + timedelta(hours=2))
+#print(c)
+#time.sleep(1)
+#print(datetime.now().timestamp())
+#print(datetime.now().timestamp() - 10)
+
+
+work_check_done()
+
+

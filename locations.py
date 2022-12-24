@@ -1,4 +1,4 @@
-# Файл для функция с локациями.
+from work import work_choice
 
 
 def home_location():
@@ -31,6 +31,7 @@ def work_location():
     print('\n--- 🏭 Work Location ---')
     print('В данный момент вы находитесь на Работе.')
     print('Содержимое локации находится в разработке.')
+    work_choice()
 
 
 def adventure_location():

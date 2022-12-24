@@ -1,10 +1,29 @@
 # Файл с функциями
-import time
 from datetime import datetime
 from api import steps_today_update
 import requests
-import pickle
 from characteristics import char_characteristic
+from settings import debug_mode
+
+
+def energy_time_charge():
+    # Функция для восстановления энергии со временем
+    # Нужно перенести в файл functions.py
+    global char_characteristic
+
+    if char_characteristic['energy'] < char_characteristic['energy_max']:
+        if timestamp_now() - char_characteristic['energy_time_stamp'] > 60:
+            # Bug: Нужно добавить деление остатка и минусовать его от 'energy_time_stamp'
+            # Bug: Поправить char_characteristic['energy'] += round (округление). Ошибка в округлении 1.6, округляет в большую сторону.
+            char_characteristic['energy'] += round((timestamp_now() - char_characteristic['energy_time_stamp']) // 60)
+            char_characteristic['energy_time_stamp'] = timestamp_now() - ((timestamp_now() - char_characteristic['energy_time_stamp']) % 60)
+            if debug_mode:
+                print('\n--- Energy Check!!! ---')
+                print(f"Добавлено energy: {round((timestamp_now() - char_characteristic['energy_time_stamp']) // 60)}")
+                print(f"Счётчик времени: {round(timestamp_now() - char_characteristic['energy_time_stamp'])} sec.")
+
+    if char_characteristic['energy'] > char_characteristic['energy_max']:
+        char_characteristic['energy'] = char_characteristic['energy_max']
 
 
 def load_game():
@@ -32,7 +51,7 @@ def save_game_date_last_enter():
     last_enter_date = save_game_last_enter_date_file.read()
     now_date = datetime.now().date()
     if str(now_date) != last_enter_date:
-        print(f"Последний вход в игру: {now_date}.")
+        print(f"\nПоследний вход в игру: {now_date}.")
         # Обновления даты последнего входа в игру.
         save_game_last_enter_date_file = open('save.txt', 'w')
         save_game_last_enter_date_file.write(f"{str(now_date)}")
@@ -43,21 +62,6 @@ def save_game_date_last_enter():
 
     elif str(now_date) == last_enter_date:
         # Текущая дата, и дата последнего входа в игру совпадает.
-#        print('Test save_game_date_last_enter')
-#        print(char_characteristic['steps_can_use'])
-#        print(type(char_characteristic['steps_can_use']))
-#        temp_steps_today = char_characteristic['steps_today']
-#        temp_steps_today_used = char_characteristic['steps_today_used']
-#        print(f'temp_steps_today: {temp_steps_today} // {type(temp_steps_today)}')
-#        print(f'temp_steps_today_used: {temp_steps_today_used} // {type(temp_steps_today_used)}')
-#        temp_temp = temp_steps_today - temp_steps_today_used
-#        print(f'temp_temp: {temp_temp} // {type(temp_temp)}')
-
-#        print(f'char_ch: {char_characteristic["steps_can_use"]}')
-
-#        char_characteristic['steps_can_use'] = temp_temp
-#        print(f"Steps_can_use: {char_characteristic['steps_can_use']}")
-
         char_characteristic['steps_can_use'] = char_characteristic['steps_today'] - char_characteristic['steps_today_used']
     else:
         print('Error (save_game_date_last_enter).')
@@ -76,11 +80,11 @@ def steps_today_update_manual():
         params = {}
         r = requests.get(url=url, params=params)
         result_steps_today = r.json()
-        steps_today_api = result_steps_today['steps_count'][0]['value']  # Возможно, эта переменная не нужна.
         steps_today = result_steps_today['steps_count'][0]['value']
         print('--- Запрос NoCodeApi успешный. ---\n')
         char_characteristic['steps_today'] = result_steps_today['steps_count'][0]['value']
-#        print(f'Steps Update: {char_characteristic["steps_today"]}')
+        if debug_mode:
+            print(f'Steps Update: {char_characteristic["steps_today"]}.')
         return char_characteristic['steps_today']
     except:
         print('\n--- Ошибка API соеднинения. Обновление данных о кол-ве шагов не произошло ---\n')
@@ -125,7 +129,6 @@ def timestamp_now():
 def energy_timestamp():
     # Функция для возвращения времени последнего обновления энергии.
     global char_characteristic
-
     char_characteristic['energy_time_stamp'] = datetime.now().timestamp()
     print('Energy TimeStamp Update - Function')
     return char_characteristic['energy_time_stamp']

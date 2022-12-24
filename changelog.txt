@@ -1,3 +1,12 @@
+24.12.2022
+Version: 0.0.1i
+- Small changes
+- Add work.py
+- Add "working" algoritm
+- Add Work - Watchman
+- Add unicode symbol for Money
+
+
 23.12.2022
 Version: 0.0.1h
 - Change dates in changelog.txt (02 month to 12 month)
