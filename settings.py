@@ -1,2 +1,2 @@
 # Файл для настроек игры
-debug_mode = True      # Включает и отключает debug mode для дополнительный информации. (False / True)
+debug_mode = False      # Включает и отключает debug mode для дополнительный информации. (False / True)

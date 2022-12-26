@@ -43,21 +43,23 @@ def date_check_steps_today_used():
 char_characteristic = {
     'date_last_enter': None,    # Добавить дату последнего входа в игру
     'timestamp_last_enter': now_timestamp,    # TimeStamp для расчёта игрового времени
-    'steps_today' : steps_today,
-    'steps_can_use': 60,
-    'steps_today_used': date_check_steps_today_used(),  # Шаги потреченные за сегодня
-    'loc' : load_characteristic()['loc'],
-    'energy' : load_characteristic()['energy'],
-    'energy_max' : 50,
-    'energy_time_stamp': load_characteristic()['energy_time_stamp'],
-    'money': load_characteristic()['money'],
+    'steps_today' : steps_today,                                        # Default: 0
+    'steps_can_use': 60,                                                # Default: 0
+    'steps_today_used': date_check_steps_today_used(),                  # Default: 0
+    'loc' : load_characteristic()['loc'],                               # Default: 'home'
+    'energy' : load_characteristic()['energy'],                         # Default: 50
+    'energy_max' : 50,                                                  # Default: 50
+    'energy_time_stamp': load_characteristic()['energy_time_stamp'],    # Default: timestamp() (Возможно)
+    'money': load_characteristic()['money'],                            # Default: 50 $
+
     'stamina' : 0,
     'mechanics' : 0,
     'it_technologies' : 0,
-    'work': load_characteristic()['work'],
-    'work_salary': load_characteristic()['work_salary'],
-    'working': load_characteristic()['working'],
-    'working_hours': load_characteristic()['working_hours'],
+
+    'work': load_characteristic()['work'],                              # Default: None
+    'work_salary': load_characteristic()['work_salary'],                # Default: 0
+    'working': load_characteristic()['working'],                        # Default: False (Вроде)
+    'working_hours': load_characteristic()['working_hours'],            # Default: 0
     'working_start': load_characteristic()['working_start'],
     'working_end': load_characteristic()['working_end'],
 }
@@ -69,7 +71,7 @@ def save_characteristic():
         print(f'Сохраняем данные: {char_characteristic}')
     with open('characteristic.txt', 'wb') as f:
         pickle.dump(char_characteristic, f)
-    print('\nSave Successfully.')
+    print('\n💾 Save Successfully.')
 
 
 

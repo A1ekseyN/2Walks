@@ -25,6 +25,9 @@ def energy_time_charge():
     if char_characteristic['energy'] > char_characteristic['energy_max']:
         char_characteristic['energy'] = char_characteristic['energy_max']
 
+    if (datetime.now().timestamp() - char_characteristic['energy_time_stamp']) >= 60:
+        char_characteristic['energy_time_stamp'] = datetime.now().timestamp()
+
 
 def load_game():
     # Функция для загрузки прогресса в игры при запуске программы.

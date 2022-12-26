@@ -1,3 +1,12 @@
+25.12.2022
+Version: 0.0.1j
+- Small changes
+- Add Bank unicode symbol
+- Add Work on Factory
+- Add Work Foot Courier
+- Fix bug with energy timer
+
+
 24.12.2022
 Version: 0.0.1i
 - Small changes
