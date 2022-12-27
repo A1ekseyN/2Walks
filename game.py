@@ -1,4 +1,4 @@
-# Version - 0.0.1j
+# Version - 0.0.1k
 
 
 from colorama import Fore, Style
@@ -6,6 +6,7 @@ from functions import save_game_date_last_enter, char_info, location_change_map,
 from characteristics import *
 from locations import *
 from work import work_check_done
+
 
 
 def game():
@@ -18,7 +19,7 @@ def game():
             while True:
                 save_game_date_last_enter()     # Проверка даты последнего захода в игру.
                 energy_time_charge()            # Проверка и восстановление игровой энергии.
-                work_check_done()
+                work_check_done()               # Проверка работает ли персонаж, и закончил ли он работу по таймауту.
 
                 print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps()} / {char_characteristic["steps_today"]}{Style.RESET_ALL}'
                       f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (+ 1 эн. через: {abs(60 - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)')
@@ -28,7 +29,7 @@ def game():
                     print(f'🏭 Место работы: {char_characteristic["work"].title()} (+ {char_characteristic["work_salary"] * char_characteristic["working_hours"]} $).'
                           f'\nКонец смены через: {char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
 
-                print(f'Вы можете пойти в локацию:'
+                print(f'Вы можете пройти в локацию:'
                       f'\n\t1. 🏠 Домой (Не работает)'
                       f'\n\t2. 🏋️ Спортзал (Не работает)'
                       f'\n\t3. 🛒 Магазин (Не работает)'
@@ -55,6 +56,8 @@ def game():
                     char_characteristic['loc'] = 'gym'
                     gym_location()
                     location_change_map()
+                elif temp_number == '2' and char_characteristic['loc'] == 'gym':
+                    gym_location()
                 elif temp_number == '3' and char_characteristic['loc'] != 'shop':
                     char_characteristic['loc'] = 'shop'
                     shop_location()

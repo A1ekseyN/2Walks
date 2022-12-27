@@ -1,3 +1,10 @@
+26.12.2022
+Version: 0.0.1k
+- Small changes
+- Add gym.py for skill improvement
+- Add skill Stamina
+
+
 25.12.2022
 Version: 0.0.1j
 - Small changes

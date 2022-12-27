@@ -44,7 +44,7 @@ char_characteristic = {
     'date_last_enter': None,    # Добавить дату последнего входа в игру
     'timestamp_last_enter': now_timestamp,    # TimeStamp для расчёта игрового времени
     'steps_today' : steps_today,                                        # Default: 0
-    'steps_can_use': 60,                                                # Default: 0
+    'steps_can_use': 0,                                                # Default: 0
     'steps_today_used': date_check_steps_today_used(),                  # Default: 0
     'loc' : load_characteristic()['loc'],                               # Default: 'home'
     'energy' : load_characteristic()['energy'],                         # Default: 50
@@ -52,7 +52,11 @@ char_characteristic = {
     'energy_time_stamp': load_characteristic()['energy_time_stamp'],    # Default: timestamp() (Возможно)
     'money': load_characteristic()['money'],                            # Default: 50 $
 
-    'stamina' : 0,
+    'skill_training': False,                                            # Default: False
+    'skill_training_name': None,                                        # Default: None
+    'skill_training_timestamp': None,                                   # Default: None
+
+    'stamina' : 0,              # Выносливость: +1 % к общему кол-ву пройденых шагов        # Default: 0
     'mechanics' : 0,
     'it_technologies' : 0,
 
