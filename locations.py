@@ -1,5 +1,26 @@
 from gym import gym_menu
 from work import work_choice
+from characteristics import char_characteristic
+
+
+def icon_loc():
+    # Отображение иконки локации
+    if char_characteristic['loc'] == 'home':
+        return '🏠'
+    elif char_characteristic['loc'] == 'gym':
+        return '🏋️'
+    elif char_characteristic['loc'] == 'shop':
+        return '🛒'
+    elif char_characteristic['loc'] == 'work':
+        return '🏭'
+    elif char_characteristic['loc'] == 'adventure':
+        return '🗺️'
+    elif char_characteristic['loc'] == 'garage':
+        return '🚗'
+    elif char_characteristic['loc'] == 'auto_dialer':
+        pass
+    elif char_characteristic['loc'] == 'bank':
+        return '🏛'
 
 
 def home_location():

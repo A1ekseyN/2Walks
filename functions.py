@@ -103,10 +103,10 @@ def char_info():
     print('####################################')
     print(f'Пройдено шагов за сегодня: {char_characteristic["steps_today"]}')
     print(f'Потрачено шагов за сегодня: {char_characteristic["steps_today_used"]}')
-    print(f'Запас энергии: {char_characteristic["energy"]}')
+    print(f'\nЗапас энергии: {char_characteristic["energy"]}')
     print(f'Максимальный запас энергии: {char_characteristic["energy_max"]}')
     print(f'\nВыносливость: {char_characteristic["stamina"]}')
-    print('P.S. Сюда так же будут добавлены характеристики по мере их добавления в игру.')
+    print('\nP.S. Сюда так же будут добавлены характеристики по мере их добавления в игру.')
     print('####################################')
 
 

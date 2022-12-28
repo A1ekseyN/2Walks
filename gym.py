@@ -1,13 +1,23 @@
-from datetime import datetime
-from characteristics import char_characteristic
+from datetime import datetime, timedelta
+from characteristics import char_characteristic, skill_training_table, save_characteristic
+from settings import debug_mode
+from colorama import Fore, Style
 
 
 def gym_menu():
-    # Функция для прокачки навыков.
-    print('\n🏋 --- В локации Спортзал можно улучшить навыки персонажа. --- 🏋')
+    # Меню выбора навыка для прокачки.
+    print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
     print('На данный момент вы можете улучшить: '
-          f'\n\t1. Выносливость. + 1 % в кол-ву пройденных шагов на протяжении дня: (🕑: ???; 🔋: {(char_characteristic["stamina"] + 1) * 5}; 💰: ???).'
-          f'\n\t2. Energy Max. + 1 ед. эн (Time 🕑: ???; Energy 🔋: ???; Money 💰: ???).'
+          f'\n\t1. Выносливость - {Fore.LIGHTCYAN_EX}{char_characteristic["stamina"]}{Style.RESET_ALL} lvl. ('
+                f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["stamina"] + 1]["steps"]}{Style.RESET_ALL}; '
+                f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["stamina"] + 1]["energy"]}{Style.RESET_ALL} эн.; '
+                f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["stamina"] + 1]["money"]}{Style.RESET_ALL} $ '
+                f'🕑: {Fore.LIGHTBLUE_EX}{skill_training_table[char_characteristic["stamina"] + 1]["time"]}{Style.RESET_ALL} мин.).'
+          f'\n\t2. Energy Max. - {Fore.LIGHTCYAN_EX}{char_characteristic["energy_max"] - 50}{Style.RESET_ALL} lvl. ('
+                f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["energy_max"] - 49]["steps"]}{Style.RESET_ALL}; '
+                f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["energy_max"] - 49]["energy"]}{Style.RESET_ALL} эн.; '
+                f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["energy_max"] - 49]["money"]}{Style.RESET_ALL} $; '
+                f'🕑: {Fore.LIGHTBLUE_EX}{skill_training_table[char_characteristic["energy_max"] - 49]["time"]}{Style.RESET_ALL} мин.). (Не работает).'
           '\n\t0. Назад.'
           )
     try:
@@ -27,15 +37,30 @@ def gym_menu():
 
 def skill_training_check_done():
     # Проверка или закончилось изучение навыка
-    pass
+    global char_characteristic
+
+    if debug_mode:
+        if char_characteristic['skill_training'] == False:
+            print('\nНавыки не изучаются.')
+
+    if char_characteristic['skill_training']:
+        if datetime.fromtimestamp(datetime.now().timestamp()) >= char_characteristic['skill_training_time_end']:
+            char_characteristic[char_characteristic['skill_training_name']] += 1
+            print(f'\nНавык {char_characteristic["skill_training_name"].title()} улучшен до {char_characteristic[char_characteristic["skill_training_name"]]}')
+            char_characteristic['skill_training'] = False
+            char_characteristic['skill_training_name'] = None
+            char_characteristic['skill_training_timestamp'] = None
+            char_characteristic['skill_training_time_end'] = None
+            save_characteristic()
+            return char_characteristic
 
 
 def stamina_skill_training():
     # Повышение выносливости. 1 lvl + 1 % к общему кол-ву пройденых шагов.
     global char_characteristic
 
-    print('\nВыносливость - за каждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.')
-    print(f'Выносливость: {char_characteristic["stamina"]} уровень.')
+    print(f'\nВыносливость: {Fore.GREEN}{char_characteristic["stamina"]}{Style.RESET_ALL} уровень.')
+    print('Выносливость - за каждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.')
     try:
         ask = input('\t1. Для повышения уровня навыка'
                     '\n\t0. Назад\n>>> ')
@@ -48,13 +73,15 @@ def stamina_skill_training():
     elif char_characteristic['skill_training'] == False:
         if ask == '1':
             if char_characteristic['steps_can_use'] >= (char_characteristic['stamina'] + 1) * 1000 and char_characteristic['energy'] >= (char_characteristic['stamina'] + 1) * 5 and char_characteristic['money'] >= (char_characteristic['stamina'] + 1) * 10:
-                print('\nВыносливость - Начато улучшение навыка.')
                 char_characteristic['skill_training'] = True
-                char_characteristic['skill_training'] = 'stamina'
+                char_characteristic['skill_training_name'] = 'stamina'
                 char_characteristic['skill_training_timestamp'] = datetime.now().timestamp()
+                char_characteristic['skill_training_time_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(minutes=5)
                 char_characteristic['steps_today_used'] += (char_characteristic['stamina'] + 1) * 1000
                 char_characteristic['energy'] -= (char_characteristic['stamina'] + 1) * 5
                 char_characteristic['money'] -= (char_characteristic['stamina'] + 1) * 10
+                print('\n🏋️ Выносливость - Начато улучшение навыка.')
+                print(f'🕑 Окончание тренировки навыка через: {char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
                 return char_characteristic
             else:
                 print('\n--- Требования для повышения уровня навыка не выполнены. ---\nДля изучения навыка, вам нужно:')
@@ -64,7 +91,6 @@ def stamina_skill_training():
                     print(f'\n- Энергия 🔋: {char_characteristic["energy"]} - Нужно 🔋: {(char_characteristic["stamina"] + 1) * 5}.', end='')
                 if char_characteristic['money'] <= (char_characteristic['stamina'] + 1) * 10:
                     print(f'\n- Money 💰: {char_characteristic["money"]} - Нужно 💰: {(char_characteristic["stamina"] + 1) * 10}.')
-                print()
         elif ask == '0':
             # Вернуться назад
             pass

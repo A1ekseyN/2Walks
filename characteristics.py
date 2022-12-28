@@ -44,7 +44,7 @@ char_characteristic = {
     'date_last_enter': None,    # Добавить дату последнего входа в игру
     'timestamp_last_enter': now_timestamp,    # TimeStamp для расчёта игрового времени
     'steps_today' : steps_today,                                        # Default: 0
-    'steps_can_use': 0,                                                # Default: 0
+    'steps_can_use': 0,                                                 # Default: 0
     'steps_today_used': date_check_steps_today_used(),                  # Default: 0
     'loc' : load_characteristic()['loc'],                               # Default: 'home'
     'energy' : load_characteristic()['energy'],                         # Default: 50
@@ -52,11 +52,12 @@ char_characteristic = {
     'energy_time_stamp': load_characteristic()['energy_time_stamp'],    # Default: timestamp() (Возможно)
     'money': load_characteristic()['money'],                            # Default: 50 $
 
-    'skill_training': False,                                            # Default: False
-    'skill_training_name': None,                                        # Default: None
-    'skill_training_timestamp': None,                                   # Default: None
+    'skill_training': load_characteristic()['skill_training'],                          # Default: False
+    'skill_training_name': load_characteristic()['skill_training_name'],                # Default: None
+    'skill_training_timestamp': load_characteristic()['skill_training_timestamp'],      # Default: None
+    'skill_training_time_end': load_characteristic()['skill_training_time_end'],        # Default: None
 
-    'stamina' : 0,              # Выносливость: +1 % к общему кол-ву пройденых шагов        # Default: 0
+    'stamina' : load_characteristic()['stamina'],  # Выносливость: +1 % к общему кол-ву пройденых шагов        # Default: 0
     'mechanics' : 0,
     'it_technologies' : 0,
 
@@ -68,6 +69,82 @@ char_characteristic = {
     'working_end': load_characteristic()['working_end'],
 }
 
+skill_training_table = {
+    # Таблица стоимости изучения навыков.
+    1: {
+        'steps': 1000,
+        'energy': 5,
+        'money': 10,
+        'time': 5,
+    },
+    2: {
+        'steps': 2000,
+        'energy': 10,
+        'money': 20,
+        'time': 15,
+    },
+    3: {
+        'steps': 3000,
+        'energy': 15,
+        'money': 30,
+        'time': 30,
+    },
+    4: {
+        'steps': 4000,
+        'energy': 20,
+        'money': 40,
+        'time': 60,
+    },
+    5: {
+        'steps': 5000,
+        'energy': 25,
+        'money': 50,
+        'time': 120,
+    },
+    6: {
+        'steps': 6000,
+        'energy': 30,
+        'money': 100,
+        'time': 240,
+    },
+    7: {
+        'steps': 7000,
+        'energy': 35,
+        'money': 150,
+        'time': 480,
+    },
+    8: {
+        'steps': 8000,
+        'energy': 40,
+        'money': 200,
+        'time': 720,
+    },
+    9: {
+        'steps': 9000,
+        'energy': 45,
+        'money': 250,
+        'time': 960,
+    },
+    10: {
+        'steps': 10000,
+        'energy': 50,
+        'money': 300,
+        'time': 1200,
+    },
+    11: {
+        'steps': 11000,
+        'energy': 55,
+        'money': 500,
+        'time': 1440,
+    },
+    12: {
+        'steps': 12000,
+        'energy': 60,
+        'money': 750,
+        'time': 1680,
+    },
+}
+
 
 def save_characteristic():
     # Функция записи характеристик в файл
@@ -76,11 +153,6 @@ def save_characteristic():
     with open('characteristic.txt', 'wb') as f:
         pickle.dump(char_characteristic, f)
     print('\n💾 Save Successfully.')
-
-
-
-#save_characteristic()
-#load_characteristic()
 
 
 # Основные характеристики

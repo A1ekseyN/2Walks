@@ -1,19 +1,14 @@
-from datetime import datetime
+from characteristics import char_characteristic, skill_training_table
 
-now_date = datetime.now().date()
-now_time = datetime.now().time()
-#print(now_date)
-#print(now_time)
+#skill_training_table = {
+#    1: {
+#        'steps': 1000,
+#        'time': 0,
+#        'energy': 5,
+#        'money': 10,
+#    },
+#}
 
-#now_time = datetime.now().time()
-
-
-# Тест записи и чтения файлов
-save_game_file = open('save.txt', 'r')
-save = save_game_file.read()
-print(save)
-
-save_game_file = open('save.txt', 'w')
-save_game_file.write(f"{str(now_date)}")
-#save_game_file.write(f"{str(now_time)}")
-save_game_file.close()
+print(skill_training_table)
+print(skill_training_table[1]['steps'])
+print(skill_training_table[char_characteristic['stamina']+1]['energy'])

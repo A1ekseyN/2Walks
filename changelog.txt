@@ -1,3 +1,11 @@
+27.12.2022
+Version: 0.0.1l
+- Small changes
+- Add Stamina skill training
+- Add Training lvl up to 12.
+- Add location icons
+
+
 26.12.2022
 Version: 0.0.1k
 - Small changes
