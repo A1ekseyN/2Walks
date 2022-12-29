@@ -1,13 +1,11 @@
-# Version - 0.0.1l
+# Version - 0.0.1m
 
 
-from colorama import Fore, Style
-from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge
+from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar
 from characteristics import *
 from locations import *
 from gym import skill_training_check_done
 from work import work_check_done
-
 
 
 def game():
@@ -23,17 +21,7 @@ def game():
                 work_check_done()               # Проверка работает ли персонаж, и закончил ли он работу по таймауту.
                 skill_training_check_done()     # Проверка или закончилось улучшение навыка и повышение lvl навыка.
 
-                print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps()} / {char_characteristic["steps_today"]}{Style.RESET_ALL}'
-                      f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (+ 1 эн. через: {abs(60 - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)')
-                print(f'Money 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]:,.0f}{Style.RESET_ALL} $.')
-                print(f'Вы находитесь в локации: {icon_loc()} {Fore.GREEN}{char_characteristic["loc"].title()}{Style.RESET_ALL}.')
-                if char_characteristic['skill_training']:
-                    print(f'\t🏋 Улучшаем навык - {char_characteristic["skill_training_name"].title()} до {char_characteristic[char_characteristic["skill_training_name"]] + 1} уровня.'
-                          f'\n\t🕑 Улучшение через: {char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
-                if char_characteristic['working']:
-                    print(f'\t🏭 Место работы: {char_characteristic["work"].title()} (+ {char_characteristic["work_salary"] * char_characteristic["working_hours"]} $).'
-                          f'\n\t🕑 Конец смены через: {char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
-
+                status_bar()                    # Отображение переменных: Шаги, Энергия, Деньги, работа, изучение навыков.
                 print(f'Вы можете пройти в локацию:'
                       f'\n\t1. 🏠 Домой (Не работает)'
                       f'\n\t2. 🏋️ Спортзал'

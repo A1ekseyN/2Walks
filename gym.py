@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from characteristics import char_characteristic, skill_training_table, save_characteristic
 from settings import debug_mode
 from colorama import Fore, Style
+from skill_bonus import stamina_skill_bonus, stamina_skill_bonus_def
 
 
 def gym_menu():
@@ -51,6 +52,7 @@ def skill_training_check_done():
             char_characteristic['skill_training_name'] = None
             char_characteristic['skill_training_timestamp'] = None
             char_characteristic['skill_training_time_end'] = None
+            stamina_skill_bonus_def()
             save_characteristic()
             return char_characteristic
 
@@ -61,8 +63,9 @@ def stamina_skill_training():
 
     print(f'\nВыносливость: {Fore.GREEN}{char_characteristic["stamina"]}{Style.RESET_ALL} уровень.')
     print('Выносливость - за каждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.')
+
     try:
-        ask = input('\t1. Для повышения уровня навыка'
+        ask = input(f'\t1. Повысить уровень навыка до - {char_characteristic["stamina"] + 1} уровня.'
                     '\n\t0. Назад\n>>> ')
     except:
         print('\nОшибка ввода. Введите число.')
@@ -76,7 +79,7 @@ def stamina_skill_training():
                 char_characteristic['skill_training'] = True
                 char_characteristic['skill_training_name'] = 'stamina'
                 char_characteristic['skill_training_timestamp'] = datetime.now().timestamp()
-                char_characteristic['skill_training_time_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(minutes=5)
+                char_characteristic['skill_training_time_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(minutes=(skill_training_table[char_characteristic['stamina'] + 1]['time']))
                 char_characteristic['steps_today_used'] += (char_characteristic['stamina'] + 1) * 1000
                 char_characteristic['energy'] -= (char_characteristic['stamina'] + 1) * 5
                 char_characteristic['money'] -= (char_characteristic['stamina'] + 1) * 10

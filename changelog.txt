@@ -1,3 +1,14 @@
+28.12.2022
+Version: 0.0.1m
+- Work Factory change salary and energy
+- Small changes
+- Fix bugs with work
+- Add skill_bonus.py for skills bonus calculation
+- Add Stamina Bonus calculation (+ 1 % steps)
+- Change use Steps for change location to - 0 steps
+- Change use Energy for chane location to - 0 energy
+
+
 27.12.2022
 Version: 0.0.1l
 - Small changes

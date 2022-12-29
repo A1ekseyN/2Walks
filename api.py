@@ -22,8 +22,8 @@ def steps_today_update():
             result_steps_today = r.json()
             steps_today = result_steps_today['steps_count'][0]['value']
             print('--- Запрос NoCodeApi успешный. ---\n')
-            print(f'Steps: {steps_today}')
-            print(result_steps_today['steps_count'][0]['value'])
+            if debug_mode:
+                print(f'API Steps update: {steps_today}.')
             return steps_today
         except:
             print('\n--- Ошибка API соеднинения. Обновление данных о кол-ве шагов не произошло ---\n')

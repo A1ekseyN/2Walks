@@ -14,8 +14,6 @@ now_timestamp = datetime.now().timestamp()
 # Шаги за сегодня
 steps_today = steps_today_update()
 
-### Character characteristics ###
-### Характеристики персонажа ####
 
 def load_characteristic():
     # Функция загрузки характеристик из файла
@@ -34,7 +32,9 @@ def date_check_steps_today_used():
     last_enter_date = date_today_check.read()
     now_date = datetime.now().date()
     if str(now_date) != last_enter_date:
-        print('Данные обновлены: steps_today_used.')
+        if debug_mode:
+            print('Данные обновлены: [steps_today_used] - 0.')
+            return 0
         return 0
     elif str(now_date) == last_enter_date:
         return load_characteristic()['steps_today_used']

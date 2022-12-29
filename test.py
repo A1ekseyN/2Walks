@@ -12,3 +12,5 @@ from characteristics import char_characteristic, skill_training_table
 print(skill_training_table)
 print(skill_training_table[1]['steps'])
 print(skill_training_table[char_characteristic['stamina']+1]['energy'])
+print(skill_training_table[char_characteristic['stamina'] + 1]['time'])
+

@@ -1,9 +1,11 @@
-# Файл с функциями
-from datetime import datetime
 from api import steps_today_update
+from colorama import Fore, Style
+from datetime import datetime
 import requests
 from characteristics import char_characteristic
+from locations import icon_loc
 from settings import debug_mode
+from skill_bonus import stamina_skill_bonus_def
 
 
 def energy_time_charge():
@@ -27,6 +29,22 @@ def energy_time_charge():
 
     if (datetime.now().timestamp() - char_characteristic['energy_time_stamp']) >= 60:
         char_characteristic['energy_time_stamp'] = datetime.now().timestamp()
+
+
+def status_bar():
+    # Отображение переменных: шагов, энергии, денег.
+    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps()} / {char_characteristic["steps_today"] + stamina_skill_bonus_def()}{Style.RESET_ALL} (Skill Bonus 🏃: + {stamina_skill_bonus_def()})'
+          f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (+ 1 эн. через: {abs(60 - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)')
+    print(f'Money 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]:,.0f}{Style.RESET_ALL} $.')
+    print(f'Вы находитесь в локации: {icon_loc()} {Fore.GREEN}{char_characteristic["loc"].title()}{Style.RESET_ALL}.')
+    if char_characteristic['skill_training']:
+        print(
+            f'\t🏋 Улучшаем навык - {char_characteristic["skill_training_name"].title()} до {char_characteristic[char_characteristic["skill_training_name"]] + 1} уровня.'
+            f'\n\t🕑 Улучшение через: {char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
+    if char_characteristic['working']:
+        print(
+            f'\t🏭 Место работы: {char_characteristic["work"].title()} (💰: + {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"] * char_characteristic["working_hours"]}{Style.RESET_ALL} $).'
+            f'\n\t🕑 Конец смены через: {Fore.CYAN}{char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
 
 
 def load_game():
@@ -66,6 +84,7 @@ def save_game_date_last_enter():
     elif str(now_date) == last_enter_date:
         # Текущая дата, и дата последнего входа в игру совпадает.
         char_characteristic['steps_can_use'] = char_characteristic['steps_today'] - char_characteristic['steps_today_used']
+        char_characteristic['steps_can_use'] += stamina_skill_bonus_def()
     else:
         print('Error (save_game_date_last_enter).')
 
@@ -101,11 +120,11 @@ def char_info():
     print('\n####################################')
     print('### Характеристики персонажа ###')
     print('####################################')
-    print(f'Пройдено шагов за сегодня: {char_characteristic["steps_today"]}')
-    print(f'Потрачено шагов за сегодня: {char_characteristic["steps_today_used"]}')
-    print(f'\nЗапас энергии: {char_characteristic["energy"]}')
-    print(f'Максимальный запас энергии: {char_characteristic["energy_max"]}')
-    print(f'\nВыносливость: {char_characteristic["stamina"]}')
+    print(f'- Пройдено шагов за сегодня: {char_characteristic["steps_today"]}')
+    print(f'- Потрачено шагов за сегодня: {char_characteristic["steps_today_used"]}')
+    print(f'\n- Запас энергии: {char_characteristic["energy"]}')
+    print(f'- Максимальный запас энергии: {char_characteristic["energy_max"]}')
+    print(f'\n- Выносливость: {char_characteristic["stamina"]} (+ {stamina_skill_bonus_def()} шагов).')
     print('\nP.S. Сюда так же будут добавлены характеристики по мере их добавления в игру.')
     print('####################################')
 
@@ -119,8 +138,8 @@ def steps():
 
 def location_change_map():
     # Функция для перехода между локациями на глобальной карте.
-    char_characteristic['energy'] -= 5
-    char_characteristic['steps_today_used'] += 150
+    char_characteristic['energy'] -= 0              # 5 энергии на перемещение между локациями.
+    char_characteristic['steps_today_used'] += 0    # 150 шагов, возможно.
 
 
 def timestamp_now():
