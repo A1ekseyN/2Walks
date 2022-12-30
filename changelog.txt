@@ -1,3 +1,10 @@
+29.12.2022
+Version: 0.0.1n
+- Small Changes
+- Add Skill Training Class
+- Add Max Energy Skill - Training
+
+
 28.12.2022
 Version: 0.0.1m
 - Work Factory change salary and energy

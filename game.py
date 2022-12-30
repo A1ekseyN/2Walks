@@ -1,4 +1,4 @@
-# Version - 0.0.1m
+# Version - 0.0.1n
 
 
 from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar
@@ -16,6 +16,9 @@ def game():
             global char_characteristic
 
             while True:
+                if debug_mode:
+                    print(char_characteristic)
+
                 save_game_date_last_enter()     # Проверка даты последнего захода в игру.
                 energy_time_charge()            # Проверка и восстановление игровой энергии.
                 work_check_done()               # Проверка работает ли персонаж, и закончил ли он работу по таймауту.

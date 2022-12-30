@@ -3,9 +3,7 @@ from datetime import datetime, timedelta
 from settings import debug_mode
 
 
-vacancy = []        # Переменная для вакансий на будущее.
-#working_hours = 0   # Нужно проверить или эта функция нужна
-time_stamp_now = datetime.now().timestamp()
+#time_stamp_now = datetime.now().timestamp()
 
 
 def work_choice():

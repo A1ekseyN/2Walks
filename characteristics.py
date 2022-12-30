@@ -58,6 +58,7 @@ char_characteristic = {
     'skill_training_time_end': load_characteristic()['skill_training_time_end'],        # Default: None
 
     'stamina' : load_characteristic()['stamina'],  # Выносливость: +1 % к общему кол-ву пройденых шагов        # Default: 0
+    'energy_max_skill': load_characteristic()['energy_max_skill'], # Навык для прокачки макс. энергии. (Нужен еще одна переменная, для прокачки.       # Default: 0
     'mechanics' : 0,
     'it_technologies' : 0,
 
@@ -68,6 +69,8 @@ char_characteristic = {
     'working_start': load_characteristic()['working_start'],
     'working_end': load_characteristic()['working_end'],
 }
+
+char_characteristic['energy_max'] = char_characteristic['energy_max'] + char_characteristic['energy_max_skill']
 
 skill_training_table = {
     # Таблица стоимости изучения навыков.
