@@ -57,14 +57,15 @@ char_characteristic = {
     'skill_training_timestamp': load_characteristic()['skill_training_timestamp'],      # Default: None
     'skill_training_time_end': load_characteristic()['skill_training_time_end'],        # Default: None
 
-    'stamina' : load_characteristic()['stamina'],  # Выносливость: +1 % к общему кол-ву пройденых шагов        # Default: 0
+    'stamina' : load_characteristic()['stamina'],  # Выносливость: + 1 % к общему кол-ву пройденых шагов                     # Default: 0
     'energy_max_skill': load_characteristic()['energy_max_skill'], # Навык для прокачки макс. энергии. (Нужен еще одна переменная, для прокачки.       # Default: 0
+    'speed_skill': load_characteristic()['speed_skill'],           # Скорость: + 1% к скорости действий игрока на 1 %.       # Default: 0
     'mechanics' : 0,
     'it_technologies' : 0,
 
     'work': load_characteristic()['work'],                              # Default: None
     'work_salary': load_characteristic()['work_salary'],                # Default: 0
-    'working': load_characteristic()['working'],                        # Default: False (Вроде)
+    'working': load_characteristic()['working'],                        # Default: False
     'working_hours': load_characteristic()['working_hours'],            # Default: 0
     'working_start': load_characteristic()['working_start'],
     'working_end': load_characteristic()['working_end'],

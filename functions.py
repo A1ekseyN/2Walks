@@ -33,18 +33,18 @@ def energy_time_charge():
 
 def status_bar():
     # Отображение переменных: шагов, энергии, денег.
-    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps()} / {char_characteristic["steps_today"] + stamina_skill_bonus_def()}{Style.RESET_ALL} (Skill Bonus 🏃: + {stamina_skill_bonus_def()})'
-          f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (+ 1 эн. через: {abs(60 - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)')
-    print(f'Money 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]:,.0f}{Style.RESET_ALL} $.')
+    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps()} / {char_characteristic["steps_today"] + stamina_skill_bonus_def()}{Style.RESET_ALL} (Stamina Bonus 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def()}{Style.RESET_ALL})'
+          f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} ', end='')
+    if debug_mode:
+        print(f'(+ 1 эн. через: {abs(60 - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)', end='')
+    print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]:,.0f}{Style.RESET_ALL} $.')
     print(f'Вы находитесь в локации: {icon_loc()} {Fore.GREEN}{char_characteristic["loc"].title()}{Style.RESET_ALL}.')
     if char_characteristic['skill_training']:
-        print(
-            f'\t🏋 Улучшаем навык - {char_characteristic["skill_training_name"].title()} до {char_characteristic[char_characteristic["skill_training_name"]] + 1} уровня.'
-            f'\n\t🕑 Улучшение через: {char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
+        print(f'\t🏋 Улучшаем навык - {char_characteristic["skill_training_name"].title()} до {Fore.LIGHTCYAN_EX}{char_characteristic[char_characteristic["skill_training_name"]] + 1}{Style.RESET_ALL} уровня.'
+              f'\n\t🕑 Улучшение через: {Fore.LIGHTBLUE_EX}{char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
     if char_characteristic['working']:
-        print(
-            f'\t🏭 Место работы: {char_characteristic["work"].title()} (💰: + {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"] * char_characteristic["working_hours"]}{Style.RESET_ALL} $).'
-            f'\n\t🕑 Конец смены через: {Fore.CYAN}{char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
+        print(f'\t🏭 Место работы: {char_characteristic["work"].title()} (💰: + {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"] * char_characteristic["working_hours"]}{Style.RESET_ALL} $).'
+              f'\n\t🕑 Конец смены через: {Fore.LIGHTBLUE_EX}{char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
 
 
 def load_game():
@@ -125,6 +125,8 @@ def char_info():
     print(f'\n- Запас энергии: {char_characteristic["energy"]}')
     print(f'- Максимальный запас энергии: {char_characteristic["energy_max"]}')
     print(f'\n- Выносливость: {char_characteristic["stamina"]} (+ {stamina_skill_bonus_def()} шагов).')
+    print(f'- Максимальный запас энергии: + {char_characteristic["energy_max_skill"]} энергии.')
+    print(f'- Скорость: + {char_characteristic["speed_skill"]} %.')
     print('\nP.S. Сюда так же будут добавлены характеристики по мере их добавления в игру.')
     print('####################################')
 

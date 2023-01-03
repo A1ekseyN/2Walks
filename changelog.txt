@@ -1,3 +1,15 @@
+Date: 03.01.2023
+Version: 0.0.1o
+- Small Changes
+- Changes in Skill_Training Class
+- Add checks in Skill Training
+- Add Speed Skill Training
+- Add Speed Skill bonus for Works and Skill Training
+- Add some unicode symbols
+- Add some WatchMan work optimization and functional
+- Add split timer hours and minutes for Work & Gym
+
+
 29.12.2022
 Version: 0.0.1n
 - Small Changes

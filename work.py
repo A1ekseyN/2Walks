@@ -1,21 +1,20 @@
 from characteristics import char_characteristic, save_characteristic
 from datetime import datetime, timedelta
 from settings import debug_mode
-
-
-#time_stamp_now = datetime.now().timestamp()
+from colorama import Fore, Style
+from functions_02 import time
 
 
 def work_choice():
     # Глобальная функция для выбора работы.
     start_work_status()
-    print('\nВ этой локации можно устроится на работу. Оплата почасовая.')
+    print(f'\nВ этой локации можно устроится на работу. '
+          f'\nОплата почасовая 🕑: 1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"])))}')
     print('На данный момент доступны вакансии:'
-          '\n\t1. Сторож - 1 час - 2 $ (🏃: 200 + 🔋: 4).'
-          '\n\t2. Завод - 1 час - 5 $ (🏃: 500 + 🔋: 7).'
-          '\n\t3. Курьер - 1 час - 10 $ (🏃: 1000 + 🔋: 10).'
-          '\n\t0. Вернуться назад.'
-          )
+          f'\n\t1. Сторож - 💰: {Fore.LIGHTYELLOW_EX}2{Style.RESET_ALL} $ (🏃: 200 + 🔋: 4).'
+          f'\n\t2. Завод  - 💰: {Fore.LIGHTYELLOW_EX}5{Style.RESET_ALL} $ (🏃: 500 + 🔋: 7).'
+          f'\n\t3. Курьер - 💰: {Fore.LIGHTYELLOW_EX}10{Style.RESET_ALL} $ (🏃: 1000 + 🔋: 10).'
+          '\n\t0. Вернуться назад.')
     try:
         temp_number_work = input('\nВыберите вакансию, или вернитесь обратно:\n>>> ')
     except:
@@ -71,31 +70,41 @@ def work_watchman():
     # Работа - Сторож
     print('\n--- Сторож ---\nЗарплата в час: 2$. '
           '\nДля 1 часа работы требуется: (🏃: 200 + 🔋: 4).')
-    try:
-        char_characteristic['working_hours'] = abs(int(input('\nВведите количество рабочих часов: 1 - 8.'
-                              '\n0. Выход.\n>>> ')))
-    except:
-        print('\nВы ввели не правильные данные. Попробуйте еще раз.')
-        work_watchman()
+    if char_characteristic['working_hours'] == 0:
+        try:
+            char_characteristic['working_hours'] = abs(int(input('\nВведите количество рабочих часов: 1 - 8.'
+                                  '\n0. Выход.\n>>> ')))
+        except:
+            print('\nВы ввели не правильные данные. Попробуйте еще раз.')
+            work_watchman()
 
-    if char_characteristic['working_hours']:
-        if char_characteristic['steps_can_use'] >= char_characteristic['working_hours'] * 200 and char_characteristic['energy'] >= char_characteristic['working_hours'] * 4:
-            char_characteristic['steps_today_used'] = char_characteristic['steps_today_used'] + (char_characteristic['working_hours'] * 200)
-            char_characteristic['energy'] = char_characteristic['energy'] - (char_characteristic['working_hours'] * 4)
-            char_characteristic['work'] = 'watchman'
-            char_characteristic['working'] = True
-            char_characteristic['working_start'] = datetime.now().timestamp()
-            char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(hours=char_characteristic['working_hours'])
-            char_characteristic['work_salary'] = 2
-            print(f'\nИспользовано: 🏃: {char_characteristic["working_hours"] * 200}; 🔋: {char_characteristic["working_hours"] * 4}.')
-            print(f'Время работы: {char_characteristic["working_hours"]} часа.')
-#            print(f'Время начала: {datetime.fromtimestamp(datetime.now().timestamp())}.')
-            print(f'Время окончания: {char_characteristic["working_end"]}.')
+        if char_characteristic['working_hours'] >= 1:
+            if char_characteristic['steps_can_use'] >= char_characteristic['working_hours'] * 200 and char_characteristic['energy'] >= char_characteristic['working_hours'] * 4:
+                char_characteristic['steps_today_used'] = char_characteristic['steps_today_used'] + (char_characteristic['working_hours'] * 200)
+                char_characteristic['energy'] = char_characteristic['energy'] - (char_characteristic['working_hours'] * 4)
+                char_characteristic['work'] = 'watchman'
+                char_characteristic['working'] = True
+                char_characteristic['working_start'] = datetime.now().timestamp()
+                # char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(hours=char_characteristic['working_hours'])
+                char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + (timedelta(minutes=char_characteristic['working_hours'] * 60) - ((timedelta(minutes=char_characteristic['working_hours'] * 60) / 100) * char_characteristic['speed_skill']))
+                char_characteristic['work_salary'] = 2
+                print(f'\nИспользовано: 🏃: {char_characteristic["working_hours"] * 200}; 🔋: {char_characteristic["working_hours"] * 4}.')
+                print(f'Время работы: {char_characteristic["working_hours"]} часа.')
+                print(f'Время окончания: {char_characteristic["working_end"]}.')
 
-            start_work_status()
-            return char_characteristic
-        else:
-            print('\nУ нас не достаточно 🏃 или 🔋.')
+                start_work_status()
+                return char_characteristic
+            else:
+                print('\nУ нас не достаточно 🏃 или 🔋.')
+        elif char_characteristic['working_hours'] == 0:
+            # Выход в меню.
+            pass
+#        else:
+#            work_watchman()
+    else:
+        print(f'\nВ данный моменты, вы уже работаете: {char_characteristic["work"]}.')
+        print(f'Конец смены через: {char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
+        print('Можно добавить часы работы. (Функционал появится немного позже).')
 
 
 def work_factory():
@@ -108,24 +117,29 @@ def work_factory():
     except:
         print('\nВы ввели не правильные данные. Попробуйте еще раз.')
         work_factory()
-    if char_characteristic['working_hours']:
+
+    if char_characteristic['working_hours'] >= 1:
         if char_characteristic['steps_can_use'] >= char_characteristic['working_hours'] * 500 and char_characteristic['energy'] >= char_characteristic['working_hours'] * 7:
             char_characteristic['steps_today_used'] = char_characteristic['steps_today_used'] + (char_characteristic['working_hours'] * 500)
             char_characteristic['energy'] = char_characteristic['energy'] - (char_characteristic['working_hours'] * 7)
             char_characteristic['work'] = 'factory'
             char_characteristic['working'] = True
             char_characteristic['working_start'] = datetime.now().timestamp()
-            char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(hours=char_characteristic['working_hours'])
+#            char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(hours=char_characteristic['working_hours'])
+            char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + (timedelta(minutes=char_characteristic['working_hours'] * 60) - ((timedelta(minutes=char_characteristic['working_hours'] * 60) / 100) * char_characteristic['speed_skill']))
             char_characteristic['work_salary'] = 5
             print(f'\nИспользовано: 🏃: {char_characteristic["working_hours"] * 500}; 🔋: {char_characteristic["working_hours"] * 7}.')
             print(f'Время работы: {char_characteristic["working_hours"]} часа.')
-#           print(f'Время начала: {datetime.fromtimestamp(datetime.now().timestamp())}.')
             print(f'Время окончания: {char_characteristic["working_end"]}.')
 
             start_work_status()
             return char_characteristic
         else:
             print('\nУ нас не достаточно 🏃 или 🔋.')
+    elif char_characteristic['working_hours'] == 0:
+        pass
+    else:
+        work_factory()
 
 
 def work_courier_foot():
@@ -139,21 +153,25 @@ def work_courier_foot():
         print('\nВы ввели не правильные данные. Попробуйте еще раз.')
         work_courier_foot()
 
-    if char_characteristic['working_hours']:
+    if char_characteristic['working_hours'] >= 1:
         if char_characteristic['steps_can_use'] >= char_characteristic['working_hours'] * 1000 and char_characteristic['energy'] >= char_characteristic['working_hours'] * 10:
             char_characteristic['steps_today_used'] = char_characteristic['steps_today_used'] + (char_characteristic['working_hours'] * 1000)
             char_characteristic['energy'] = char_characteristic['energy'] - (char_characteristic['working_hours'] * 10)
             char_characteristic['work'] = 'factory'
             char_characteristic['working'] = True
             char_characteristic['working_start'] = datetime.now().timestamp()
-            char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(hours=char_characteristic['working_hours'])
+#            char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(hours=char_characteristic['working_hours'])
+            char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + (timedelta(minutes=char_characteristic['working_hours'] * 60) - ((timedelta(minutes=char_characteristic['working_hours'] * 60) / 100) * char_characteristic['speed_skill']))
             char_characteristic['work_salary'] = 10
             print(f'\nИспользовано: 🏃: {char_characteristic["working_hours"] * 1000}; 🔋: {char_characteristic["working_hours"] * 10}.')
             print(f'Время работы: {char_characteristic["working_hours"]} часа.')
-#            print(f'Время начала: {datetime.fromtimestamp(datetime.now().timestamp())}.')
             print(f'Время окончания: {char_characteristic["working_end"]}.')
 
             start_work_status()
             return char_characteristic
         else:
             print('\nУ нас не достаточно 🏃 или 🔋.')
+    elif char_characteristic['working_hours'] == 0:
+        pass
+    else:
+        work_courier_foot()
