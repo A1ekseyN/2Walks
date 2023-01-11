@@ -1,3 +1,13 @@
+Date: 11.01.2023
+Version: 0.0.1p
+- Small Changes
+- Add Work Class
+- Add loot drop chance simulator (drop_simulator.py)
+- Some Items Drop Chance simulation
+- Bug fix
+- Fix Time view in Work and Skill Training. Don't view milliseconds.
+
+
 Date: 03.01.2023
 Version: 0.0.1o
 - Small Changes

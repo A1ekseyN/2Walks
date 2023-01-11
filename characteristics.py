@@ -63,7 +63,7 @@ char_characteristic = {
     'mechanics' : 0,
     'it_technologies' : 0,
 
-    'work': load_characteristic()['work'],                              # Default: None
+    'work': load_characteristic()['work'],   # Название работы          # Default: None
     'work_salary': load_characteristic()['work_salary'],                # Default: 0
     'working': load_characteristic()['working'],                        # Default: False
     'working_hours': load_characteristic()['working_hours'],            # Default: 0
@@ -162,7 +162,6 @@ def save_characteristic():
 # Основные характеристики
 energy = 50                 # Кол-во энергии
 energy_max = 50             # Max кол-во энергии
-#energy_time = time.time()   # Переменная для отпечатка времени
 
 stamina = 0                 # Выносливость
 mechanics = 0               # Механика

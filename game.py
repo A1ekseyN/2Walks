@@ -5,7 +5,8 @@ from functions import save_game_date_last_enter, char_info, location_change_map,
 from characteristics import *
 from locations import *
 from gym import skill_training_check_done
-from work import work_check_done
+from work import Work, work_check_done
+#from work import work_check_done
 
 
 def game():

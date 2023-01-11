@@ -5,7 +5,7 @@ import requests
 from characteristics import char_characteristic
 from locations import icon_loc
 from settings import debug_mode
-from skill_bonus import stamina_skill_bonus_def
+from skill_bonus import stamina_skill_bonus_def, speed_skill_bonus_def
 
 
 def energy_time_charge():
@@ -40,11 +40,16 @@ def status_bar():
     print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]:,.0f}{Style.RESET_ALL} $.')
     print(f'Вы находитесь в локации: {icon_loc()} {Fore.GREEN}{char_characteristic["loc"].title()}{Style.RESET_ALL}.')
     if char_characteristic['skill_training']:
+        skill_end_time = char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())
+        skill_end_time = str(skill_end_time).split('.')[0]
         print(f'\t🏋 Улучшаем навык - {char_characteristic["skill_training_name"].title()} до {Fore.LIGHTCYAN_EX}{char_characteristic[char_characteristic["skill_training_name"]] + 1}{Style.RESET_ALL} уровня.'
-              f'\n\t🕑 Улучшение через: {Fore.LIGHTBLUE_EX}{char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
+              f'\n\t🕑 Улучшение через: {Fore.LIGHTBLUE_EX}{skill_end_time}{Style.RESET_ALL}.')
     if char_characteristic['working']:
+        work_end_time = char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())
+        work_end_time = str(work_end_time).split('.')[0]
         print(f'\t🏭 Место работы: {char_characteristic["work"].title()} (💰: + {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"] * char_characteristic["working_hours"]}{Style.RESET_ALL} $).'
-              f'\n\t🕑 Конец смены через: {Fore.LIGHTBLUE_EX}{char_characteristic["working_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
+              f'\n\t🕑 Конец смены через: {Fore.LIGHTBLUE_EX}{work_end_time}{Style.RESET_ALL}.')
+        # datetime.strptime(s1 , '%H:%M')
 
 
 def load_game():
@@ -124,7 +129,7 @@ def char_info():
     print(f'- Потрачено шагов за сегодня: {char_characteristic["steps_today_used"]}')
     print(f'\n- Запас энергии: {char_characteristic["energy"]}')
     print(f'- Максимальный запас энергии: {char_characteristic["energy_max"]}')
-    print(f'\n- Выносливость: {char_characteristic["stamina"]} (+ {stamina_skill_bonus_def()} шагов).')
+    print(f'\n- Выносливость: + {char_characteristic["stamina"]} % (+ {stamina_skill_bonus_def()} шагов).')
     print(f'- Максимальный запас энергии: + {char_characteristic["energy_max_skill"]} энергии.')
     print(f'- Скорость: + {char_characteristic["speed_skill"]} %.')
     print('\nP.S. Сюда так же будут добавлены характеристики по мере их добавления в игру.')
