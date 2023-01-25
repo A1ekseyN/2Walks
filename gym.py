@@ -18,30 +18,37 @@ lvl_up_speed_skill = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_chara
                      f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["speed_skill"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
                      f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["speed_skill"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
                      f'🕑: {time(round(skill_training_table[char_characteristic["speed_skill"] + 1]["time"] - ((skill_training_table[char_characteristic["speed_skill"] + 1]["time"] / 100) * char_characteristic["speed_skill"])))}'
+lvl_up_luck_skill = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["luck_skill"] + 1]["steps"]}{Style.RESET_ALL} / ' \
+                     f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["luck_skill"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
+                     f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["luck_skill"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
+                     f'🕑: {time(round(skill_training_table[char_characteristic["luck_skill"] + 1]["time"] - ((skill_training_table[char_characteristic["luck_skill"] + 1]["time"] / 100) * char_characteristic["speed_skill"])))}'
 
 
 def gym_menu():
     # Меню выбора навыка для прокачки.
     global char_characteristic
     print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
+
     if char_characteristic['skill_training']:
         print(f'\t🏋 Улучшаем навык - {char_characteristic["skill_training_name"].title()} до {Fore.LIGHTCYAN_EX}{char_characteristic[char_characteristic["skill_training_name"]] + 1}{Style.RESET_ALL} уровня.'
               f'\n\t🕑 Улучшение через: {Fore.CYAN}{char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
-    print('На данный момент вы можете улучшить: '
-          f'\n\t1. Выносливость - {Fore.LIGHTCYAN_EX}{char_characteristic["stamina"] + 1}{Style.RESET_ALL} lvl ({lvl_up_stamina}).'
-          f'\n\t2. Energy Max.  - {Fore.LIGHTCYAN_EX}{char_characteristic["energy_max"] - 49}{Style.RESET_ALL} lvl ({lvl_up_energy_max}).'
-          f'\n\t3. Speed        - {Fore.LIGHTCYAN_EX}{char_characteristic["speed_skill"] + 1}{Style.RESET_ALL} lvl ({lvl_up_speed_skill}).'
-          '\n\t0. Назад.')
-    try:
-        temp_number = input('\nВыберите какой навык улучшить: \n>>> ')
-    except:
-        print('\nОшибка ввода. Введите число.')
-        gym_menu()
-
-    if char_characteristic['skill_training']:
-        print(f'В данный момент вы изучаете навык: {char_characteristic["skill_training_name"].title()}.')
-#        gym_menu()
     else:
+        print('На данный момент вы можете улучшить: '
+              f'\n\t1. Выносливость - {Fore.LIGHTCYAN_EX}{char_characteristic["stamina"] + 1}{Style.RESET_ALL} lvl ({lvl_up_stamina}).'
+              f'\n\t2. Energy Max.  - {Fore.LIGHTCYAN_EX}{char_characteristic["energy_max"] - 49}{Style.RESET_ALL} lvl ({lvl_up_energy_max}).'
+              f'\n\t3. Speed        - {Fore.LIGHTCYAN_EX}{char_characteristic["speed_skill"] + 1}{Style.RESET_ALL} lvl ({lvl_up_speed_skill}).'
+              f'\n\t4. Luck         - {Fore.LIGHTCYAN_EX}{char_characteristic["luck_skill"] + 1}{Style.RESET_ALL} lvl ({lvl_up_luck_skill}).'
+              '\n\t0. Назад.')
+        try:
+            temp_number = input('\nВыберите какой навык улучшить: \n>>> ')
+        except:
+            print('\nОшибка ввода. Введите число.')
+            gym_menu()
+
+#    if char_characteristic['skill_training']:
+#        print(f'В данный момент вы изучаете навык: {char_characteristic["skill_training_name"].title()}.')
+#        gym_menu()
+#    else:
         if temp_number == '1':      # Выносливость
             Skill.stamina_skill_training()
             try:
@@ -76,6 +83,7 @@ def gym_menu():
                     gym_menu()
             except:
                 gym_menu()
+
         elif temp_number == '3':    # Speed.
             Skill.speed_skill_training()
             try:
@@ -83,6 +91,22 @@ def gym_menu():
                             '\n\t0. Назад.\n>>> ')
                 if ask == '1':
                     char_characteristic['skill_training_name'] = 'speed_skill'
+                    Start = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'], char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
+                    Start.check_requirements()
+                elif ask == '0':
+                    gym_menu()
+                else:
+                    gym_menu()
+            except:
+                gym_menu()
+
+        elif temp_number == '4':    # luck.
+            Skill.luck_skill_training()
+            try:
+                ask = input('\t1. Повысить Удачу персонажа на 1 %.'
+                            '\n\t0. Назад.\n>>> ')
+                if ask == '1':
+                    char_characteristic['skill_training_name'] = 'luck_skill'
                     Start = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'], char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
                     Start.check_requirements()
                 elif ask == '0':
@@ -141,18 +165,19 @@ class Skill_Training():
             Skill_Training.start_skill_training(self)       # Начало прокачки навыка, если выполнены требования.
 
         else:
-            print('\nУ вас не достаточно ресурсов: ')
+            print(f'\n{Fore.RED}У вас не достаточно ресурсов: {Style.RESET_ALL}')
             if char_characteristic['steps_can_use'] <= skill_training_table[char_characteristic[self.name] + 1]["steps"]:
                 print(f'\t- 🏃: Не хватает - {skill_training_table[char_characteristic[self.name] + 1]["steps"] - char_characteristic["steps_can_use"]} шагов.')
             if char_characteristic['energy'] <= skill_training_table[char_characteristic[self.name] + 1]["energy"]:
                 print(f'\t- 🔋: Не хватает - {skill_training_table[char_characteristic[self.name] + 1]["energy"] - char_characteristic["energy"]} энергии.')
             if char_characteristic['money'] <= skill_training_table[char_characteristic[self.name] + 1]["money"]:
                 print(f'\t- 💰: Не хватает - {skill_training_table[char_characteristic[self.name] + 1]["money"] - char_characteristic["money"]} money.')
+            gym_menu()
 
     def start_skill_training(self):
         # Начало обучения навыка
-        skill_training_time = round(skill_training_table[char_characteristic['speed_skill'] + 1]['time']) * 60
-        skill_training_speed_skill = skill_training_time - ((skill_training_time / 100) * char_characteristic['speed_skill'])
+        skill_training_time = round(skill_training_table[char_characteristic[self.name] + 1]['time']) * 60
+        skill_training_speed_skill = skill_training_time - ((skill_training_time / 100) * char_characteristic[self.name])
         skill_training_time_with_bonus = datetime.fromtimestamp(datetime.now().timestamp() + skill_training_speed_skill)
 
         char_characteristic['skill_training'] = True
@@ -164,24 +189,36 @@ class Skill_Training():
         char_characteristic['energy'] -= (char_characteristic[self.name] + 1) * 5
         char_characteristic['money'] -= (char_characteristic[self.name] + 1) * 10
 
-        print(f'\n🏋️ {self.name.title()} - Начато улучшение навыка.')
-        print(f'🕑 Окончание тренировки навыка через: {char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}.')
+        print(f'\n🏋️ {self.name.title()} - Начато улучшение навыка. 🏋')
+        print(f'На улучшение навыка {self.name} потрачено:'
+              f'\n- 🏃: {skill_training_table[char_characteristic[self.name] + 1]["steps"]} steps'
+              f'\n- 🔋: {skill_training_table[char_characteristic[self.name] + 1]["energy"]} эн.'
+              f'\n- 💰: {skill_training_table[char_characteristic[self.name] + 1]["money"]} $'
+              f'\n- 🕑 Окончание тренировки навыка через: {Fore.LIGHTBLUE_EX}{time(round(skill_training_table[char_characteristic[self.name] + 1]["time"] - ((skill_training_table[char_characteristic[self.name] + 1]["time"] / 100) * char_characteristic["speed_skill"])))}{Style.RESET_ALL}')
+#              f'\n- 🕑 Окончание тренировки навыка через: {Fore.LIGHTBLUE_EX}{char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
         return char_characteristic
 
     def stamina_skill_training(self):
         print(f'\nВыносливость: {Fore.GREEN}{char_characteristic["stamina"]}{Style.RESET_ALL} уровень.')
-        print('Выносливость - за каждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.')
+        print('\nВыносливость - за каждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.')
         print(f'\nДля улучшения до {Fore.GREEN}{char_characteristic["stamina"] + 1}{Style.RESET_ALL} уровня необходимо: ({lvl_up_stamina}).')
 
     def enegry_max_skill_training(self):
         print(f'\nМаксимальный запас энергии: {Fore.GREEN}{char_characteristic["energy_max_skill"]}{Style.RESET_ALL} уровень.')
-        print(f'Максимальный запас энергии - каждый уровень, добавляет + 1 эдиницу к максимальному запасу энергии.')
+        print(f'\nМаксимальный запас энергии - каждый уровень, добавляет + 1 эдиницу к максимальному запасу энергии.')
         print(f'\nДля улучшения необходимо: ({lvl_up_energy_max}).')
 
     def speed_skill_training(self):
-        print(f'Скорость: {Fore.GREEN}{char_characteristic["speed_skill"]}{Style.RESET_ALL} уровень.')
-        print(f'Скорость - каждый уровень добавляет + 1% к общей скорости персонажа. Влияет на работу, прокачку навыков, прохождение приключений.')
-        print(f'Для улучшения необходимо: ({lvl_up_speed_skill}).')
+        print(f'\nСкорость: {Fore.GREEN}{char_characteristic["speed_skill"]}{Style.RESET_ALL} уровень.')
+        print(f'\nСкорость - каждый уровень добавляет + 1% к общей скорости персонажа. Влияет на работу, прокачку навыков, прохождение приключений.')
+        print(f'\nДля улучшения необходимо: ({lvl_up_speed_skill}).')
+
+    def luck_skill_training(self):
+        print(f'\nУдача: {Fore.GREEN}{char_characteristic["luck_skill"]}{Style.RESET_ALL} уровень.')
+        print(f'\nУдача - за каждый уровень улучшения, увеличивается удача персонажа на 1%. '
+              f'\nУдача влияет на шанс выпадения предметов, а так же на их качество.'
+              f'\nТак же, удача влияет и на другие игровые события.')
+        print(f'\nДля улучшения необходимо: ({lvl_up_luck_skill}).')
 
 
 Skill = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'],

@@ -8,4 +8,4 @@ def time(x):
     elif x > 60:
         hours = int(x // 60)
         min = int(x % 60)
-        return f'{Fore.LIGHTBLUE_EX}{hours}{Style.RESET_ALL} часов {Fore.LIGHTBLUE_EX}{min}{Style.RESET_ALL} мин.'
+        return f'{Fore.LIGHTBLUE_EX}{hours}{Style.RESET_ALL} час {Fore.LIGHTBLUE_EX}{min}{Style.RESET_ALL} мин.'

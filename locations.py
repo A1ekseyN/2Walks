@@ -1,6 +1,7 @@
 from gym import gym_menu
 from work import Work
 #from work import work_choice
+from adventure import Adventure
 from characteristics import char_characteristic
 
 
@@ -46,17 +47,15 @@ def shop_location():
 
 def work_location():
     # Локация - Работа.
-    # За работу предусмотрена почасовая оплата сессиями по 30 минут. (Пока реализовано сессия по 1 часу).
-#    print('\n--- 🏭 Work Location 🏭 ---')
     Work.work_choise(self=0)
-#    work_choice()
 
 
 def adventure_location():
     # Локация - Приключения.
-    print('\n--- 🗺️ Adventure Location 🗺 ---')
-    print('В данный момент вы находитесь в Приключениях.')
-    print('Содержимое локации находится в разработке.')
+#    print('\n--- 🗺️ Adventure Location 🗺 ---')
+    Adventure.adventure_menu(self=None)
+#    print('В данный момент вы находитесь в Приключениях.')
+#    print('Содержимое локации находится в разработке.')
 
 
 def garage_location():

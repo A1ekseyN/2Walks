@@ -1,11 +1,13 @@
 from random import randint
+from characteristics import char_characteristic
 
 drop_percent_gl = 80
 drop_percent_item_c = 75
 drop_percent_item_b = 60
 drop_percent_item_a = 45
 
-luck_chr = 0  # Шанс удачи персонажа
+#luck_chr = 0  # Шанс удачи персонажа
+luck_chr = char_characteristic['luck_skill']
 
 
 class Drop_Item():
@@ -23,6 +25,10 @@ class Drop_Item():
                 return None
         else:
             return None
+
+    def item_bonus_value(item, grade):
+        if grade[0] == 'C-Grade':
+            return 1
 
     def item_type(self):
         # Определение типа предмена (Ring, Necklace)
@@ -62,22 +68,28 @@ class Drop_Item():
 
     def item_collect(self):
         # Собираем предмет из разных подразделов.
+        global char_characteristic
         item = {
             'item_type': [],
             'grade': [],
             'characteristic': [],
+            'bonus': [],
             'quality': [],
         }
 
         item['item_type'].append(Drop_Item.item_type(self))
         item['grade'].append(Drop_Item.one_item_random_grade(self))
         item['characteristic'].append(Drop_Item.characteristic_type(self))
+        item['bonus'].append(Drop_Item.item_bonus_value(self, grade=item['grade']))
         item['quality'].append(Drop_Item.item_quality(self))
 
         if item['item_type'][0] != None and item['grade'][0] != None and item['characteristic'][0] != None and item['quality'][0] != None:
-            return item
+            print(f'\nВыпал предмет: '
+                  f'\n- {item["grade"][0]}: {item["item_type"][0]} (+ {item["bonus"][0]} {item["characteristic"][0]} (Качество: {item["quality"][0]})). ')
+            return char_characteristic['inventory'].append(item)
+#            return item
         else:
             return print('\n--- Ничего не выпало ---.')
 
 
-item = Drop_Item.item_collect(self=None)
+#Drop_Item.item_collect(self=None)

@@ -2,6 +2,7 @@ from api import steps_today_update
 from colorama import Fore, Style
 from datetime import datetime
 import requests
+from adventure import Adventure
 from characteristics import char_characteristic
 from locations import icon_loc
 from settings import debug_mode
@@ -33,7 +34,7 @@ def energy_time_charge():
 
 def status_bar():
     # Отображение переменных: шагов, энергии, денег.
-    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps()} / {char_characteristic["steps_today"] + stamina_skill_bonus_def()}{Style.RESET_ALL} (Stamina Bonus 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def()}{Style.RESET_ALL})'
+    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {char_characteristic["steps_today"] + stamina_skill_bonus_def():,.0f}{Style.RESET_ALL} (Stamina Bonus 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def()}{Style.RESET_ALL})'
           f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} ', end='')
     if debug_mode:
         print(f'(+ 1 эн. через: {abs(60 - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)', end='')
@@ -49,7 +50,9 @@ def status_bar():
         work_end_time = str(work_end_time).split('.')[0]
         print(f'\t🏭 Место работы: {char_characteristic["work"].title()} (💰: + {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"] * char_characteristic["working_hours"]}{Style.RESET_ALL} $).'
               f'\n\t🕑 Конец смены через: {Fore.LIGHTBLUE_EX}{work_end_time}{Style.RESET_ALL}.')
-        # datetime.strptime(s1 , '%H:%M')
+    if char_characteristic['adventure']:
+        # Проверка или персонаж находится в Приключении.
+        Adventure.adventure_check_done(self=None)
 
 
 def load_game():
@@ -70,7 +73,7 @@ def save_game_char_and_progress():
 def save_game_date_last_enter():
     global char_characteristic
     # Функция для сохранения и проверки игровой даты.
-    # Используется для обновления энергии и шагов на про тяжении дня.
+    # Используется для обновления энергии и шагов на протяжении дня.
     # Если вход был выполнен не сегодня, то происходит обновление кол-ва шагов, через API.
     # Если последний вход был сегодня, то ничего не происходит.
     save_game_last_enter_date_file = open('save.txt', 'r')
@@ -125,13 +128,15 @@ def char_info():
     print('\n####################################')
     print('### Характеристики персонажа ###')
     print('####################################')
-    print(f'- Пройдено шагов за сегодня: {char_characteristic["steps_today"]}')
-    print(f'- Потрачено шагов за сегодня: {char_characteristic["steps_today_used"]}')
-    print(f'\n- Запас энергии: {char_characteristic["energy"]}')
-    print(f'- Максимальный запас энергии: {char_characteristic["energy_max"]}')
+    print(f'- Пройдено шагов за сегодня 🏃: {char_characteristic["steps_today"]:,.0f}')
+    print(f'- Потрачено шагов за сегодня 🏃: {char_characteristic["steps_today_used"]:,.0f}')
+    print(f'\n- Запас энергии 🔋: {char_characteristic["energy"]} эд.')
+    print(f'- Макс. запас энергии 🔋: {char_characteristic["energy_max"]} эд.')
     print(f'\n- Выносливость: + {char_characteristic["stamina"]} % (+ {stamina_skill_bonus_def()} шагов).')
     print(f'- Максимальный запас энергии: + {char_characteristic["energy_max_skill"]} энергии.')
     print(f'- Скорость: + {char_characteristic["speed_skill"]} %.')
+    print(f'- Удача: + {char_characteristic["luck_skill"]} %.')
+    print('####################################')
     print('\nP.S. Сюда так же будут добавлены характеристики по мере их добавления в игру.')
     print('####################################')
 

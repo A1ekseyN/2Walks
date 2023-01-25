@@ -43,24 +43,25 @@ def date_check_steps_today_used():
 char_characteristic = {
     'date_last_enter': None,    # Добавить дату последнего входа в игру
     'timestamp_last_enter': now_timestamp,    # TimeStamp для расчёта игрового времени
-    'steps_today' : steps_today,                                        # Default: 0
-    'steps_can_use': 0,                                                 # Default: 0
-    'steps_today_used': date_check_steps_today_used(),                  # Default: 0
-    'loc' : load_characteristic()['loc'],                               # Default: 'home'
-    'energy' : load_characteristic()['energy'],                         # Default: 50
-    'energy_max' : 50,                                                  # Default: 50
-    'energy_time_stamp': load_characteristic()['energy_time_stamp'],    # Default: timestamp() (Возможно)
-    'money': load_characteristic()['money'],                            # Default: 50 $
+    'steps_today' : steps_today,                                                        # Default: 0
+    'steps_can_use': 0,                                                                 # Default: 0
+    'steps_today_used': date_check_steps_today_used(),                                  # Default: 0
+    'loc' : load_characteristic()['loc'],                                               # Default: 'home'
+    'energy' : load_characteristic()['energy'],                                         # Default: 50
+    'energy_max' : 50,                                                                  # Default: 50
+    'energy_time_stamp': load_characteristic()['energy_time_stamp'],                    # Default: timestamp() (Возможно)
+    'money': load_characteristic()['money'],                                            # Default: 50 $
 
     'skill_training': load_characteristic()['skill_training'],                          # Default: False
     'skill_training_name': load_characteristic()['skill_training_name'],                # Default: None
     'skill_training_timestamp': load_characteristic()['skill_training_timestamp'],      # Default: None
     'skill_training_time_end': load_characteristic()['skill_training_time_end'],        # Default: None
 
-    'stamina' : load_characteristic()['stamina'],  # Выносливость: + 1 % к общему кол-ву пройденых шагов                     # Default: 0
-    'energy_max_skill': load_characteristic()['energy_max_skill'], # Навык для прокачки макс. энергии. (Нужен еще одна переменная, для прокачки.       # Default: 0
-    'speed_skill': load_characteristic()['speed_skill'],           # Скорость: + 1% к скорости действий игрока на 1 %.       # Default: 0
-    'mechanics' : 0,
+    'stamina': load_characteristic()['stamina'],  # Выносливость: + 1 % к общему кол-ву пройденых шагов                                                     # Default: 0
+    'energy_max_skill': load_characteristic()['energy_max_skill'], # Навык для прокачки макс. энергии. (Нужен еще одна переменная, для прокачки.            # Default: 0
+    'speed_skill': load_characteristic()['speed_skill'],           # Скорость: + 1% к скорости действий игрока на 1 %.                                      # Default: 0
+    'luck_skill': load_characteristic()['luck_skill'],            # Удача: + 1% к удаче в игре. Влияет на шанс выпадения лута, на качество самого лута.     # Default: 0
+    'mechanics': 0,
     'it_technologies' : 0,
 
     'work': load_characteristic()['work'],   # Название работы          # Default: None
@@ -69,6 +70,14 @@ char_characteristic = {
     'working_hours': load_characteristic()['working_hours'],            # Default: 0
     'working_start': load_characteristic()['working_start'],
     'working_end': load_characteristic()['working_end'],
+
+    # Инвентарь / Intentory
+    'inventory': load_characteristic()['inventory'],                                                    # Default: []
+
+    # Adventure / Приключения
+    'adventure': False,
+    'adventure_name': None,
+    'adventure_end_timestamp': None,
 }
 
 char_characteristic['energy_max'] = char_characteristic['energy_max'] + char_characteristic['energy_max_skill']

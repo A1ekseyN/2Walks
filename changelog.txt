@@ -1,3 +1,19 @@
+Date: 25.01.2023
+Version: 0.0.1q
+- Add Drop system
+- Add Luck skill.
+- Add Luck skill training.
+- Add Inventory menu.
+- Add Inventory unicode symbol
+- Add Adventure menu
+- Add Adventure Class
+- Add Save & Exit option from menu.
+- Add Colors functions
+- Fix view of working time, then start work.
+- Add ',' when number >= 1000.
+- Small changes & fixes.
+
+
 Date: 11.01.2023
 Version: 0.0.1p
 - Small Changes

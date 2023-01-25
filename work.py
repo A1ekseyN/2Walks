@@ -89,7 +89,7 @@ class Work():
 
                 print(f'\nИспользовано 🏃: {Fore.LIGHTCYAN_EX}{working_hours * work_requirements[work]["steps"]}{Style.RESET_ALL} + '
                       f'🔋: {Fore.GREEN}{working_hours * work_requirements[work]["energy"]}{Style.RESET_ALL}.')
-                print(f'Время работы 🕑: {working_hours * (time(round(60 - ((60 / 100) * char_characteristic["speed_skill"]))))}')
+                print(f'Время работы 🕑: {time(working_hours * (round(60 - ((60 / 100) * char_characteristic["speed_skill"]))))}')
                 print(f'Зарплата 💰: {Fore.LIGHTYELLOW_EX}{working_hours * char_characteristic["work_salary"]}{Style.RESET_ALL} $.')
             else:
                 print('Дописать функционал, который показывает, чего именно не хватило. Можно использовать метод класса.')

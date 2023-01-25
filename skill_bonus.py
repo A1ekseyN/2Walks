@@ -11,7 +11,8 @@ def stamina_skill_bonus_def():
 def speed_skill_bonus_def(x):
     # Бонус от скорости
     x = int(x - (x / 100) * char_characteristic['speed_skill'])
-    print(x)
+#    print(x)
+    return x
 
 
 stamina_skill_bonus = stamina_skill_bonus_def()

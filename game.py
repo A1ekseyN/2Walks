@@ -1,4 +1,4 @@
-# Version - 0.0.1o
+# Version - 0.0.1q
 
 
 from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar
@@ -6,6 +6,7 @@ from characteristics import *
 from locations import *
 from gym import skill_training_check_done
 from work import Work, work_check_done
+from inventory import inventory_menu
 #from work import work_check_done
 
 
@@ -32,17 +33,17 @@ def game():
                       f'\n\t3. 🛒 Магазин (Не работает)'
                       f'\n\t4. 🏭 Работа'
                       f'\n\t5. 🗺️ Приключение (Не работает)'
-                      f'\n\t6. 🚗 Гараж (Не работает)'
-                      f'\n\t7. Авто-дилер (Не работает)'
-                      f'\n\t8. 🏛 Банк (Не работает)'
+#                      f'\n\t6. 🚗 Гараж (Не работает)'
+#                      f'\n\t7. 🚗 Авто-дилер (Не работает)'
+#                      f'\n\t8. 🏛 Банк (Не работает)'
                       f'\n\t0. 🔄 Обновить кол-во шагов')
-                print(f'\tm. Меню // i. Инвентарь // c. Характеристики'
-                      f'\n\ts. 💾 Save Game')
-#                      f'\n\te. Save & Exit')
+                print(f'\tm. Меню // i. 🎒 Инвентарь // c. Характеристики'
+                      f'\n\ts. 💾 Save Game'
+                      f'\n\tq/e. 💾 + 🚪 Save & Exit')
                 try:
                     temp_number = input('Куда вы хотите пойти?:\n>>> ')
                 except:
-                    print('\nPlease enter digit or letter.')
+                    print('\n\nPlease enter digit or letter.')
                     continue
 
                 if temp_number == '1' and char_characteristic['loc'] != 'home':
@@ -68,7 +69,6 @@ def game():
                 elif temp_number == '5' and char_characteristic['loc'] != 'adventure':
                     char_characteristic['loc'] = 'adventure'
                     adventure_location()
-                    location_change_map()
                 elif temp_number == '6' and char_characteristic['loc'] != 'garage':
                     char_characteristic['loc'] = 'garage'
                     garage_location()
@@ -82,24 +82,27 @@ def game():
                     bank_location()
                     location_change_map()
                 elif temp_number == '0':
-                    # Обновление кол-ва шагов через API
+                    # Обновление кол-ва шагов через API.
                     steps_today_update_manual()
 
                 # Меню персонажа, инвентаря.
                 elif temp_number == 'm' or temp_number == 'ь':
                     print('\nРаздел "Меню" - (Пока не работает).')
                 elif temp_number == 'i' or temp_number == 'ш':
-                    print('\nИнвентарь - (Пока не работает).')
+                    inventory_menu()
                 elif temp_number == 'c' or temp_number == 'с':
                     char_info()
                 elif temp_number == 's' or temp_number == 'ы':
+                    # Сохранение игры.
                     save_characteristic()
+                elif temp_number == 'e' or temp_number == 'у' or temp_number == 'q' or temp_number == 'й':
+                    # Сохранение игры, и выход.
+                    save_characteristic()
+                    print('🚪 Спасибо за игру. До встречи.')
+                    quit()
+
 #                elif temp_number == 'l' or temp_number == 'д':
 #                    load_characteristic()
-                # Дописать функционал по закрытию игры с кнопки 'e'.
-                # Через break и global переменную не работает.
-#                elif temp_number == 'e' or temp_number == 'у':
-#                    save_characteristic()
 
         if char_characteristic['loc'] == 'home':
             home_location()
