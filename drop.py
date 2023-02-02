@@ -35,9 +35,11 @@ class Drop_Item():
         ring = randint(1, 100 + luck_chr)
         necklace = randint(1, 100 + luck_chr)
         if ring > necklace:
-            item_type = 'Ring'
+            item_type = 'ring'
+            item_name = 'ring'
         elif necklace > ring:
-            item_type = 'Necklace'
+            item_type = 'necklace'
+            item_name = 'necklace'
         else:
             return None
         return item_type
@@ -70,6 +72,7 @@ class Drop_Item():
         # Собираем предмет из разных подразделов.
         global char_characteristic
         item = {
+            'item_name': [],
             'item_type': [],
             'grade': [],
             'characteristic': [],
@@ -78,6 +81,7 @@ class Drop_Item():
         }
 
         item['item_type'].append(Drop_Item.item_type(self))
+        item['item_name'].append(item['item_type'][0])
         item['grade'].append(Drop_Item.one_item_random_grade(self))
         item['characteristic'].append(Drop_Item.characteristic_type(self))
         item['bonus'].append(Drop_Item.item_bonus_value(self, grade=item['grade']))

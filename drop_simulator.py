@@ -13,7 +13,7 @@ drop_percent_item_a = 75
 drop_percent_item_b = 60
 drop_percent_item_c = 45
 
-luck = 10
+luck = 25
 cnt = 0
 cnt_a = 0
 cnt_b = 0
@@ -47,7 +47,7 @@ c_ring = 0
 c_necklace = 0
 c_jewelery_unluck = 0
 
-attempt = 1000000
+attempt = 10000000
 
 # Вычисление drop происходит по формуле уменьшения drop_percent_a
 
@@ -93,13 +93,16 @@ def random_one_item():
         x = t / attempt                     # Вычисление Progress Bar %.
         show_progress_bar(x)                # Отображение в % хода выполнения симуляции.
 
-        i = randint(1, 100)
+        i = randint(1, 100 - luck)
         if i <= drop_percent_gl:            # Определение выпал предмет да или нет.
-            a = randint(1, 100)
+            a = randint(1, 100 - luck)
             if a <= drop_percent_item_a:    # Определение или выпал предмет с учетом собственного drop шанса.
                 cnt += 1
 
-    print(f'\nDropped out of {attempt:,.0f} attemptsCounter: {cnt:,.0f}. ({round(drop_percent, 2)} %)')
+    drop_percent = (cnt / attempt) * 100  # Глобальный drop %, показывается в конце вычислений.
+
+    print('\nDrop Item C-Grade.')
+    print(f'Dropped out of {attempt:,.0f} attemptsCounter: {cnt:,.0f}. ({round(drop_percent, 2)} %)')
     print(f"Скрипт выполнен за: {timer_hrs_min_sec(time.time() - start_time)} секунды.")
 
 
@@ -639,11 +642,11 @@ def random_thee_items_characteristics_item_stat():
     print(f"\nСкрипт выполнен за: {timer_hrs_min_sec(time.time() - start_time)} секунды.")
 
 
-#random_one_item()                                    # Вычисление рандома для 1 Item A
+random_one_item()                                    # Вычисление рандома для 1 Item A
 #random_two_items()                                   # Вычисление рандома для 2 Items A + B
 #random_two_items_characteristics_stat_item()         # Вычисление рандома для 2 Items A + B с учетом характеристик
 #random_two_items_characteristics_item_stat()
-random_thee_items_characteristics_item_stat()
+#random_thee_items_characteristics_item_stat()
 
 drop_percent = (cnt / attempt) * 100                  # Глобальный drop %, показывается в конце вычислений.
 

@@ -1,3 +1,11 @@
+Version: 0.0.1r
+- Add Shop
+- Change Inventory view. Add some exceptions
+- Add to buy Cheeseburger
+- Add to buy Coffee
+- Add item name in shop menu and drop.py
+
+
 Date: 25.01.2023
 Version: 0.0.1q
 - Add Drop system

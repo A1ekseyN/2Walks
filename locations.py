@@ -3,6 +3,7 @@ from work import Work
 #from work import work_choice
 from adventure import Adventure
 from characteristics import char_characteristic
+from shop import Shop
 
 
 def icon_loc():
@@ -40,9 +41,10 @@ def gym_location():
 
 def shop_location():
     # Локация - Магазин.
-    print('\n--- 🛒 Shop Location 🛒 ---')
-    print('В данный момент вы находитесь в Магазине.')
-    print('Содержимое локации находится в разработке.')
+    Shop.shop_menu(self=None)
+#    print('\n--- 🛒 Shop Location 🛒 ---')
+#    print('В данный момент вы находитесь в Магазине.')
+#    print('Содержимое локации находится в разработке.')
 
 
 def work_location():
