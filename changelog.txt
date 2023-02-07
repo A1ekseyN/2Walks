@@ -1,4 +1,10 @@
+Version: 0.0.1s
+Date: 07.02.2023
+- Add Clothes menu in magazine
+- Add shoes buy option
+
 Version: 0.0.1r
+Date: 02.02.2023
 - Add Shop
 - Change Inventory view. Add some exceptions
 - Add to buy Cheeseburger
