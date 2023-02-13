@@ -101,14 +101,18 @@ class Shop():
         def clothes_head(self, money):
             print('\nВ этом меню можно приобрести головной убор: '
                   f'\n{money}'
-                  '\n1. ---'
-                  '\n2. ---'
-                  '\n3. ---'
-                  '\n0. Назад')
+                  '\n\t1. ---'
+                  '\n\t2. ---'
+                  '\n\t3. ---'
+                  '\n\t0. Назад')
             try:
                 ask = input('\nЧто вы хотите приобрести? \n>>> ')
                 if ask == '1':
-                    print(' --- Тестовая покупка')
+                    print('\n--- Тестовая - шапка')
+                elif ask == '2':
+                    print('\n--- Тестовая - шапка')
+                elif ask == '3':
+                    print('\n--- Тестовая - шапка')
                 elif ask == '0':
                     Shop.shop_menu_clothes(self, item, money)
                 else:
@@ -118,15 +122,69 @@ class Shop():
 
         def clothes_jacket(self, money):
             print('\nВ этом меню можно приобрести куртку: '
-                  f'\n{money}')
+                  f'\n{money}'
+                  '\n\t1. ---'
+                  '\n\t2. ---'
+                  '\n\t3. ---'
+                  '\n\t0. Назад')
+            try:
+                ask = input('\nЧто вы хотите приобрести? \n>>> ')
+                if ask == '1':
+                    print('\n--- Тестовая покупка - куртка')
+                elif ask == '2':
+                    print('\n--- Тестовая покупка - куртка')
+                elif ask == '3':
+                    print('\n--- Тестовая покупка - куртка')
+                elif ask == '0':
+                    Shop.shop_menu_clothes(self, item, money)
+                else:
+                    clothes_jacket(self, money)
+            except:
+                clothes_jacket(self, money)
 
         def clothes_pants(self, money):
             print('\nВ этом меню можно приобрести штаны: '
-                  f'\n{money}')
+                  f'\n{money}'
+                  '\n\t1. ---'
+                  '\n\t2. ---'
+                  '\n\t3. ---'
+                  '\n\t0. Назад')
+            try:
+                ask = input('\nЧто вы хотите приобрести? \n>>> ')
+                if ask == '1':
+                    print('\n--- Тестовая - штаны')
+                elif ask == '2':
+                    print('\n--- Тестовая - штаны')
+                elif ask == '3':
+                    print('\n--- Тестовая - штаны')
+                elif ask == '0':
+                    Shop.shop_menu_clothes(self, item, money)
+                else:
+                    clothes_pants(self, money)
+            except:
+                clothes_pants(self, money)
 
         def clothes_gloves(self, money):
             print('\nВ этом меню можно приобрести перчатки: '
-                  f'\n{money}')
+                  f'\n{money}'
+                  '\n\t1. ---'
+                  '\n\t2. ---'
+                  '\n\t3. ---'
+                  '\n\t0. Назад')
+            try:
+                ask = input('\nЧто вы хотите приобрести? \n>>> ')
+                if ask == '1':
+                    print('\n--- Тестовая покупка - перчатки')
+                elif ask == '2':
+                    print('\n--- Тестовая покупка - перчатки')
+                elif ask == '3':
+                    print('\n--- Тестовая покупка - перчатки')
+                elif ask == '0':
+                    Shop.shop_menu_clothes(self, item, money)
+                else:
+                    clothes_gloves(self, money)
+            except:
+                Shop.shop_menu_clothes(self, item, money)
 
         def clothes_shoes(self, item, money):
             print('\nВ этом меню можно приобрести обувь: '

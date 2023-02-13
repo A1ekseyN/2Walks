@@ -1,4 +1,4 @@
-from adventure_data import adventure_table
+from adventure_data import adventure_data_table
 from characteristics import char_characteristic
 from colors import steps, energy
 from datetime import datetime, timedelta
@@ -8,9 +8,9 @@ from skill_bonus import speed_skill_bonus_def
 from colorama import Fore, Style
 
 
-walk_easy = adventure_table['walk_easy']
-walk_normal = adventure_table['walk_normal']
-walk_hard = adventure_table['walk_hard']
+walk_easy = adventure_data_table['walk_easy']
+walk_normal = adventure_data_table['walk_normal']
+walk_hard = adventure_data_table['walk_hard']
 
 
 walk_easy_requirements = f'🏃: {steps(walk_easy["steps"])} шагов, ' \
@@ -51,9 +51,9 @@ class Adventure():
         print('\nВы можете отправить персонажа в приключение.'
               '\nВ приключении, персонаж может получить полезные предметы.')
         print('\nДоступные приключения: '
-              f'\n\t1. Прогулка вокруг озера: {walk_easy_requirements}'
-              f'\n\t2. Прогулка по району: {walk_normal_requirements} - (Не работает)'
-              f'\n\t3. Прогулка в лес: {walk_hard_requirements} - (Не работает)'
+              f'\n\t1. Прогулка вокруг озера: {walk_easy_requirements} (Награда: C-Grade (Rings, Necklace))'
+              f'\n\t2. Прогулка по району:    {walk_normal_requirements} - (Не работает)'
+              f'\n\t3. Прогулка в лес:        {walk_hard_requirements} - (Не работает)'
               #          '\n\t4. хххххх прогулка - 20.000 шагов. (Пока не работает)'
               '\n\t0. Выход')
         Adventure.adventure_choice(self)

@@ -185,9 +185,14 @@ class Skill_Training():
         char_characteristic['skill_training_timestamp'] = datetime.now().timestamp()
 #        char_characteristic['skill_training_time_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(minutes=(skill_training_table[char_characteristic[self.name] + 1]['time']))
         char_characteristic['skill_training_time_end'] = skill_training_time_with_bonus
-        char_characteristic['steps_today_used'] += (char_characteristic[self.name] + 1) * 1000
-        char_characteristic['energy'] -= (char_characteristic[self.name] + 1) * 5
-        char_characteristic['money'] -= (char_characteristic[self.name] + 1) * 10
+        char_characteristic['steps_today_used'] += skill_training_table[char_characteristic[self.name] + 1]['steps']
+        char_characteristic['energy'] -= skill_training_table[char_characteristic[self.name] + 1]['energy']
+        char_characteristic['money'] -= skill_training_table[char_characteristic[self.name] + 1]['money']
+
+# Cтарая формула расчёта. Написал новую, которая работает по таблице.
+#        char_characteristic['steps_today_used'] += (char_characteristic[self.name] + 1) * 1000
+#        char_characteristic['energy'] -= (char_characteristic[self.name] + 1) * 5
+#        char_characteristic['money'] -= (char_characteristic[self.name] + 1) * 10
 
         print(f'\n🏋️ {self.name.title()} - Начато улучшение навыка. 🏋')
         print(f'На улучшение навыка {self.name} потрачено:'

@@ -49,7 +49,7 @@ def shop_location():
 
 def work_location():
     # Локация - Работа.
-    Work.work_choise(self=0)
+    Work.work_choice(self=0)
 
 
 def adventure_location():

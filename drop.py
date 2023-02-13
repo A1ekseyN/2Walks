@@ -31,15 +31,15 @@ class Drop_Item():
             return 1
 
     def item_type(self):
-        # Определение типа предмена (Ring, Necklace)
+        # Определение типа предмета (Ring, Necklace)
         ring = randint(1, 100 + luck_chr)
         necklace = randint(1, 100 + luck_chr)
         if ring > necklace:
             item_type = 'ring'
-            item_name = 'ring'
+#            item_name = 'ring'
         elif necklace > ring:
             item_type = 'necklace'
-            item_name = 'necklace'
+#            item_name = 'necklace'
         else:
             return None
         return item_type
@@ -52,21 +52,27 @@ class Drop_Item():
         luck = randint(1, 100 + luck_chr)
 
         if stamina > energy_max and stamina > speed_skill and stamina > luck:
-            chr = 'stamina'
+            characteristic = 'stamina'
         elif energy_max > stamina and energy_max > speed_skill and energy_max > luck:
-            chr = 'energy_max'
+            characteristic = 'energy_max'
         elif speed_skill > stamina and speed_skill > energy_max and speed_skill > luck:
-            chr = 'speed_skill'
+            characteristic = 'speed_skill'
         elif luck > stamina and luck > energy_max and luck > speed_skill:
-            chr = 'luck'
+            characteristic = 'luck'
         else:
             return None
-        return chr
+        return characteristic
 
     def item_quality(self):
         # Определение качества предмета
-        q = randint(20 + luck_chr, 100)
-        return q
+        quality = randint(20 + luck_chr, 100)
+        return quality
+
+    def item_price(self, grade, quality):
+        # Определение цены предмета.
+        if grade[0] == 'C-Grade':
+            price = round(quality[0] * 0.5)
+            return price
 
     def item_collect(self):
         # Собираем предмет из разных подразделов.
@@ -78,6 +84,7 @@ class Drop_Item():
             'characteristic': [],
             'bonus': [],
             'quality': [],
+            'price': [],
         }
 
         item['item_type'].append(Drop_Item.item_type(self))
@@ -86,14 +93,14 @@ class Drop_Item():
         item['characteristic'].append(Drop_Item.characteristic_type(self))
         item['bonus'].append(Drop_Item.item_bonus_value(self, grade=item['grade']))
         item['quality'].append(Drop_Item.item_quality(self))
+        item['price'].append(Drop_Item.item_price(self, grade=item['grade'], quality=item['quality']))
 
         if item['item_type'][0] != None and item['grade'][0] != None and item['characteristic'][0] != None and item['quality'][0] != None:
+#            print(item)
             print(f'\nВыпал предмет: '
-                  f'\n- {item["grade"][0]}: {item["item_type"][0]} (+ {item["bonus"][0]} {item["characteristic"][0]} (Качество: {item["quality"][0]})). ')
+                  f'\n- {item["grade"][0]}: {item["item_type"][0].title()} + {item["bonus"][0]} {item["characteristic"][0].title()} (Качество: {item["quality"][0]}) (Цена: {item["price"][0]} $). \n')
             return char_characteristic['inventory'].append(item)
-#            return item
         else:
             return print('\n--- Ничего не выпало ---.')
-
 
 #Drop_Item.item_collect(self=None)

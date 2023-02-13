@@ -75,9 +75,9 @@ char_characteristic = {
     'inventory': load_characteristic()['inventory'],                                                    # Default: []
 
     # Adventure / Приключения
-    'adventure': False,
-    'adventure_name': None,
-    'adventure_end_timestamp': None,
+    'adventure': load_characteristic()['adventure'],
+    'adventure_name': load_characteristic()['adventure_name'],
+    'adventure_end_timestamp': load_characteristic()['adventure_end_timestamp'],
 }
 
 char_characteristic['energy_max'] = char_characteristic['energy_max'] + char_characteristic['energy_max_skill']
@@ -147,14 +147,32 @@ skill_training_table = {
     11: {
         'steps': 11000,
         'energy': 55,
-        'money': 500,
+        'money': 350,
         'time': 1440,
     },
     12: {
         'steps': 12000,
         'energy': 60,
-        'money': 750,
+        'money': 400,
         'time': 1680,
+    },
+    13: {
+        'steps': 13000,
+        'energy': 65,
+        'money': 450,
+        'time': 1920,
+    },
+    14: {
+        'steps': 14000,
+        'energy': 70,
+        'money': 500,
+        'time': 2160,
+    },
+    15: {
+        'steps': 15000,
+        'energy': 75,
+        'money': 550,
+        'time': 2400,
     },
 }
 

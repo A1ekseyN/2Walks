@@ -1,5 +1,5 @@
 # Таблица с приключениями, и параметрами
-adventure_table = {
+adventure_data_table = {
     'walk_easy': {
         'steps': 2500,
         'energy': 10,

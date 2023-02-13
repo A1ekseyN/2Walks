@@ -1,4 +1,4 @@
-# Version - 0.0.1q
+# Version - 0.0.2a
 
 
 from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar

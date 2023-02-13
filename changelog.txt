@@ -1,3 +1,14 @@
+Version: 0.0.2a
+- Add opportunity to add working hours, when char at work
+- Reduce requirements in $ for skill training
+- Add 13-15 skill training.
+- Add Items Sold system
+- Add Items price in Easy Adventure mode
+- Small code changes
+- Fix bug with skill training formula
+- Optimize code
+- Fix bug with save Adventure progress
+
 Version: 0.0.1s
 Date: 07.02.2023
 - Add Clothes menu in magazine
