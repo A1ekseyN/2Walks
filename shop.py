@@ -22,7 +22,7 @@ class Shop():
               f'\n{money}')
         print('\nВы можете приобрести: '
               '\n\t1. Еда, вода, расходные материалы'
-              '\n\t2. Одежда (Не работает)'
+              '\n\t2. Одежда (Тестовый режим)'
 #              '\n\t3. Экипировка (Не работает)'
 #              '\n\t9. Продать товар (Не работает)'
               '\n\t0. Назад')
@@ -199,8 +199,8 @@ class Shop():
                     if char_characteristic['money'] >= 25:
                         item['item_name'].append('Кеды')
                         item['item_type'].append('shoes')
-                        item['grade'].append('C-Grade')
-                        item['characteristic'].append('steps')
+                        item['grade'].append('c-grade')
+                        item['characteristic'].append('stamina')
                         item['bonus'].append(1)
                         item['quality'].append(100)
                         item['price'].append(25)
@@ -213,8 +213,8 @@ class Shop():
                     if char_characteristic['money'] >= 50:
                         item['item_name'].append('Кеды')
                         item['item_type'].append('shoes')
-                        item['grade'].append('B-Grade')
-                        item['characteristic'].append('steps')
+                        item['grade'].append('b-grade')
+                        item['characteristic'].append('stamina')
                         item['bonus'].append(2)
                         item['quality'].append(100)
                         item['price'].append(50)
@@ -227,8 +227,8 @@ class Shop():
                     if char_characteristic['money'] >= 100:
                         item['item_name'].append('Кеды')
                         item['item_type'].append('shoes')
-                        item['grade'].append('A-Grade')
-                        item['characteristic'].append('steps')
+                        item['grade'].append('a-grade')
+                        item['characteristic'].append('stamina')
                         item['bonus'].append(3)
                         item['quality'].append(100)
                         item['price'].append(100)
@@ -282,7 +282,7 @@ class Shop():
         pass
 
     def shop_menu_sell_items(self):
-        # Раздел для продажи купленых товаров
+        # Раздел для продажи купленных товаров
         pass
 
 #Shop.shop_menu(self=None)

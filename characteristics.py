@@ -8,7 +8,7 @@ from settings import debug_mode
 now_timestamp = datetime.now().timestamp()
 
 ######## Game Ballance ########
-# Настройки игрового балланса #
+# Настройки игрового баланса #
 ###############################
 
 # Шаги за сегодня
@@ -74,13 +74,41 @@ char_characteristic = {
     # Инвентарь / Intentory
     'inventory': load_characteristic()['inventory'],                                                    # Default: []
 
+    # Equipment / Экипировка
+    'equipment_head': load_characteristic()['equipment_head'],                              # Default: None
+    'equipment_neck': load_characteristic()['equipment_neck'],                              # Default: None
+    'equipment_torso': load_characteristic()['equipment_torso'],                            # Default: None
+    'equipment_finger_01': load_characteristic()['equipment_finger_01'],                    # Default: None
+    'equipment_finger_02': load_characteristic()['equipment_finger_02'],                    # Default: None
+    'equipment_legs': load_characteristic()['equipment_legs'],                              # Default: None
+    'equipment_foots': load_characteristic()['equipment_foots'],                            # Default: None
+
     # Adventure / Приключения
     'adventure': load_characteristic()['adventure'],
     'adventure_name': load_characteristic()['adventure_name'],
     'adventure_end_timestamp': load_characteristic()['adventure_end_timestamp'],
 }
 
-char_characteristic['energy_max'] = char_characteristic['energy_max'] + char_characteristic['energy_max_skill']
+
+equipment_list = [char_characteristic['equipment_head'], char_characteristic['equipment_neck'],
+                  char_characteristic['equipment_torso'], char_characteristic['equipment_finger_01'],
+                  char_characteristic['equipment_finger_02'], char_characteristic['equipment_legs'],
+                  char_characteristic['equipment_foots']]
+
+
+def equipment_energy_max_bonus_for_char_characteristics():
+    # Бонус Energy Max. Функция для вычисления бонуса экипировки
+    # Архитектурно неверно реализованное решение. Пока не знаю как его переделать.
+    bonus = 0
+    for item in equipment_list:
+        if item is not None:
+            if item['characteristic'][0] == 'energy_max':
+                bonus += item['bonus'][0]
+    return bonus
+
+
+char_characteristic['energy_max'] += char_characteristic['energy_max_skill'] + equipment_energy_max_bonus_for_char_characteristics()
+
 
 skill_training_table = {
     # Таблица стоимости изучения навыков.

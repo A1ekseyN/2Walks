@@ -1,8 +1,9 @@
-# Version - 0.0.2a
+# Version - 0.0.2b
 
 
 from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar
 from characteristics import *
+from equipment import Equipment
 from locations import *
 from gym import skill_training_check_done
 from work import Work, work_check_done
@@ -37,7 +38,7 @@ def game():
 #                      f'\n\t7. 🚗 Авто-дилер (Не работает)'
 #                      f'\n\t8. 🏛 Банк (Не работает)'
                       f'\n\t0. 🔄 Обновить кол-во шагов')
-                print(f'\tm. Меню // i. 🎒 Инвентарь // c. Характеристики'
+                print(f'\tm. Меню // i. 🎒 Инвентарь // e. 🎒 Экипировка // c. Характеристики'
                       f'\n\ts. 💾 Save Game'
                       f'\n\tq/e. 💾 + 🚪 Save & Exit')
                 try:
@@ -90,12 +91,14 @@ def game():
                     print('\nРаздел "Меню" - (Пока не работает).')
                 elif temp_number == 'i' or temp_number == 'ш':
                     inventory_menu()
+                elif temp_number == 'e' or temp_number == 'у':
+                    Equipment.equipment_view(self=None)
                 elif temp_number == 'c' or temp_number == 'с':
                     char_info()
                 elif temp_number == 's' or temp_number == 'ы':
                     # Сохранение игры.
                     save_characteristic()
-                elif temp_number == 'e' or temp_number == 'у' or temp_number == 'q' or temp_number == 'й':
+                elif temp_number == 'q' or temp_number == 'й':
                     # Сохранение игры, и выход.
                     save_characteristic()
                     print('🚪 Спасибо за игру. До встречи.')

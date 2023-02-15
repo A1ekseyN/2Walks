@@ -1,13 +1,13 @@
 from random import randint
 from characteristics import char_characteristic
+from equipment_bonus import equipment_luck_bonus
 
 drop_percent_gl = 80
 drop_percent_item_c = 75
 drop_percent_item_b = 60
 drop_percent_item_a = 45
 
-#luck_chr = 0  # Шанс удачи персонажа
-luck_chr = char_characteristic['luck_skill']
+luck_chr = char_characteristic['luck_skill'] + equipment_luck_bonus()
 
 
 class Drop_Item():
@@ -19,7 +19,7 @@ class Drop_Item():
         if i <= drop_percent_gl:  # Определение выпал item или нет.
             c = randint(1, 100 - luck_chr)
             if c <= drop_percent_item_c:
-                grade = 'C-Grade'
+                grade = 'c-grade'
                 return grade
             else:
                 return None
@@ -27,7 +27,7 @@ class Drop_Item():
             return None
 
     def item_bonus_value(item, grade):
-        if grade[0] == 'C-Grade':
+        if grade[0] == 'c-grade':
             return 1
 
     def item_type(self):
@@ -70,7 +70,7 @@ class Drop_Item():
 
     def item_price(self, grade, quality):
         # Определение цены предмета.
-        if grade[0] == 'C-Grade':
+        if grade[0] == 'c-grade':
             price = round(quality[0] * 0.5)
             return price
 

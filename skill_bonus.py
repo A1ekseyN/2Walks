@@ -1,5 +1,6 @@
 # Файл для расчёта бонусов от навыков.
 from characteristics import char_characteristic
+from equipment_bonus import equipment_speed_skill_bonus
 
 
 def stamina_skill_bonus_def():
@@ -8,10 +9,9 @@ def stamina_skill_bonus_def():
     return stamina_skill_bonus
 
 
-def speed_skill_bonus_def(x):
+def speed_skill_equipment_bonus_def(x):
     # Бонус от скорости
-    x = int(x - (x / 100) * char_characteristic['speed_skill'])
-#    print(x)
+    x = int(x - (x / 100) * (char_characteristic['speed_skill'] + equipment_speed_skill_bonus()))
     return x
 
 

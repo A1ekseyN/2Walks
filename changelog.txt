@@ -1,3 +1,20 @@
+Version: 0.0.2b
+Date: 15.02.2023
+- Add Steps bonus from Equipment
+- Add Energy Max bonus from Equipment (with bad architecture)
+- Add Speed bonus from Equipment: adventure, gym, work
+- Add Speed bonus from Equipment to Energy regeneration
+- Add Speed bonus from Skill to Energy regeneration
+- Add Luck bonus from Equipment
+- Add equipment.py file
+- Add equipment_bonus.py file
+- Add bonus.py
+- Add the ability to wear equipment
+- Add the ability to remove equipment
+- Add inventory sorting, and reverse sorting (now off)
+- Add Equipment bonus function
+- Small changes
+
 Version: 0.0.2a
 - Add opportunity to add working hours, when char at work
 - Reduce requirements in $ for skill training

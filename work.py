@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from settings import debug_mode
 from colorama import Fore, Style
 from functions_02 import time
-
+from equipment_bonus import equipment_speed_skill_bonus
 
 work_requirements = {
     'watchman': {'steps': 200, 'energy': 4, 'salary': 2},
@@ -28,7 +28,7 @@ class Work():
         if not char_characteristic['working']:
             print('\n--- 🏭 Work Location 🏭 ---')
             print(f'В этой локации можно устроится на работу. '
-                  f'\nОплата почасовая 🕑: 1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"])))}')
+                  f'\nОплата почасовая 🕑: 1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus())))}')
             print('\nНа данный момент доступны вакансии:'
                   f'\n\t1. Сторож - 💰: {Fore.LIGHTYELLOW_EX}2{Style.RESET_ALL} $ (🏃: 200 + 🔋: 4).'
                   f'\n\t2. Завод  - 💰: {Fore.LIGHTYELLOW_EX}5{Style.RESET_ALL} $ (🏃: 500 + 🔋: 7).'
@@ -67,7 +67,7 @@ class Work():
         try:
             print(f'\nSteps 🏃: {char_characteristic["steps_can_use"]}; Energy 🔋: {char_characteristic["energy"]}')
             print(f'Вы выбрали вакансию: {Fore.GREEN}{work.title()}{Style.RESET_ALL} c зарплатой: {Fore.LIGHTYELLOW_EX}{work_requirements[work]["salary"]}{Style.RESET_ALL} $ в час.')
-            print(f'Оплата почасовая 🕑: 1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"])))}')
+            print(f'Оплата почасовая 🕑: 1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus())))}')
             working_hours = abs(int(input('\nВведите количество рабочих часов: 1 - 8.\n0. Выход.\n>>> ')))
             if working_hours >= 1 and working_hours <= 8:
                 Work.check_requirements(self, work, working_hours)
@@ -106,13 +106,13 @@ class Work():
                 char_characteristic['work'] = work
                 char_characteristic['working'] = True
                 char_characteristic['working_start'] = datetime.now().timestamp()
-                char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + (timedelta(minutes=(char_characteristic["working_hours"] + working_hours) * 60) - ((timedelta(minutes=char_characteristic["working_hours"] + working_hours * 60) / 100) * char_characteristic['speed_skill']))
+                char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + (timedelta(minutes=(char_characteristic["working_hours"] + working_hours) * 60) - ((timedelta(minutes=char_characteristic["working_hours"] + working_hours * 60) / 100) * (char_characteristic['speed_skill'] + equipment_speed_skill_bonus())))
                 char_characteristic['work_salary'] = work_requirements[work]['salary']
                 char_characteristic['working_hours'] += working_hours
 
                 print(f'\nИспользовано 🏃: {Fore.LIGHTCYAN_EX}{working_hours * work_requirements[work]["steps"]}{Style.RESET_ALL} + '
                       f'🔋: {Fore.GREEN}{working_hours * work_requirements[work]["energy"]}{Style.RESET_ALL}.')
-                print(f'Время работы 🕑: {time(working_hours * (round(60 - ((60 / 100) * char_characteristic["speed_skill"]))))}')
+                print(f'Время работы 🕑: {time(working_hours * (round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}')
                 print(f'Зарплата 💰: {Fore.LIGHTYELLOW_EX}{working_hours * char_characteristic["work_salary"]}{Style.RESET_ALL} $.')
             else:
                 print('\nДописать функционал, который показывает, чего именно не хватило. Можно использовать метод класса.')
