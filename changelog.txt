@@ -1,3 +1,16 @@
+Version: 0.0.2c
+Date: 25.02.2023
+- Add Daily Bonuses
+- Add view of Daily bonuses
+- Add Walk Normal with (C-Grade & B-Grade Loot)
+- Add Walk Hard with (C-Grade, B-Grade, A-Grade Loot)
+- Add Need to complete the adventure 3 times to unlock the next level of adventure
+- Fix Bug with requirements view Energy Max upgrade in Gym
+- Fix Price, when sold Items
+- Fix in Items sell algoritm
+- Change Adventure Hard Energy requirement from 40 to 30 energy
+- Small changes
+
 Version: 0.0.2b
 Date: 15.02.2023
 - Add Steps bonus from Equipment

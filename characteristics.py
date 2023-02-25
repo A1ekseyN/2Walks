@@ -11,8 +11,17 @@ now_timestamp = datetime.now().timestamp()
 # Настройки игрового баланса #
 ###############################
 
+
 # Шаги за сегодня
-steps_today = steps_today_update()
+# Изначально это переменная, сделал ее функцией.
+# Пытаюсь починить обновление кол-ва шагов за вчера. Чтобы в новый день шаги, не обновлялись раньше записи переменной steps_yesterday.
+# Если этот метод не заработает, то можно будет откатиться.
+def steps_today():
+    steps_today = steps_today_update()
+    return steps_today
+
+# Шаги за сегодня
+#steps_today = steps_today_update()
 
 
 def load_characteristic():
@@ -43,9 +52,11 @@ def date_check_steps_today_used():
 char_characteristic = {
     'date_last_enter': None,    # Добавить дату последнего входа в игру
     'timestamp_last_enter': now_timestamp,    # TimeStamp для расчёта игрового времени
-    'steps_today' : steps_today,                                                        # Default: 0
+    'steps_today' : steps_today(),    # steps_today,                                                        # Default: 0
     'steps_can_use': 0,                                                                 # Default: 0
     'steps_today_used': date_check_steps_today_used(),                                  # Default: 0
+    'steps_yesterday': load_characteristic()['steps_yesterday'],                        # Default: 0
+    'steps_daily_bonus': load_characteristic()['steps_daily_bonus'],    ###                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
     'loc' : load_characteristic()['loc'],                                               # Default: 'home'
     'energy' : load_characteristic()['energy'],                                         # Default: 50
     'energy_max' : 50,                                                                  # Default: 50
@@ -87,9 +98,15 @@ char_characteristic = {
     'adventure': load_characteristic()['adventure'],
     'adventure_name': load_characteristic()['adventure_name'],
     'adventure_end_timestamp': load_characteristic()['adventure_end_timestamp'],
+
+    # Adventure Counters
+    'adventure_walk_easy_counter': load_characteristic()['adventure_walk_easy_counter'],                  # Default: 0
+    'adventure_walk_normal_counter': load_characteristic()['adventure_walk_normal_counter'],              # Default: 0
+    'adventure_walk_hard_counter': load_characteristic()['adventure_walk_hard_counter'],                  # Default: 0
 }
 
 
+# Список Слотов куда можно вставить item экипировки.
 equipment_list = [char_characteristic['equipment_head'], char_characteristic['equipment_neck'],
                   char_characteristic['equipment_torso'], char_characteristic['equipment_finger_01'],
                   char_characteristic['equipment_finger_02'], char_characteristic['equipment_legs'],
@@ -108,6 +125,7 @@ def equipment_energy_max_bonus_for_char_characteristics():
 
 
 char_characteristic['energy_max'] += char_characteristic['energy_max_skill'] + equipment_energy_max_bonus_for_char_characteristics()
+char_characteristic['energy_max'] += char_characteristic['steps_daily_bonus']
 
 
 skill_training_table = {

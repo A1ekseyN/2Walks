@@ -14,5 +14,11 @@ def equipment_bonus_stamina_steps():
     return bonus
 
 
+def daily_steps_bonus():
+    # Бонус за пройденное кол-во загов, более 10к.
+    bonus = round((char_characteristic['steps_today'] / 100) * char_characteristic['steps_daily_bonus'])
+    return bonus
+
 #equipment_bonus_stamina_steps()
 #equipment_bonus_energy_max()
+#daily_steps_bonus()

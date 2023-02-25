@@ -16,7 +16,7 @@ adventure_data_table = {
     },
     'walk_hard': {
         'steps': 10000,
-        'energy': 40,
+        'energy': 30,
         'time': 120,
         'drop_grade': {'c', 'b', 'a'},
         'drop_items': {'Ring', 'Necklace'},

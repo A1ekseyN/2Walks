@@ -45,7 +45,7 @@ def inventory_view():
         for i in char_characteristic['inventory']:
             item_counter += 1
             try:
-                print(f'{item_counter}. {i["item_name"][0].title()}: ', end='')
+                print(f'\t{item_counter}. {i["item_name"][0].title()}: ', end='')
             except:
                 pass
             print(f'{i["item_type"][0].title()} ', end='')               # Item Type
@@ -74,19 +74,20 @@ def sold_item():
     inventory_view()
 
     try:
-        item_to_sold = int(input(f'\nКакой предмет хотите продать? (Введите число от 0 до {len(char_characteristic["inventory"])}). \n>>> '))
-        if item_to_sold <= len(char_characteristic["inventory"]):
+        item_to_sold = int(input(f'\t0. Назад'
+                                 f'\n\nКакой предмет хотите продать? (Введите число от 1 до {len(char_characteristic["inventory"])}). \n>>> '))
+        if item_to_sold <= len(char_characteristic["inventory"]) and item_to_sold != 0:
             print(f'\nВы выбрали предмет: {char_characteristic["inventory"][item_to_sold - 1]}'
-                  f'\nЦена предмета: ??? $')
+                  f'\nЦена предмета 💰: {round(char_characteristic["inventory"][item_to_sold - 1]["price"][0])} $')
             try:
                 ask = input('\nВы уверены, что хотите продать этот предмет? '
                             '\n1. Да'
                             '\n0. Назад \n>>> ')
                 if ask == '1':
                     print(f'\nВы продали предмет {char_characteristic["inventory"][item_to_sold - 1]}'
-                          f'\nЦена продажи: ??? $.')
+                          f'\nЦена продажи 💰: {round(char_characteristic["inventory"][item_to_sold - 1]["price"][0])} $.')
                     try:        # Если нет цены у предмета, тогда exception. И предмет удаляется без прибыли.
-                        char_characteristic['money'] += round(char_characteristic['inventory'][item_to_sold - 1]['price'][0] / 2)
+                        char_characteristic['money'] += round(char_characteristic['inventory'][item_to_sold - 1]['price'][0])
                     except:
                         print('У предмета нет цены. Продажа за 0 $.')
                     del char_characteristic["inventory"][item_to_sold - 1]
@@ -97,7 +98,7 @@ def sold_item():
                     sold_item()
             except:
                 sold_item()
-        if ask == '0':
+        elif item_to_sold == 0:
             inventory_menu()
         else:
             sold_item()

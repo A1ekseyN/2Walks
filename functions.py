@@ -3,12 +3,12 @@ from colorama import Fore, Style
 from datetime import datetime
 import requests
 from adventure import Adventure
+from bonus import equipment_bonus_stamina_steps, daily_steps_bonus
 from characteristics import char_characteristic
 from locations import icon_loc
 from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def, speed_skill_equipment_bonus_def
 from equipment_bonus import equipment_stamina_bonus, equipment_energy_max_bonus, equipment_speed_skill_bonus, equipment_luck_bonus
-from bonus import equipment_bonus_stamina_steps
 
 
 def energy_time_charge():
@@ -37,8 +37,8 @@ def energy_time_charge():
 
 def status_bar():
     # Отображение переменных: шагов, энергии, денег.
-    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {char_characteristic["steps_today"] + stamina_skill_bonus_def() + equipment_bonus_stamina_steps():,.0f}{Style.RESET_ALL} (Stamina Bonus 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def():,.0f}{Style.RESET_ALL} / Equipment Bonus 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps():,.0f}{Style.RESET_ALL} / Daily Bonus 🏃: {Fore.LIGHTCYAN_EX}???{Style.RESET_ALL})'
-          f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} ', end='')
+    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {char_characteristic["steps_today"] + stamina_skill_bonus_def() + equipment_bonus_stamina_steps() + daily_steps_bonus():,.0f}{Style.RESET_ALL} (Bonus: Stamina 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def():,.0f}{Style.RESET_ALL} / Equipment 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps():,.0f}{Style.RESET_ALL} / Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus()}{Style.RESET_ALL})'
+          f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus()}{Style.RESET_ALL} ед. / Daily 🔋: + {Fore.GREEN}{char_characteristic["steps_daily_bonus"]}{Style.RESET_ALL} ед.)', end='')
     if debug_mode:
         print(f'(+ 1 эн. через: {abs(speed_skill_equipment_bonus_def(60) - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)', end='')
     print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]:,.0f}{Style.RESET_ALL} $.')
@@ -89,6 +89,10 @@ def save_game_date_last_enter():
         save_game_last_enter_date_file.write(f"{str(now_date)}")
         save_game_last_enter_date_file.close()
 
+        # Обновление числа шагов, пройденных за вчера.
+        # Если более 10к, то дается бонус.
+        today_steps_to_yesterday_steps()
+
         # Обновление данных о кол-ве шагов за день.
         steps_today_update()
 
@@ -97,6 +101,7 @@ def save_game_date_last_enter():
         char_characteristic['steps_can_use'] = char_characteristic['steps_today'] - char_characteristic['steps_today_used']
         char_characteristic['steps_can_use'] += stamina_skill_bonus_def()                   # Бонус от навыка
         char_characteristic['steps_can_use'] += equipment_bonus_stamina_steps()             # Бонус от экипировки
+        char_characteristic['steps_can_use'] += daily_steps_bonus()                         # Бонус за пройденные шаги, более 10к+ в день.
     else:
         print('Error (save_game_date_last_enter).')
 
@@ -134,17 +139,21 @@ def char_info():
     print('####################################')
     print(f'- Пройдено шагов за сегодня 🏃: {char_characteristic["steps_today"]:,.0f}')
     print(f'- Потрачено шагов за сегодня 🏃: {char_characteristic["steps_today_used"]:,.0f}')
+    print('### Бонусы за навыки: ###')
     print(f'\n- Запас энергии 🔋: {char_characteristic["energy"]} эд.')
     print(f'- Макс. запас энергии 🔋: {char_characteristic["energy_max"]} эд.')
     print(f'\n- Выносливость: + {char_characteristic["stamina"]} % (+ {stamina_skill_bonus_def()} шагов).')
     print(f'- Максимальный запас энергии: + {char_characteristic["energy_max_skill"]} энергии.')
     print(f'- Скорость: + {char_characteristic["speed_skill"]} %.')
     print(f'- Удача: + {char_characteristic["luck_skill"]} %.')
-    print('\n### Бонусы экипировки ###')
+    print('\n### Бонусы экипировки: ###')
     print(f'- Stamina: + {equipment_stamina_bonus()} %'
           f'\n- Energy Max: + {equipment_energy_max_bonus()} эд.'
           f'\n- Speed: + {equipment_speed_skill_bonus()} %'
           f'\n- Luck: + {equipment_luck_bonus()} %')
+    print(f'\n### Бонусы за прохождение каждый день 10к+ шагов:'
+          f'\n- Steps: + {char_characteristic["steps_daily_bonus"]} %'
+          f'\n- Energy Max: + {char_characteristic["steps_daily_bonus"]} эд.')
     print('\n####################################')
     print('P.S. Сюда так же будут добавлены характеристики по мере их добавления в игру.')
     print('####################################')
@@ -175,3 +184,17 @@ def energy_timestamp():
     char_characteristic['energy_time_stamp'] = datetime.now().timestamp()
     print('Energy TimeStamp Update - Function')
     return char_characteristic['energy_time_stamp']
+
+
+def today_steps_to_yesterday_steps():
+    # Запись шагов, которые пройдены за вчера в переменную.
+    # Увеличение бонуса, если шагов более 10к за вчера. Если шагов меньше 10к, то обнуление бонуса.
+    # Bug: Кол-во шагов обновляется раньше, чем шаги за вчера записываются в переменную.
+    # Hot To Fix: В файле characteristics.py переменная шагов запускатеся во время инициализации файла.
+    char_characteristic['steps_yesterday'] = char_characteristic['steps_today']
+
+    if char_characteristic['steps_yesterday'] >= 10000:
+        char_characteristic['steps_daily_bonus'] += 1
+    else:
+        char_characteristic['steps_daily_bonus'] = 0
+    return char_characteristic['steps_yesterday'], char_characteristic['steps_daily_bonus']

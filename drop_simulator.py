@@ -13,7 +13,7 @@ drop_percent_item_a = 75
 drop_percent_item_b = 60
 drop_percent_item_c = 45
 
-luck = 25
+luck = 8
 cnt = 0
 cnt_a = 0
 cnt_b = 0
@@ -47,7 +47,7 @@ c_ring = 0
 c_necklace = 0
 c_jewelery_unluck = 0
 
-attempt = 10000000
+attempt = 1000000
 
 # Вычисление drop происходит по формуле уменьшения drop_percent_a
 
@@ -642,11 +642,11 @@ def random_thee_items_characteristics_item_stat():
     print(f"\nСкрипт выполнен за: {timer_hrs_min_sec(time.time() - start_time)} секунды.")
 
 
-random_one_item()                                    # Вычисление рандома для 1 Item A
+#random_one_item()                                    # Вычисление рандома для 1 Item A
 #random_two_items()                                   # Вычисление рандома для 2 Items A + B
 #random_two_items_characteristics_stat_item()         # Вычисление рандома для 2 Items A + B с учетом характеристик
 #random_two_items_characteristics_item_stat()
-#random_thee_items_characteristics_item_stat()
+random_thee_items_characteristics_item_stat()
 
 drop_percent = (cnt / attempt) * 100                  # Глобальный drop %, показывается в конце вычислений.
 

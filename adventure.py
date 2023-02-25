@@ -6,6 +6,7 @@ from drop import Drop_Item
 from functions_02 import time
 from skill_bonus import speed_skill_equipment_bonus_def
 from colorama import Fore, Style
+from settings import debug_mode
 
 
 walk_easy = adventure_data_table['walk_easy']
@@ -31,13 +32,22 @@ class Adventure():
         # Проверка или начатое Приключение - закончилось.
         if char_characteristic['adventure'] == True:
             if char_characteristic['adventure_end_timestamp'] <= datetime.now().timestamp():
-                print('\nПриключение пройдено.')
+                print('\n🗺 Приключение пройдено. 🗺')
+
+                # Drop function
+                if char_characteristic['adventure_name'] == 'walk_easy':
+                    Drop_Item.item_collect(self=None, hard='walk_easy')
+                    char_characteristic['adventure_walk_easy_counter'] += 1
+                elif char_characteristic['adventure_name'] == 'walk_normal':
+                    Drop_Item.item_collect(self=None, hard='walk_normal')
+                    char_characteristic['adventure_walk_normal_counter'] += 1
+                elif char_characteristic['adventure_name'] == 'walk_hard':
+                    Drop_Item.item_collect(self=None, hard='walk_hard')
+                    char_characteristic['adventure_walk_hard_counter'] += 1
+
                 char_characteristic['adventure'] = False
                 char_characteristic['adventure_name'] = None
                 char_characteristic['adventure_end_timestamp'] = None
-
-                # Drop function
-                Drop_Item.item_collect(self=None)
 
             elif char_characteristic['adventure_end_timestamp'] > datetime.now().timestamp():
                 adv_end = datetime.fromtimestamp(char_characteristic["adventure_end_timestamp"]) - datetime.fromtimestamp(datetime.now().timestamp())
@@ -50,12 +60,26 @@ class Adventure():
         print('\n ️🗺 ️--- Меню Приключения --- 🗺️')
         print('\nВы можете отправить персонажа в приключение.'
               '\nВ приключении, персонаж может получить полезные предметы.')
+
         print('\nДоступные приключения: '
-              f'\n\t1. Прогулка вокруг озера: {walk_easy_requirements} (Награда: C-Grade (Rings, Necklace))'
-              f'\n\t2. Прогулка по району:    {walk_normal_requirements} - (Не работает)'
-              f'\n\t3. Прогулка в лес:        {walk_hard_requirements} - (Не работает)'
-              #          '\n\t4. хххххх прогулка - 20.000 шагов. (Пока не работает)'
-              '\n\t0. Выход')
+              f'\n\t1. Прогулка вокруг озера: {walk_easy_requirements}- (Награда: C-Grade (Ring, Necklace))')
+
+        if char_characteristic['adventure_walk_easy_counter'] >= 3:
+            print(f'\t2. Прогулка по району:    {walk_normal_requirements} - (Награда: C-Grade, B-Grade (Ring, Necklace))')
+        elif char_characteristic['adventure_walk_easy_counter'] < 3:
+            print(f'\t- Пройдите - "Прогулку вокруг озера": {3 - char_characteristic["adventure_walk_easy_counter"]} раз.')
+
+        if char_characteristic['adventure_walk_easy_counter'] >= 3:
+            if char_characteristic['adventure_walk_normal_counter'] >= 3:
+                print(f'\t3. Прогулка в лес:        {walk_hard_requirements} - (Награда: C-Grade, B-Grade, A-Grade (Ring, Necklace))')
+            elif char_characteristic['adventure_walk_normal_counter'] < 3:
+                print(f'\t- Пройдите - "Прогулку по районе еще": {3 - char_characteristic["adventure_walk_normal_counter"]} раз.')
+        #              f'\n\t3. Прогулка в лес:        {walk_hard_requirements} - (Награда: C-Grade, B-Grade, A-Grade (Ring, Necklace)'
+        #          '\n\t4. хххххх прогулка - 20.000 шагов. (Пока не работает)'
+
+        if char_characteristic['adventure_walk_easy_counter'] >= 3 and char_characteristic['adventure_walk_normal_counter'] >= 3:
+            print('\tСкоро тут будет еще Приключения.')
+        print('\t0. Выход')
         Adventure.adventure_choice(self)
 
     def adventure_choice(self):
@@ -63,21 +87,21 @@ class Adventure():
         try:
             ask = input('\nВыберите локацию, в которую хотите отправиться:\n>>> ')
             if ask == '1':
-                adv_name = '🗺️ Прогулка вокруг озера 🗺️'
+                adv_name = 'walk_easy'
                 adv_req = walk_easy_requirements
                 adv_steps = walk_easy['steps']
                 adv_energy = walk_easy['energy']
                 adv_time = speed_skill_equipment_bonus_def(walk_easy['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '2':
-                adv_name = '🗺️ Прогулка про району 🗺️'
+                adv_name = 'walk_normal'
                 adv_req = walk_normal_requirements
                 adv_steps = walk_normal['steps']
                 adv_energy = walk_normal['energy']
                 adv_time = speed_skill_equipment_bonus_def(walk_normal['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '3':
-                adv_name = '🗺️ Прогулка в лес 🗺️'
+                adv_name = 'walk_hard'
                 adv_req = walk_hard_requirements
                 adv_steps = walk_hard['steps']
                 adv_energy = walk_hard['energy']
@@ -127,7 +151,7 @@ class Adventure():
             if char_characteristic['steps_can_use'] < adv_steps:
                 print('\n- Не достаточно: 🏃 шагов.')
             if char_characteristic['energy'] < adv_energy:
-                print('-Не достаточно: 🔋 энергии.')
+                print('- Не достаточно: 🔋 энергии.')
             Adventure.adventure_menu(self)
 
     def start_adventure(self, adv_name, adv_steps, adv_energy, adv_time):
@@ -139,10 +163,12 @@ class Adventure():
         char_characteristic['steps_today_used'] += adv_steps
         char_characteristic['energy'] -= adv_energy
 
-        print(f'Steps_used_today: {char_characteristic["steps_today_used"]}')
-        print(f'Energy Left: {char_characteristic["energy"]}')
-        print(f'Время_now: {datetime.now().timestamp()}')
-        print(f'Время прохождения Приключения: {char_characteristic["adventure_end_timestamp"]}')
+        print(f'Steps_used_today 🏃: {char_characteristic["steps_today_used"]}')
+        print(f'Energy used 🔋: {adv_energy}')
+        if debug_mode:
+            print(f'Energy Left: {char_characteristic["energy"]}')
+            print(f'Время_now: {datetime.now().timestamp()}')
+            print(f'Время прохождения Приключения: {char_characteristic["adventure_end_timestamp"] - datetime.now().timestamp()}')
         return char_characteristic
 
     def walk_easy(self):

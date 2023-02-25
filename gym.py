@@ -4,17 +4,17 @@ from settings import debug_mode
 from colorama import Fore, Style
 from skill_bonus import stamina_skill_bonus, stamina_skill_bonus_def
 from functions_02 import time
-from equipment_bonus import equipment_speed_skill_bonus
+from equipment_bonus import equipment_speed_skill_bonus, equipment_energy_max_bonus
 
 
 lvl_up_stamina = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["stamina"] + 1]["steps"]}{Style.RESET_ALL} / ' \
                  f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["stamina"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
                  f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["stamina"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
                  f'🕑: {time(round(skill_training_table[char_characteristic["stamina"] + 1]["time"] - ((skill_training_table[char_characteristic["stamina"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}'
-lvl_up_energy_max = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["energy_max"] - 49]["steps"]}{Style.RESET_ALL} / ' \
-                    f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["energy_max"] - 49]["energy"]}{Style.RESET_ALL} эн. / ' \
-                    f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["energy_max"] - 49]["money"]}{Style.RESET_ALL} $ / ' \
-                    f'🕑: {time(round(skill_training_table[char_characteristic["energy_max"] - 49]["time"] - ((skill_training_table[char_characteristic["energy_max"] - 49]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}'
+lvl_up_energy_max = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["steps"]}{Style.RESET_ALL} / ' \
+                    f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["energy"]}{Style.RESET_ALL} эн. / ' \
+                    f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["money"]}{Style.RESET_ALL} $ / ' \
+                    f'🕑: {time(round(skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["time"] - ((skill_training_table[char_characteristic["energy_max"] - 49]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}'
 lvl_up_speed_skill = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["speed_skill"] + 1]["steps"]}{Style.RESET_ALL} / ' \
                      f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["speed_skill"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
                      f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["speed_skill"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
@@ -36,7 +36,7 @@ def gym_menu():
     else:
         print('На данный момент вы можете улучшить: '
               f'\n\t1. Выносливость - {Fore.LIGHTCYAN_EX}{char_characteristic["stamina"] + 1}{Style.RESET_ALL} lvl ({lvl_up_stamina}).'
-              f'\n\t2. Energy Max.  - {Fore.LIGHTCYAN_EX}{char_characteristic["energy_max"] - 49}{Style.RESET_ALL} lvl ({lvl_up_energy_max}).'
+              f'\n\t2. Energy Max.  - {Fore.LIGHTCYAN_EX}{char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]}{Style.RESET_ALL} lvl ({lvl_up_energy_max}).'
               f'\n\t3. Speed        - {Fore.LIGHTCYAN_EX}{char_characteristic["speed_skill"] + 1}{Style.RESET_ALL} lvl ({lvl_up_speed_skill}).'
               f'\n\t4. Luck         - {Fore.LIGHTCYAN_EX}{char_characteristic["luck_skill"] + 1}{Style.RESET_ALL} lvl ({lvl_up_luck_skill}).'
               '\n\t0. Назад.')
