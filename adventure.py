@@ -12,6 +12,8 @@ from settings import debug_mode
 walk_easy = adventure_data_table['walk_easy']
 walk_normal = adventure_data_table['walk_normal']
 walk_hard = adventure_data_table['walk_hard']
+walk_15k = adventure_data_table['walk_15k']
+walk_20k = adventure_data_table['walk_20k']
 
 
 walk_easy_requirements = f'🏃: {steps(walk_easy["steps"])} шагов, ' \
@@ -22,7 +24,13 @@ walk_normal_requirements = f'🏃: {steps(walk_normal["steps"])} шагов, ' \
                            f'🕑: {time(speed_skill_equipment_bonus_def(walk_normal["time"]))}'
 walk_hard_requirements = f'🏃: {steps(walk_hard["steps"])} шагов, ' \
                          f'🔋: {energy(walk_hard["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_hard["time"]))}'
+                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_15k["time"]))}'
+walk_15k_requirements = f'🏃: {steps(walk_15k["steps"])} шагов, ' \
+                         f'🔋: {energy(walk_15k["energy"])} энергии, ' \
+                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_20k["time"]))}'
+walk_20k_requirements = f'🏃: {steps(walk_20k["steps"])} шагов, ' \
+                         f'🔋: {energy(walk_20k["energy"])} энергии, ' \
+                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_20k["time"]))}'
 
 
 class Adventure():
@@ -44,6 +52,12 @@ class Adventure():
                 elif char_characteristic['adventure_name'] == 'walk_hard':
                     Drop_Item.item_collect(self=None, hard='walk_hard')
                     char_characteristic['adventure_walk_hard_counter'] += 1
+                elif char_characteristic['adventure_name'] == 'walk_15k':
+                    Drop_Item.item_collect(self=None, hard='walk_15k')
+                    char_characteristic['adventure_walk_15k_counter'] += 1
+                elif char_characteristic['adventure_name'] == 'walk_20k':
+                    Drop_Item.item_collect(self=None, hard='walk_20k')
+                    char_characteristic['adventure_walk_20k_counter'] += 1
 
                 char_characteristic['adventure'] = False
                 char_characteristic['adventure_name'] = None
@@ -69,16 +83,21 @@ class Adventure():
         elif char_characteristic['adventure_walk_easy_counter'] < 3:
             print(f'\t- Пройдите - "Прогулку вокруг озера": {3 - char_characteristic["adventure_walk_easy_counter"]} раз.')
 
-        if char_characteristic['adventure_walk_easy_counter'] >= 3:
-            if char_characteristic['adventure_walk_normal_counter'] >= 3:
-                print(f'\t3. Прогулка в лес:        {walk_hard_requirements} - (Награда: C-Grade, B-Grade, A-Grade (Ring, Necklace))')
-            elif char_characteristic['adventure_walk_normal_counter'] < 3:
-                print(f'\t- Пройдите - "Прогулку по районе еще": {3 - char_characteristic["adventure_walk_normal_counter"]} раз.')
-        #              f'\n\t3. Прогулка в лес:        {walk_hard_requirements} - (Награда: C-Grade, B-Grade, A-Grade (Ring, Necklace)'
-        #          '\n\t4. хххххх прогулка - 20.000 шагов. (Пока не работает)'
+        if char_characteristic['adventure_walk_normal_counter'] >= 3:
+            print(f'\t3. Прогулка в лес:        {walk_hard_requirements} - (Награда: C-Grade, B-Grade, A-Grade (Ring, Necklace))')
+        elif char_characteristic['adventure_walk_normal_counter'] < 3:
+            print(f'\t- Пройдите - "Прогулку по районе еще": {3 - char_characteristic["adventure_walk_normal_counter"]} раз.')
 
-        if char_characteristic['adventure_walk_easy_counter'] >= 3 and char_characteristic['adventure_walk_normal_counter'] >= 3:
-            print('\tСкоро тут будет еще Приключения.')
+        if char_characteristic['adventure_walk_hard_counter'] >= 3:
+            print(f'\t4. Прогулка на 15к шагов: {walk_15k_requirements} - (Награда: B-Grade, A-Grade, S-Grade (Ring, Necklace))')
+        elif char_characteristic['adventure_walk_hard_counter'] < 3:
+            print(f'\t- Пройдите прогулку в лесу еще: {3 - char_characteristic["adventure_walk_hard_counter"]} раз.')
+
+        if char_characteristic['adventure_walk_15k_counter'] >= 3:
+            print(f'\t5. Прогулка на 20к шагов: {walk_20k_requirements} - (Награда: A-Grade, S-Grade, S+Grade (Ring, Necklace))')
+        elif char_characteristic['adventure_walk_15k_counter'] < 3 and char_characteristic['adventure_walk_hard_counter'] >= 3:
+            print(f'\t- Пройдите прогулку на 15к еще: {3 - char_characteristic["adventure_walk_15k_counter"]} раз.')
+
         print('\t0. Выход')
         Adventure.adventure_choice(self)
 
@@ -106,6 +125,20 @@ class Adventure():
                 adv_steps = walk_hard['steps']
                 adv_energy = walk_hard['energy']
                 adv_time = speed_skill_equipment_bonus_def(walk_hard['time'])
+                Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
+            elif ask == '4':
+                adv_name = 'walk_15k'
+                adv_req = walk_15k_requirements
+                adv_steps = walk_15k['steps']
+                adv_energy =walk_15k['energy']
+                adv_time = speed_skill_equipment_bonus_def(walk_15k['time'])
+                Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
+            elif ask == '5':
+                adv_name = 'walk_20k'
+                adv_req = walk_20k_requirements
+                adv_steps = walk_20k['steps']
+                adv_energy = walk_20k['energy']
+                adv_time = speed_skill_equipment_bonus_def(walk_20k['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '0':
                 pass
@@ -144,7 +177,6 @@ class Adventure():
 #        print(f'adv_name: {adv_name}')
 
         if char_characteristic['steps_can_use'] >= adv_steps and char_characteristic['energy'] >= adv_energy:
-#        if char_characteristic['steps_can_use'] >= 0 and char_characteristic['energy'] >= adv_energy:
             print('\nПроверка требований успешна.')
             Adventure.start_adventure(self, adv_name, adv_steps, adv_energy, adv_time)
         else:

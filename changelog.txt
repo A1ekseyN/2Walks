@@ -1,3 +1,8 @@
+Version: 0.0.2d
+- Add walk 15k and walk 20k steps
+- Add loot S-Grade (+4) and S+Grade (+5)
+- Small changes
+
 Version: 0.0.2c
 Date: 25.02.2023
 - Add Daily Bonuses

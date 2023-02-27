@@ -56,7 +56,7 @@ char_characteristic = {
     'steps_can_use': 0,                                                                 # Default: 0
     'steps_today_used': date_check_steps_today_used(),                                  # Default: 0
     'steps_yesterday': load_characteristic()['steps_yesterday'],                        # Default: 0
-    'steps_daily_bonus': load_characteristic()['steps_daily_bonus'],    ###                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
+    'steps_daily_bonus': load_characteristic()['steps_daily_bonus'],    ### Daily Bonus                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
     'loc' : load_characteristic()['loc'],                                               # Default: 'home'
     'energy' : load_characteristic()['energy'],                                         # Default: 50
     'energy_max' : 50,                                                                  # Default: 50
@@ -103,6 +103,8 @@ char_characteristic = {
     'adventure_walk_easy_counter': load_characteristic()['adventure_walk_easy_counter'],                  # Default: 0
     'adventure_walk_normal_counter': load_characteristic()['adventure_walk_normal_counter'],              # Default: 0
     'adventure_walk_hard_counter': load_characteristic()['adventure_walk_hard_counter'],                  # Default: 0
+    'adventure_walk_15k_counter': load_characteristic()['adventure_walk_15k_counter'],                    # Default: 0
+    'adventure_walk_20k_counter': load_characteristic()['adventure_walk_20k_counter'],                    # Default: 0
 }
 
 

@@ -6,13 +6,15 @@ drop_percent_gl = 80
 drop_percent_item_c = 75
 drop_percent_item_b = 60
 drop_percent_item_a = 45
+drop_percent_item_s = 30
+drop_percent_item_s_ = 15       # s_ = s+ Grade
 
 luck_chr = char_characteristic['luck_skill'] + equipment_luck_bonus()
 
 
 class Drop_Item():
     # Клас для генерации случайного item, после прохождения приключения.
-    # Вероятность выбадение item и grade item наробое по формуле, которая на оборот. То есть 1 больше чем 2 или 3.
+    # Вероятность выпадения item и grade item наробое по формуле, которая на оборот. То есть 1 больше чем 2 или 3.
 
     def one_item_random_grade(self, hard):
         # One item generation
@@ -23,10 +25,10 @@ class Drop_Item():
                 if c <= drop_percent_item_c:
                     grade = 'c-grade'
                     return grade
-                else:
-                    return None
-            else:
-                return None
+#                else:
+#                    return None
+#            else:
+#                return None
 
         elif hard == 'walk_normal':
             i = randint(1, 100 - luck_chr)
@@ -59,13 +61,43 @@ class Drop_Item():
                     grade = 'a-grade'
                     return grade
 
-                # B-grade or A-Grade
-#                if b < a and b <= drop_percent_item_b:
-#                    grade = 'b-grade'
-#                    return grade
-#                elif a < b and a <= drop_percent_item_a:
-#                    grade = 'a-grade'
-#                    return grade
+        elif hard == 'walk_15k':
+            # При 15к шагов выпадают вещи B, A, S Grade.
+            i = randint(1, 100 - luck_chr)
+            if i <= drop_percent_gl:    # Определяет выпал предмет или нет
+                b = randint(1, 100 - luck_chr)
+                a = randint(1, 100 - luck_chr)
+                s = randint(1, 100 - luck_chr)
+
+                # B-Grade or A-Grade or S-Grade
+                if b < a and b < s and b <= drop_percent_item_b:
+                    grade = 'b-grade'
+                    return grade
+                elif a < b and a < s and a <= drop_percent_item_a:
+                    grade = 'a-grade'
+                    return grade
+                elif s < b and s < a and s <= drop_percent_item_s:
+                    grade = 's-grade'
+                    return grade
+
+        elif hard == 'walk_20k':
+            # При 20к шагов выпадают вещи A, S, S+ Grade.
+            i = randint(1, 100 - luck_chr)
+            if i <= drop_percent_gl:    # Определяет выпал предмет или нет.
+                a = randint(1, 100 - luck_chr)
+                s = randint(1, 100 - luck_chr)
+                s_ = randint(1, 100 - luck_chr)
+
+                # A-Grade or S-Grade or S+Grade
+                if a < s and a < s_ and a <= drop_percent_item_a:
+                    grade = 'a-grade'
+                    return grade
+                elif s < a and s < s_ and s <= drop_percent_item_s:
+                    grade = 's-grade'
+                    return grade
+                elif s_ < a and s_ < s and s_ <= drop_percent_item_s_:
+                    grade = 's+grade'
+                    return grade
 
 
     def item_bonus_value(item, grade):
@@ -75,6 +107,10 @@ class Drop_Item():
             return 2
         elif grade[0] == 'a-grade':
             return 3
+        elif grade[0] == 's-grade':
+            return 4
+        elif grade[0] == 's+grade':
+            return 5
 
     def item_type(self):
         # Определение типа предмета (Ring, Necklace)
@@ -125,6 +161,12 @@ class Drop_Item():
         elif grade[0] == 'a-grade':
             price = round(quality[0] * 1.5)
             return price
+        elif grade[0] == 's-grade':
+            price = round(quality[0] * 2)
+            return price
+        elif grade[0] == 's+grade':
+            price = round(quality[0] * 2.5)
+            return price
 
     def item_collect(self, hard):
         # Собираем предмет из разных подразделов.
@@ -155,4 +197,4 @@ class Drop_Item():
         else:
             return print('\n--- Ничего не выпало ---.')
 
-#Drop_Item.item_collect(self=None, hard='walk_hard')
+#Drop_Item.item_collect(self=None, hard='walk_20k')
