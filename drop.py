@@ -14,7 +14,7 @@ luck_chr = char_characteristic['luck_skill'] + equipment_luck_bonus()
 
 class Drop_Item():
     # Клас для генерации случайного item, после прохождения приключения.
-    # Вероятность выпадения item и grade item наробое по формуле, которая на оборот. То есть 1 больше чем 2 или 3.
+    # Вероятность выпадения item и grade item по формуле, которая на считает на оборот. То есть 1 больше чем 2 или 3.
 
     def one_item_random_grade(self, hard):
         # One item generation
@@ -43,13 +43,12 @@ class Drop_Item():
                     return grade
 
         elif hard == 'walk_hard':
-            # При 10к шагах выпадают вещи b-grade и a-grade. Нужно протестировать или нужно добавить в этот пул c-grade
+            # При 10к шагах выпадают вещи: b-grade и a-grade. Нужно протестировать или нужно добавить в этот пул c-grade
             i = randint(1, 100 - luck_chr)
             if i <= drop_percent_gl:    # Определение выпал item или нет.
                 c = randint(1, 100 - luck_chr)
                 b = randint(1, 100 - luck_chr)
                 a = randint(1, 100 - luck_chr)
-
                 # C-Grade or B-Grade or A-Grade
                 if c < b and c < a and c <= drop_percent_item_c:
                     grade = 'c-grade'
@@ -62,13 +61,12 @@ class Drop_Item():
                     return grade
 
         elif hard == 'walk_15k':
-            # При 15к шагов выпадают вещи B, A, S Grade.
+            # При 15к шагов выпадают вещи: B, A, S Grade.
             i = randint(1, 100 - luck_chr)
             if i <= drop_percent_gl:    # Определяет выпал предмет или нет
                 b = randint(1, 100 - luck_chr)
                 a = randint(1, 100 - luck_chr)
                 s = randint(1, 100 - luck_chr)
-
                 # B-Grade or A-Grade or S-Grade
                 if b < a and b < s and b <= drop_percent_item_b:
                     grade = 'b-grade'
@@ -81,13 +79,12 @@ class Drop_Item():
                     return grade
 
         elif hard == 'walk_20k':
-            # При 20к шагов выпадают вещи A, S, S+ Grade.
+            # При 20к шагов выпадают вещи: A, S, S+ Grade.
             i = randint(1, 100 - luck_chr)
             if i <= drop_percent_gl:    # Определяет выпал предмет или нет.
                 a = randint(1, 100 - luck_chr)
                 s = randint(1, 100 - luck_chr)
                 s_ = randint(1, 100 - luck_chr)
-
                 # A-Grade or S-Grade or S+Grade
                 if a < s and a < s_ and a <= drop_percent_item_a:
                     grade = 'a-grade'
@@ -96,6 +93,20 @@ class Drop_Item():
                     grade = 's-grade'
                     return grade
                 elif s_ < a and s_ < s and s_ <= drop_percent_item_s_:
+                    grade = 's+grade'
+                    return grade
+
+        elif hard == 'walk_30k':
+            # При 30к шагов выпадают вещи: S, S+ Grade.
+            i = randint(1, 100 - luck_chr)
+            if i <= drop_percent_gl:    # Определяет выпал предмет или нет.
+                s = randint(1, 100 - luck_chr)
+                s_ = randint(1, 100 - luck_chr)
+                #  or S-Grade or S+Grade
+                if s < s_ and s <= drop_percent_item_s:
+                    grade = 's-grade'
+                    return grade
+                elif s_ < s and s_ <= drop_percent_item_s_:
                     grade = 's+grade'
                     return grade
 
@@ -118,10 +129,8 @@ class Drop_Item():
         necklace = randint(1, 100 + luck_chr)
         if ring > necklace:
             item_type = 'ring'
-#            item_name = 'ring'
         elif necklace > ring:
             item_type = 'necklace'
-#            item_name = 'necklace'
         else:
             return None
         return item_type

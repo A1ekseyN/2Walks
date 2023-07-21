@@ -14,6 +14,7 @@ walk_normal = adventure_data_table['walk_normal']
 walk_hard = adventure_data_table['walk_hard']
 walk_15k = adventure_data_table['walk_15k']
 walk_20k = adventure_data_table['walk_20k']
+walk_30k = adventure_data_table['walk_30k']
 
 
 walk_easy_requirements = f'🏃: {steps(walk_easy["steps"])} шагов, ' \
@@ -24,13 +25,16 @@ walk_normal_requirements = f'🏃: {steps(walk_normal["steps"])} шагов, ' \
                            f'🕑: {time(speed_skill_equipment_bonus_def(walk_normal["time"]))}'
 walk_hard_requirements = f'🏃: {steps(walk_hard["steps"])} шагов, ' \
                          f'🔋: {energy(walk_hard["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_15k["time"]))}'
+                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_hard["time"]))}'
 walk_15k_requirements = f'🏃: {steps(walk_15k["steps"])} шагов, ' \
                          f'🔋: {energy(walk_15k["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_20k["time"]))}'
+                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_15k["time"]))}'
 walk_20k_requirements = f'🏃: {steps(walk_20k["steps"])} шагов, ' \
                          f'🔋: {energy(walk_20k["energy"])} энергии, ' \
                          f'🕑: {time(speed_skill_equipment_bonus_def(walk_20k["time"]))}'
+walk_30k_requirements = f'🏃: {steps(walk_30k["steps"])} шагов, ' \
+                         f'🔋: {energy(walk_30k["energy"])} энергии, ' \
+                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_30k["time"]))}'
 
 
 class Adventure():
@@ -58,6 +62,9 @@ class Adventure():
                 elif char_characteristic['adventure_name'] == 'walk_20k':
                     Drop_Item.item_collect(self=None, hard='walk_20k')
                     char_characteristic['adventure_walk_20k_counter'] += 1
+                elif char_characteristic['adventure_name'] == 'walk_30k':
+                    Drop_Item.item_collect(self=None, hard='walk_30k')
+                    char_characteristic['adventure_walk_30k_counter'] += 1
 
                 char_characteristic['adventure'] = False
                 char_characteristic['adventure_name'] = None
@@ -97,6 +104,11 @@ class Adventure():
             print(f'\t5. Прогулка на 20к шагов: {walk_20k_requirements} - (Награда: A-Grade, S-Grade, S+Grade (Ring, Necklace))')
         elif char_characteristic['adventure_walk_15k_counter'] < 3 and char_characteristic['adventure_walk_hard_counter'] >= 3:
             print(f'\t- Пройдите прогулку на 15к еще: {3 - char_characteristic["adventure_walk_15k_counter"]} раз.')
+
+        if char_characteristic['adventure_walk_20k_counter'] >= 3:
+            print(f'\t6. Прогулка на 30к шагов: (walk_30k_requirements) - (Награда: S-Grade, S+Grade (Ring, Necklace))')
+        elif char_characteristic['adventure_walk_20k_counter'] < 3 and char_characteristic['adventure_walk_hard_counter'] >= 3:
+            print(f'\t- Пройдите прогулку на 20к еще: {3 - char_characteristic["adventure_walk_20k_counter"]} раз.')
 
         print('\t0. Выход')
         Adventure.adventure_choice(self)

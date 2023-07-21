@@ -1,4 +1,13 @@
+Version: 0.0.2f (17.07.2023)
+- Fix time Adventure in wood and 15k steps
+- Add Adventure 30k steps + drop (Test need)
+
+Version: 0.0.2e
+- Add Skill levels up to 20.
+- Small changes
+
 Version: 0.0.2d
+Date: 27.02.2023
 - Add walk 15k and walk 20k steps
 - Add loot S-Grade (+4) and S+Grade (+5)
 - Small changes

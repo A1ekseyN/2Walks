@@ -57,7 +57,7 @@ char_characteristic = {
     'steps_today_used': date_check_steps_today_used(),                                  # Default: 0
     'steps_yesterday': load_characteristic()['steps_yesterday'],                        # Default: 0
     'steps_daily_bonus': load_characteristic()['steps_daily_bonus'],    ### Daily Bonus                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
-    'loc' : load_characteristic()['loc'],                                               # Default: 'home'
+    'loc' : 'home',      #load_characteristic()['loc'],                                               # Default: 'home'
     'energy' : load_characteristic()['energy'],                                         # Default: 50
     'energy_max' : 50,                                                                  # Default: 50
     'energy_time_stamp': load_characteristic()['energy_time_stamp'],                    # Default: timestamp() (Возможно)
@@ -82,7 +82,7 @@ char_characteristic = {
     'working_start': load_characteristic()['working_start'],
     'working_end': load_characteristic()['working_end'],
 
-    # Инвентарь / Intentory
+    # Инвентарь / Inventory
     'inventory': load_characteristic()['inventory'],                                                    # Default: []
 
     # Equipment / Экипировка
@@ -105,6 +105,7 @@ char_characteristic = {
     'adventure_walk_hard_counter': load_characteristic()['adventure_walk_hard_counter'],                  # Default: 0
     'adventure_walk_15k_counter': load_characteristic()['adventure_walk_15k_counter'],                    # Default: 0
     'adventure_walk_20k_counter': load_characteristic()['adventure_walk_20k_counter'],                    # Default: 0
+    'adventure_walk_30k_counter': load_characteristic()['adventure_walk_30k_counter'],                    # Default: 0
 }
 
 
@@ -221,6 +222,36 @@ skill_training_table = {
         'energy': 75,
         'money': 550,
         'time': 2400,
+    },
+    16: {
+        'steps': 16000,
+        'energy': 80,
+        'money': 600,
+        'time': 2640,
+    },
+    17: {
+        'steps': 17000,
+        'energy': 85,
+        'money': 650,
+        'time': 2880,
+    },
+    18: {
+        'steps': 18000,
+        'energy': 90,
+        'money': 700,
+        'time': 3120,       # 52 часа
+    },
+    19: {
+        'steps': 19000,
+        'energy': 95,
+        'money': 750,
+        'time': 3360,       # 56 часов
+    },
+    20: {
+        'steps': 20000,
+        'energy': 100,
+        'money': 800,
+        'time': 3600,       # 60 часов
     },
 }
 

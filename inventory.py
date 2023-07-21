@@ -78,6 +78,7 @@ def sold_item():
                                  f'\n\nКакой предмет хотите продать? (Введите число от 1 до {len(char_characteristic["inventory"])}). \n>>> '))
         if item_to_sold <= len(char_characteristic["inventory"]) and item_to_sold != 0:
             print(f'\nВы выбрали предмет: {char_characteristic["inventory"][item_to_sold - 1]}'
+                  ### Тут нужно добавить название, характеристики и цену предмета. 
                   f'\nЦена предмета 💰: {round(char_characteristic["inventory"][item_to_sold - 1]["price"][0])} $')
             try:
                 ask = input('\nВы уверены, что хотите продать этот предмет? '

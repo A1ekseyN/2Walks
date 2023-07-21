@@ -12,14 +12,14 @@ adventure_data_table = {
         'energy': 20,
         'time': 60,
         'drop_grade': {'c', 'b'},
-        'drop_items': {'Ring', 'Necklace'},
+        'drop_items': {'ring', 'necklace'},
     },
     'walk_hard': {
         'steps': 10000,
         'energy': 30,
         'time': 120,
         'drop_grade': {'c', 'b', 'a'},
-        'drop_items': {'Ring', 'Necklace'},
+        'drop_items': {'ring', 'necklace'},
     },
     'walk_15k': {
         'steps': 15000,
@@ -32,7 +32,14 @@ adventure_data_table = {
         'steps': 20000,
         'energy': 50,
         'time': 240,
-        'drop_grade': {'a', 's'},
+        'drop_grade': {'a', 's', 's+'},
+        'drop_items': {'ring', 'necklace'},
+    },
+    'walk_30k': {
+        'steps': 30000,
+        'energy': 60,
+        'time': 300,
+        'drop_grade': {'s', 's+'},
         'drop_items': {'ring', 'necklace'},
     },
 }
