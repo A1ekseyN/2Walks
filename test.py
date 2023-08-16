@@ -839,13 +839,13 @@ items = items_eve
 print(f'Items: {len(items)}')
 
 regions = [
-    {"id": 10000002, "name": "The Forge"},
-#    {"id": 10000043, "name": "Domain"}
+#    {"id": 10000002, "name": "The Forge"},
+    {"id": 10000043, "name": "Domain"}
 ]
 
 stations = [
-    {"id": 60003760, "name": "Jita 4-4 - Caldari Navy Assembly Plant"},
-#    {"id": 60008494, "name": "Amarr VIII (Oris) - Emperor Family Academy"}
+#   {"id": 60003760, "name": "Jita 4-4 - Caldari Navy Assembly Plant"},
+    {"id": 60008494, "name": "Amarr VIII (Oris) - Emperor Family Academy"}
 ]
 
 sales_tax = 0.05  # Здесь нужно указать комиссию на продажу (например, 0.05 для 5%)
