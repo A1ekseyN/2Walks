@@ -1,3 +1,6 @@
+Version: 0.0.2g (30.01.2024)
+- Added character training up to level 25
+
 Version: 0.0.2f (17.07.2023)
 - Fix time Adventure in wood and 15k steps
 - Add Adventure 30k steps + drop (Test need)
