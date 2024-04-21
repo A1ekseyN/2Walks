@@ -1,6 +1,3 @@
-# Version - 0.0.2e
-
-
 from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar
 from characteristics import *
 from equipment import Equipment
@@ -16,7 +13,7 @@ def game():
     while True:
         def location_selection():
             # Функция для выбора локации на карте
-            global char_characteristic4
+            global char_characteristic
 
             while True:
                 if debug_mode:

@@ -204,6 +204,6 @@ class Drop_Item():
                   f'\n- {item["grade"][0]}: {item["item_type"][0].title()} + {item["bonus"][0]} {item["characteristic"][0].title()} (Качество: {item["quality"][0]}) (Цена: {item["price"][0]} $). \n')
             return char_characteristic['inventory'].append(item)
         else:
-            return print('\n--- Ничего не выпало ---.')
+            return print('--- Ничего не выпало ---\n')
 
 #Drop_Item.item_collect(self=None, hard='walk_20k')
