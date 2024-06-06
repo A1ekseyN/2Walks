@@ -1,3 +1,6 @@
+Version: 0.0.3a (06.06.2024)
+- Added saving gameplay to a csv file.
+
 Version: 0.0.3 (06.06.2024)
 - Save to github
 

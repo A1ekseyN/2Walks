@@ -1,5 +1,8 @@
+import time
 from datetime import datetime
 import pickle
+import csv
+import ast
 from api import steps_today_update
 from settings import debug_mode
 
@@ -26,7 +29,7 @@ def steps_today():
 
 def load_characteristic():
     # Функция загрузки характеристик из файла
-    global char_characteristic
+#    global char_characteristic
     with open('characteristic.txt', 'rb') as f:
         char_characteristic = pickle.load(f)
         if debug_mode:
@@ -290,8 +293,28 @@ def save_characteristic():
     # Функция записи характеристик в файл
     if debug_mode:
         print(f'Сохраняем данные: {char_characteristic}')
+
+    # Сохраняем с помощью pickle
     with open('characteristic.txt', 'wb') as f:
         pickle.dump(char_characteristic, f)
+
+    # Сохраняем с помощью csv таблицы
+    try:
+        with open('characteristic.csv', 'w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=char_characteristic.keys())
+            writer.writeheader()
+
+            # Преобразуем значения в строки, если это необходимо
+            processed_char_characteristic = {k: (str(v) if isinstance(v, (dict, list)) else v) for k, v in
+                                             char_characteristic.items()}
+            writer.writerow(processed_char_characteristic)
+    except PermissionError:
+        print("\nError writing to file 'characteristic.csv'. "
+              "\nPlease close the file and try again."
+              "\nSleep 30 sec and retry.")
+        time.sleep(30)
+        save_characteristic()
+
     print('\n💾 Save Successfully.')
 
 
@@ -319,6 +342,6 @@ sand_walking = 0            # Ходьба по песку
 stone_walking = 0           # Ходьба по камням
 # Навык лазить по горам и камням (Нужен для преодоления определеннйо местности)
 
-# Сопротевляемость природным явлениям
+# Сопротивляемость природным явлениям
 resistance_cold = 0         # Сопротивляемость холоду
 resistance_heat = 0         # Сопротивляемость теплу
