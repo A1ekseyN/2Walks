@@ -1,3 +1,6 @@
+Version: 0.0.3 (06.06.2024)
+- Save to github
+
 Version: 0.0.2h (21.04.2024)
 - Play
 - Small changes
