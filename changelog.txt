@@ -1,3 +1,7 @@
+Version: 0.0.3b (07.06.2024)
+- Added loading a save from a csv file
+- Refactoring
+
 Version: 0.0.3a (06.06.2024)
 - Added saving gameplay to a csv file.
 

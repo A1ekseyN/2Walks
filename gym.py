@@ -46,10 +46,6 @@ def gym_menu():
             print('\nОшибка ввода. Введите число.')
             gym_menu()
 
-#    if char_characteristic['skill_training']:
-#        print(f'В данный момент вы изучаете навык: {char_characteristic["skill_training_name"].title()}.')
-#        gym_menu()
-#    else:
         if temp_number == '1':      # Выносливость
             Skill.stamina_skill_training()
             try:
@@ -59,14 +55,12 @@ def gym_menu():
                     char_characteristic['skill_training_name'] = 'stamina'
                     Start = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'], char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
                     Start.check_requirements()
-    #                Start.start_skill_training()   # Старый метод, без проверки условий: шагов, энергии, денег.
                 elif ask == '0':
                     gym_menu()
                 else:
                     gym_menu()
             except:
                 gym_menu()
-    #        stamina_skill_training()       # Старая Функция прокачки Stamina, пускай, пока побудет здесь.
 
         elif temp_number == '2':    # Energy max.
             Skill.enegry_max_skill_training()
@@ -77,7 +71,6 @@ def gym_menu():
                     char_characteristic['skill_training_name'] = 'energy_max_skill'
                     Start = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'], char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
                     Start.check_requirements()
-#                    Start.start_skill_training()
                 elif ask == '0':
                     gym_menu()
                 else:
@@ -146,7 +139,6 @@ def skill_training_check_done():
 
 class Skill_Training():
     # Класс инициализации прокачки навыков
-
     def __init__(self, training, name, timestamp, time_end, time_stamp_now):
         # Инициализация атрибутов
         self.training = training
@@ -190,11 +182,6 @@ class Skill_Training():
         char_characteristic['energy'] -= skill_training_table[char_characteristic[self.name] + 1]['energy']
         char_characteristic['money'] -= skill_training_table[char_characteristic[self.name] + 1]['money']
 
-# Cтарая формула расчёта. Написал новую, которая работает по таблице.
-#        char_characteristic['steps_today_used'] += (char_characteristic[self.name] + 1) * 1000
-#        char_characteristic['energy'] -= (char_characteristic[self.name] + 1) * 5
-#        char_characteristic['money'] -= (char_characteristic[self.name] + 1) * 10
-
         print(f'\n🏋️ {self.name.title()} - Начато улучшение навыка. 🏋')
         print(f'На улучшение навыка {self.name} потрачено:'
               f'\n- 🏃: {skill_training_table[char_characteristic[self.name] + 1]["steps"]:,.0f} steps'
@@ -227,4 +214,5 @@ class Skill_Training():
 
 
 Skill = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'],
-                       char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
+                       char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'],
+                       datetime.now().timestamp())

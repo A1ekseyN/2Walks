@@ -39,7 +39,6 @@ walk_30k_requirements = f'🏃: {steps(walk_30k["steps"])} шагов, ' \
 
 class Adventure():
     # Класс для Adventure (Приключений).
-
     def adventure_check_done(self):
         # Проверка или начатое Приключение - закончилось.
         if char_characteristic['adventure'] == True:
@@ -181,13 +180,6 @@ class Adventure():
 
     def check_requirements(self, adv_name, adv_steps, adv_energy, adv_time):
         # Проверка требований для Приключения.
-#        print(f'\nПроверка требований для прохождения приключения.')
-#        print(f'Steps can use: {char_characteristic["steps_can_use"]}')
-#        print(f'Steps: {adv_steps}')
-#        print(f'Energy: {adv_energy}')
-#        print(f'Time: {adv_time}')
-#        print(f'adv_name: {adv_name}')
-
         if char_characteristic['steps_can_use'] >= adv_steps and char_characteristic['energy'] >= adv_energy:
             print('\nПроверка требований успешна.')
             Adventure.start_adventure(self, adv_name, adv_steps, adv_energy, adv_time)
@@ -214,14 +206,5 @@ class Adventure():
             print(f'Время_now: {datetime.now().timestamp()}')
             print(f'Время прохождения Приключения: {char_characteristic["adventure_end_timestamp"] - datetime.now().timestamp()}')
         return char_characteristic
-
-    def walk_easy(self):
-        pass
-
-    def walk_normal(self):
-        pass
-
-    def walk_hard(self):
-        pass
 
 #Adventure.adventure_menu(self=None)

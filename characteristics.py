@@ -6,13 +6,6 @@ import ast
 from api import steps_today_update
 from settings import debug_mode
 
-# Переменная для текущего времени. Используется в подсчёте timestamp_last_enter.
-# Пока не используется
-now_timestamp = datetime.now().timestamp()
-
-######## Game Ballance ########
-# Настройки игрового баланса #
-###############################
 
 
 # Шаги за сегодня
@@ -27,14 +20,55 @@ def steps_today():
 #steps_today = steps_today_update()
 
 
-def load_characteristic():
+def load_characteristic_pickle():
     # Функция загрузки характеристик из файла
 #    global char_characteristic
     with open('characteristic.txt', 'rb') as f:
         char_characteristic = pickle.load(f)
         if debug_mode:
             print(f'Чтение сохранения: {char_characteristic}')
+        print(f"load_char_pickle: {char_characteristic}")
         return char_characteristic
+
+load_characteristic_pickle()
+
+
+def load_characteristic():
+    """Функция для считывания сохранения из csv файла"""
+    char_characteristic = {}
+
+    with open("characteristic.csv", mode='r', encoding='utf-8') as file:
+        csv_reader = csv.reader(file)
+        headers = next(csv_reader)
+        data_row = next(csv_reader)
+
+        for key, value in zip(headers, data_row):
+            # Преобразование значений в соответствующие типы данных
+            if value.isdigit():
+                char_characteristic[key] = int(value)
+            elif value.replace('.', '', 1).isdigit():
+                char_characteristic[key] = float(value)
+            elif value.lower() in ['true', 'false']:
+                char_characteristic[key] = value.lower() == 'true'
+            elif value == '':
+                char_characteristic[key] = None
+            else:
+                # Преобразование строковых представлений словарей и списков обратно в объекты Python
+                try:
+                    char_characteristic[key] = ast.literal_eval(value)
+                except (ValueError, SyntaxError):
+                    char_characteristic[key] = value
+
+            if key in ['skill_training_time_end', 'working_end', 'adventure_end_timestamp'] \
+                and isinstance(char_characteristic[key], str):
+                try:
+                    char_characteristic[key] = datetime.strptime(
+                        char_characteristic[key], '%Y-%m-%d %H:%M:%S.%f'
+                    )
+                except ValueError:
+                    pass
+
+    return char_characteristic
 
 
 def date_check_steps_today_used():
@@ -52,63 +86,67 @@ def date_check_steps_today_used():
         return load_characteristic()['steps_today_used']
 
 
+# Загружаем данные из csv файла
+loaded_data_char_characteristic = load_characteristic()
+print(f"loaded_csv      : {loaded_data_char_characteristic}")
+
 char_characteristic = {
     'date_last_enter': None,    # Добавить дату последнего входа в игру
-    'timestamp_last_enter': now_timestamp,    # TimeStamp для расчёта игрового времени
+    'timestamp_last_enter': datetime.now().timestamp(),    # TimeStamp для расчёта игрового времени
     'steps_today' : steps_today(),    # steps_today,                                                        # Default: 0
     'steps_can_use': 0,                                                                 # Default: 0
     'steps_today_used': date_check_steps_today_used(),                                  # Default: 0
-    'steps_yesterday': load_characteristic()['steps_yesterday'],                        # Default: 0
-    'steps_daily_bonus': load_characteristic()['steps_daily_bonus'],    ### Daily Bonus                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
+    'steps_yesterday': loaded_data_char_characteristic['steps_yesterday'],                        # Default: 0
+    'steps_daily_bonus': loaded_data_char_characteristic['steps_daily_bonus'],    ### Daily Bonus                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
     'loc' : 'home',      #load_characteristic()['loc'],                                               # Default: 'home'
-    'energy' : load_characteristic()['energy'],                                         # Default: 50
+    'energy' : loaded_data_char_characteristic['energy'],                                         # Default: 50
     'energy_max' : 50,                                                                  # Default: 50
-    'energy_time_stamp': load_characteristic()['energy_time_stamp'],                    # Default: timestamp() (Возможно)
-    'money': load_characteristic()['money'],                                            # Default: 50 $
+    'energy_time_stamp': loaded_data_char_characteristic['energy_time_stamp'],                    # Default: timestamp() (Возможно)
+    'money': loaded_data_char_characteristic['money'],                                            # Default: 50 $
 
-    'skill_training': load_characteristic()['skill_training'],                          # Default: False
-    'skill_training_name': load_characteristic()['skill_training_name'],                # Default: None
-    'skill_training_timestamp': load_characteristic()['skill_training_timestamp'],      # Default: None
-    'skill_training_time_end': load_characteristic()['skill_training_time_end'],        # Default: None
+    'skill_training': loaded_data_char_characteristic['skill_training'],                          # Default: False
+    'skill_training_name': loaded_data_char_characteristic['skill_training_name'],                # Default: None
+    'skill_training_timestamp': loaded_data_char_characteristic['skill_training_timestamp'],      # Default: None
+    'skill_training_time_end': loaded_data_char_characteristic['skill_training_time_end'],        # Default: None
 
-    'stamina': load_characteristic()['stamina'],  # Выносливость: + 1 % к общему кол-ву пройденых шагов                                                     # Default: 0
-    'energy_max_skill': load_characteristic()['energy_max_skill'], # Навык для прокачки макс. энергии. (Нужен еще одна переменная, для прокачки.            # Default: 0
-    'speed_skill': load_characteristic()['speed_skill'],           # Скорость: + 1% к скорости действий игрока на 1 %.                                      # Default: 0
-    'luck_skill': load_characteristic()['luck_skill'],            # Удача: + 1% к удаче в игре. Влияет на шанс выпадения лута, на качество самого лута.     # Default: 0
+    'stamina': loaded_data_char_characteristic['stamina'],  # Выносливость: + 1 % к общему кол-ву пройденых шагов                                                     # Default: 0
+    'energy_max_skill': loaded_data_char_characteristic['energy_max_skill'], # Навык для прокачки макс. энергии. (Нужен еще одна переменная, для прокачки.            # Default: 0
+    'speed_skill': loaded_data_char_characteristic['speed_skill'],           # Скорость: + 1% к скорости действий игрока на 1 %.                                      # Default: 0
+    'luck_skill': loaded_data_char_characteristic['luck_skill'],            # Удача: + 1% к удаче в игре. Влияет на шанс выпадения лута, на качество самого лута.     # Default: 0
     'mechanics': 0,
     'it_technologies' : 0,
 
-    'work': load_characteristic()['work'],   # Название работы          # Default: None
-    'work_salary': load_characteristic()['work_salary'],                # Default: 0
-    'working': load_characteristic()['working'],                        # Default: False
-    'working_hours': load_characteristic()['working_hours'],            # Default: 0
-    'working_start': load_characteristic()['working_start'],
-    'working_end': load_characteristic()['working_end'],
+    'work': loaded_data_char_characteristic['work'],   # Название работы          # Default: None
+    'work_salary': loaded_data_char_characteristic['work_salary'],                # Default: 0
+    'working': loaded_data_char_characteristic['working'],                        # Default: False
+    'working_hours': loaded_data_char_characteristic['working_hours'],            # Default: 0
+    'working_start': loaded_data_char_characteristic['working_start'],
+    'working_end': loaded_data_char_characteristic['working_end'],
 
     # Инвентарь / Inventory
-    'inventory': load_characteristic()['inventory'],                                                    # Default: []
+    'inventory': loaded_data_char_characteristic['inventory'],                                                    # Default: []
 
     # Equipment / Экипировка
-    'equipment_head': load_characteristic()['equipment_head'],                              # Default: None
-    'equipment_neck': load_characteristic()['equipment_neck'],                              # Default: None
-    'equipment_torso': load_characteristic()['equipment_torso'],                            # Default: None
-    'equipment_finger_01': load_characteristic()['equipment_finger_01'],                    # Default: None
-    'equipment_finger_02': load_characteristic()['equipment_finger_02'],                    # Default: None
-    'equipment_legs': load_characteristic()['equipment_legs'],                              # Default: None
-    'equipment_foots': load_characteristic()['equipment_foots'],                            # Default: None
+    'equipment_head': loaded_data_char_characteristic['equipment_head'],                              # Default: None
+    'equipment_neck': loaded_data_char_characteristic['equipment_neck'],                              # Default: None
+    'equipment_torso': loaded_data_char_characteristic['equipment_torso'],                            # Default: None
+    'equipment_finger_01': loaded_data_char_characteristic['equipment_finger_01'],                    # Default: None
+    'equipment_finger_02': loaded_data_char_characteristic['equipment_finger_02'],                    # Default: None
+    'equipment_legs': loaded_data_char_characteristic['equipment_legs'],                              # Default: None
+    'equipment_foots': loaded_data_char_characteristic['equipment_foots'],                            # Default: None
 
     # Adventure / Приключения
-    'adventure': load_characteristic()['adventure'],
-    'adventure_name': load_characteristic()['adventure_name'],
-    'adventure_end_timestamp': load_characteristic()['adventure_end_timestamp'],
+    'adventure': loaded_data_char_characteristic['adventure'],
+    'adventure_name': loaded_data_char_characteristic['adventure_name'],
+    'adventure_end_timestamp': loaded_data_char_characteristic['adventure_end_timestamp'],
 
     # Adventure Counters
-    'adventure_walk_easy_counter': load_characteristic()['adventure_walk_easy_counter'],                  # Default: 0
-    'adventure_walk_normal_counter': load_characteristic()['adventure_walk_normal_counter'],              # Default: 0
-    'adventure_walk_hard_counter': load_characteristic()['adventure_walk_hard_counter'],                  # Default: 0
-    'adventure_walk_15k_counter': load_characteristic()['adventure_walk_15k_counter'],                    # Default: 0
-    'adventure_walk_20k_counter': load_characteristic()['adventure_walk_20k_counter'],                    # Default: 0
-    'adventure_walk_30k_counter': load_characteristic()['adventure_walk_30k_counter'],                    # Default: 0
+    'adventure_walk_easy_counter': loaded_data_char_characteristic['adventure_walk_easy_counter'],                  # Default: 0
+    'adventure_walk_normal_counter': loaded_data_char_characteristic['adventure_walk_normal_counter'],              # Default: 0
+    'adventure_walk_hard_counter': loaded_data_char_characteristic['adventure_walk_hard_counter'],                  # Default: 0
+    'adventure_walk_15k_counter': loaded_data_char_characteristic['adventure_walk_15k_counter'],                    # Default: 0
+    'adventure_walk_20k_counter': loaded_data_char_characteristic['adventure_walk_20k_counter'],                    # Default: 0
+    'adventure_walk_30k_counter': loaded_data_char_characteristic['adventure_walk_30k_counter'],                    # Default: 0
 }
 
 

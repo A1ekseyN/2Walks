@@ -58,21 +58,6 @@ def status_bar():
         Adventure.adventure_check_done(self=None)
 
 
-def load_game():
-    # Функция для загрузки прогресса в игры при запуске программы.
-    pass
-
-
-def save_game():
-    # Функция для сохранения игры.
-    pass
-
-
-def save_game_char_and_progress():
-    # Функция для сохранения игровых характеристик и переменных
-    pass
-
-
 def save_game_date_last_enter():
     global char_characteristic
     # Функция для сохранения и проверки игровой даты.
