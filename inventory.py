@@ -20,78 +20,66 @@ def inventory_menu():
 
 
 def inventory_view():
-    # Отображает содержимое инвентаря
-    # Отображение инвентаря сделано циклом в одну строчку. Фактически вывод можно сделать одной строчкой.
-    item_counter = 0
+    """Отображает содержимое инвентаря"""
+    sorted_inventory = sorted(
+        char_characteristic['inventory'],
+        key=lambda x: (
+            x.get('item_type', ''),
+            x.get('characteristic', ''),
+            -x.get('bonus', [0])[0]  # Используем отрицательное значение для сортировки по убыванию
+        )
+    )
 
-    # Сортировка предметов в инвентаре. Пока не нужно ее включать.
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('item_name'))
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('item_type'))
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('grade'))
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('bonus'))
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('quality'))
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('price'))
-
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('item_name'), reverse=True)
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('item_type'), reverse=True)
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('grade'), reverse=True)
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('bonus'), reverse=True)
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('quality'), reverse=True)
-#    char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('price'), reverse=True)
-
-    if char_characteristic['inventory'] == []:
+    if not sorted_inventory:
         print(' - Пусто')
     else:
-        for i in char_characteristic['inventory']:
-            item_counter += 1
-            try:
-                print(f'\t{item_counter}. {i["item_name"][0].title()}: ', end='')
-            except:
-                pass
-            print(f'{i["item_type"][0].title()} ', end='')               # Item Type
-            try:                                                            # Item Grade
-                if i['grade'][0]:
-                    print(f'{i["grade"][0]}, ', end='')
-            except:                                                         # Если ничего нет, то ничего не отображать
-                pass
-            print(f'+ {i["bonus"][0]} '                                     # Bonus
-                  f'{i["characteristic"][0].title()} ', end='')
-            try:
-                if i['quality'][0]:                                             # Quality
-                    print(f'(Качество: {i["quality"][0]}) ', end='')
-#                  f'- (Price: {i["price"][0]})')
-            except:
-                pass
-            try:                                                            # Price
-                if i['price'][0]:
-                    print(f'(Price: {i["price"][0]} $)')
-            except:
-                print()
+        for ind, item in enumerate(sorted_inventory, start=1):
+            print(f"\t{ind}. {item['item_type'][0].title()} {item['grade'][0]}, "
+                  f"+ {item['bonus'][0]} {item['characteristic'][0].title()}, "
+                  f"(Quality: {item['quality'][0]}), "
+                  f"(Price: {item['price'][0]} $) ")
+
+    return sorted_inventory
+
 
 def sold_item():
     print('\n--- Продажа предметов из инвентаря: ---')
     print(f'Всего в инвентаре: {len(char_characteristic["inventory"])} предметов.')
-    inventory_view()
+    char_characteristic["inventory"] = inventory_view()
 
     try:
         item_to_sold = int(input(f'\t0. Назад'
                                  f'\n\nКакой предмет хотите продать? (Введите число от 1 до {len(char_characteristic["inventory"])}). \n>>> '))
         if item_to_sold <= len(char_characteristic["inventory"]) and item_to_sold != 0:
-            print(f'\nВы выбрали предмет: {char_characteristic["inventory"][item_to_sold - 1]}'
+            item_index = item_to_sold - 1  # Корректируем индекс для доступа к списку
+            item = char_characteristic["inventory"][item_index]
+
+            print(f'\nВы выбрали предмет: '
+                  f'\n\t- {item["item_type"][0].title()}, '
+                  f'{item["grade"][0]}, '
+                  f'+ {item["bonus"][0]} {item["characteristic"][0].title()}, '
+                  f'(Quality: {item["quality"][0]}), '
+                  f'(Price: {item["price"][0]} $) '
                   ### Тут нужно добавить название, характеристики и цену предмета. 
-                  f'\nЦена предмета 💰: {round(char_characteristic["inventory"][item_to_sold - 1]["price"][0])} $')
+                  f'\n\t- Цена предмета 💰: {item["price"][0]} $')
             try:
                 ask = input('\nВы уверены, что хотите продать этот предмет? '
                             '\n1. Да'
                             '\n0. Назад \n>>> ')
                 if ask == '1':
-                    print(f'\nВы продали предмет {char_characteristic["inventory"][item_to_sold - 1]}'
-                          f'\nЦена продажи 💰: {round(char_characteristic["inventory"][item_to_sold - 1]["price"][0])} $.')
-                    try:        # Если нет цены у предмета, тогда exception. И предмет удаляется без прибыли.
-                        char_characteristic['money'] += round(char_characteristic['inventory'][item_to_sold - 1]['price'][0])
+                    print(f'\nВы продали предмет:'
+                          f'\n\t- {item["item_type"][0].title()}, '
+                          f'{item["grade"][0]}, '
+                          f'+ {item["bonus"][0]} {item["characteristic"][0].title()}, '
+                          f'(Quality: {item["quality"][0]}), '
+                          f'(Price: {item["price"][0]} $) '
+                          ### Тут нужно добавить название, характеристики и цену предмета. 
+                          f'\n\t- Цена предмета 💰: {item["price"][0]} $')
+                    try:  # Если нет цены у предмета, тогда exception. И предмет удаляется без прибыли.
+                        char_characteristic['money'] += round(char_characteristic['inventory'][item_index]['price'][0])
                     except:
                         print('У предмета нет цены. Продажа за 0 $.')
-                    del char_characteristic["inventory"][item_to_sold - 1]
+                    del char_characteristic["inventory"][item_index]
                     inventory_menu()
                 elif ask == '0':
                     sold_item()

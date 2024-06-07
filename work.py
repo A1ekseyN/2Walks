@@ -5,6 +5,7 @@ from colorama import Fore, Style
 from functions_02 import time
 from equipment_bonus import equipment_speed_skill_bonus
 
+
 work_requirements = {
     'watchman': {'steps': 200, 'energy': 4, 'salary': 2},
     'factory': {'steps': 500, 'energy': 7, 'salary': 5},
@@ -13,8 +14,7 @@ work_requirements = {
 
 
 class Work():
-    # Класс инициализации работы
-
+    """Клас для работы"""
     def __init__(self, work, salary, working, working_hours, working_end, steps_can_use):
         self.work = work
         self.work_salary = salary
@@ -102,6 +102,7 @@ class Work():
         if working_hours >= 1:
             if char_characteristic['steps_can_use'] >= working_hours * work_requirements[work]["steps"] and char_characteristic['energy'] >= working_hours * work_requirements[work]["energy"]:
                 char_characteristic['steps_today_used'] += working_hours * work_requirements[work]["steps"]
+                char_characteristic['steps_total_used'] += working_hours * work_requirements[work]["steps"]
                 char_characteristic['energy'] -= working_hours * work_requirements[work]["energy"]
                 char_characteristic['work'] = work
                 char_characteristic['working'] = True

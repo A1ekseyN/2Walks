@@ -14,8 +14,7 @@ luck_chr = char_characteristic['luck_skill'] + equipment_luck_bonus()
 
 class Drop_Item():
     # Клас для генерации случайного item, после прохождения приключения.
-    # Вероятность выпадения item и grade item по формуле, которая на считает на оборот. То есть 1 больше чем 2 или 3.
-
+    # Вероятность выпадения item и grade item по формуле, которая рассчитывает на оборот. То есть 1 больше чем 2 или 3.
     def one_item_random_grade(self, hard):
         # One item generation
         if hard == 'walk_easy':
@@ -25,10 +24,6 @@ class Drop_Item():
                 if c <= drop_percent_item_c:
                     grade = 'c-grade'
                     return grade
-#                else:
-#                    return None
-#            else:
-#                return None
 
         elif hard == 'walk_normal':
             i = randint(1, 100 - luck_chr)

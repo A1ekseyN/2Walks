@@ -197,6 +197,7 @@ class Adventure():
         char_characteristic['adventure_name'] = adv_name
         char_characteristic['adventure_end_timestamp'] = datetime.now().timestamp() + (adv_time * 60)
         char_characteristic['steps_today_used'] += adv_steps
+        char_characteristic['steps_total_used'] += adv_steps
         char_characteristic['energy'] -= adv_energy
 
         print(f'Steps_used_today 🏃: {char_characteristic["steps_today_used"]}')

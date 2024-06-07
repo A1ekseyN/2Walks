@@ -37,7 +37,11 @@ def energy_time_charge():
 
 def status_bar():
     # Отображение переменных: шагов, энергии, денег.
-    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {char_characteristic["steps_today"] + stamina_skill_bonus_def() + equipment_bonus_stamina_steps() + daily_steps_bonus():,.0f}{Style.RESET_ALL} (Bonus: Stamina 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def():,.0f}{Style.RESET_ALL} / Equipment 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps():,.0f}{Style.RESET_ALL} / Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus()}{Style.RESET_ALL})'
+    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {char_characteristic["steps_today"] + stamina_skill_bonus_def() + equipment_bonus_stamina_steps() + daily_steps_bonus():,.0f}{Style.RESET_ALL} '
+          f'(Bonus: Stamina 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def():,.0f}{Style.RESET_ALL} '
+          f'/ Equipment 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps():,.0f}{Style.RESET_ALL} '
+          f'/ Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus()}{Style.RESET_ALL}) '
+          f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{char_characteristic["steps_total_used"]}{Style.RESET_ALL})'
           f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus()}{Style.RESET_ALL} ед. / Daily 🔋: + {Fore.GREEN}{char_characteristic["steps_daily_bonus"]}{Style.RESET_ALL} ед.)', end='')
     if debug_mode:
         print(f'(+ 1 эн. через: {abs(speed_skill_equipment_bonus_def(60) - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)', end='')

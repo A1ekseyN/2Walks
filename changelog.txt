@@ -1,3 +1,11 @@
+Version: 0.0.3c (07.07.2024)
+- Added parameter: 'steps_total_used'
+- Added accounting for the number of 'steps_total_used' during: work, adventure, gym.
+- Added Sorting to Equipment section: item_type -> characteristic -> bonus
+- Added Sorting to Inventory section: item_type -> characteristic -> bonus
+- Added full description of the item during the sale
+- Improved the interface for selling an item
+
 Version: 0.0.3b (07.06.2024)
 - Added loading a save from a csv file
 - Refactoring

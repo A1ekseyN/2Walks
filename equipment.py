@@ -4,7 +4,7 @@ from inventory import inventory_view
 
 
 class Equipment():
-    # Для предметов одетых на персонажа
+    """Клас для инициализации предметов, одетых на персонаже"""
 
     def equipment_view(self):
         # Отображение вещей, которые одеты на персонаже.
@@ -105,19 +105,24 @@ class Equipment():
         elif char_characteristic[item_slot] != None:
             print(f'\nНа {item_name} у персонажа надето: '
                   f'\n- {char_characteristic[item_slot]["item_name"][0].title()} {char_characteristic[item_slot]["grade"][0].title()}: + {char_characteristic[item_slot]["bonus"][0]} {char_characteristic[item_slot]["characteristic"][0].title()} (Quality: {char_characteristic[item_slot]["quality"][0]})')
+
         print(f'\nВ инвентаре имеются предметы, которые можно экипировать: ')
 
         ### Сортировка предметов.
         # Нужно протестировать или она правильно работает. Пока, предварительно работает.
-        char_characteristic['inventory'] = sorted(char_characteristic['inventory'], key=itemgetter('item_type'))
+        char_characteristic['inventory'] = sorted(char_characteristic['inventory'],
+                                                  key=lambda x: (x['item_type'], x['characteristic'], x['bonus']),
+                                                  reverse=True)
 
         for i in char_characteristic['inventory']:
             cnt += 1
             if i["item_type"][0] == item_type:
                 print(f'{cnt}. {i["item_name"][0].title()} {i["grade"][0]}: + {i["bonus"][0]} {i["characteristic"][0].title()} (Quality: {i["quality"][0]})')
                 list_cnt.append(cnt)
-        print('0. Назад'
+
+        print('\n0. Назад'
               '\n99. Снять предмет экипировки')
+
         Equipment.change_item_in_slot(self, item_name, item_type, item_slot, list_cnt=list_cnt)
 
     def change_item_in_slot(self, item_name, item_type, item_slot, list_cnt):

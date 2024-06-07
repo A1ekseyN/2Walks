@@ -179,6 +179,7 @@ class Skill_Training():
 #        char_characteristic['skill_training_time_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(minutes=(skill_training_table[char_characteristic[self.name] + 1]['time']))
         char_characteristic['skill_training_time_end'] = skill_training_time_with_bonus
         char_characteristic['steps_today_used'] += skill_training_table[char_characteristic[self.name] + 1]['steps']
+        char_characteristic['steps_total_used'] += skill_training_table[char_characteristic[self.name] + 1]['steps']
         char_characteristic['energy'] -= skill_training_table[char_characteristic[self.name] + 1]['energy']
         char_characteristic['money'] -= skill_training_table[char_characteristic[self.name] + 1]['money']
 

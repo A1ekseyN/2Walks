@@ -30,6 +30,8 @@ def load_characteristic_pickle():
         print(f"load_char_pickle: {char_characteristic}")
         return char_characteristic
 
+# На данный момент данная функция используется как резервная, чтобы понимать или все правильно save/load.
+# load_characteristic_pickle() работает только как вывод информации
 load_characteristic_pickle()
 
 
@@ -98,6 +100,7 @@ char_characteristic = {
     'steps_today_used': date_check_steps_today_used(),                                  # Default: 0
     'steps_yesterday': loaded_data_char_characteristic['steps_yesterday'],                        # Default: 0
     'steps_daily_bonus': loaded_data_char_characteristic['steps_daily_bonus'],    ### Daily Bonus                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
+    'steps_total_used': loaded_data_char_characteristic['steps_total_used'],
     'loc' : 'home',      #load_characteristic()['loc'],                                               # Default: 'home'
     'energy' : loaded_data_char_characteristic['energy'],                                         # Default: 50
     'energy_max' : 50,                                                                  # Default: 50
