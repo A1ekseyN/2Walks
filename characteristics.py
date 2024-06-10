@@ -92,15 +92,27 @@ def date_check_steps_today_used():
 loaded_data_char_characteristic = load_characteristic()
 print(f"loaded_csv      : {loaded_data_char_characteristic}")
 
+
+# TODO: 'date_last_enter' - Добавить дату последнего входа в игру.
+#  На данный момент это значение сохраняется в файл save.txt
 char_characteristic = {
     'date_last_enter': None,    # Добавить дату последнего входа в игру
     'timestamp_last_enter': datetime.now().timestamp(),    # TimeStamp для расчёта игрового времени
-    'steps_today' : steps_today(),    # steps_today,                                                        # Default: 0
+    'steps_today' : steps_today(),                                                      # Default: 0
     'steps_can_use': 0,                                                                 # Default: 0
     'steps_today_used': date_check_steps_today_used(),                                  # Default: 0
     'steps_yesterday': loaded_data_char_characteristic['steps_yesterday'],                        # Default: 0
     'steps_daily_bonus': loaded_data_char_characteristic['steps_daily_bonus'],    ### Daily Bonus                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
     'steps_total_used': loaded_data_char_characteristic['steps_total_used'],
+
+    # Level персонажа, прокаченные skills от lvl up
+    'char_level': loaded_data_char_characteristic['char_level'],
+    'char_level_up_skills': loaded_data_char_characteristic['char_level_up_skills'],
+    'lvl_up_skill_stamina': loaded_data_char_characteristic['lvl_up_skill_stamina'],
+    'lvl_up_skill_energy_max': loaded_data_char_characteristic['lvl_up_skill_energy_max'],
+    'lvl_up_skill_speed': loaded_data_char_characteristic['lvl_up_skill_speed'],
+    'lvl_up_skill_luck': loaded_data_char_characteristic['lvl_up_skill_luck'],
+
     'loc' : 'home',      #load_characteristic()['loc'],                                               # Default: 'home'
     'energy' : loaded_data_char_characteristic['energy'],                                         # Default: 50
     'energy_max' : 50,                                                                  # Default: 50

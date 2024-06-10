@@ -5,6 +5,7 @@ from locations import *
 from gym import skill_training_check_done
 from work import Work, work_check_done
 from inventory import inventory_menu
+from level import CharLevel
 #from work import work_check_done
 
 

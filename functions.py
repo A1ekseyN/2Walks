@@ -3,12 +3,13 @@ from colorama import Fore, Style
 from datetime import datetime
 import requests
 from adventure import Adventure
-from bonus import equipment_bonus_stamina_steps, daily_steps_bonus
+from bonus import equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
 from characteristics import char_characteristic
 from locations import icon_loc
 from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def, speed_skill_equipment_bonus_def
 from equipment_bonus import equipment_stamina_bonus, equipment_energy_max_bonus, equipment_speed_skill_bonus, equipment_luck_bonus
+from level import CharLevel
 
 
 def energy_time_charge():
@@ -37,15 +38,22 @@ def energy_time_charge():
 
 def status_bar():
     # Отображение переменных: шагов, энергии, денег.
-    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {char_characteristic["steps_today"] + stamina_skill_bonus_def() + equipment_bonus_stamina_steps() + daily_steps_bonus():,.0f}{Style.RESET_ALL} '
+    char_level_view = CharLevel(char_characteristic)  # Инициализация уровня персонажа, прогресса, и lvl up
+
+    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {char_characteristic["steps_today"] + stamina_skill_bonus_def() + equipment_bonus_stamina_steps() + daily_steps_bonus() + level_steps_bonus():,.0f}{Style.RESET_ALL} '
           f'(Bonus: Stamina 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def():,.0f}{Style.RESET_ALL} '
           f'/ Equipment 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps():,.0f}{Style.RESET_ALL} '
-          f'/ Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus()}{Style.RESET_ALL}) '
+          f'/ Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus()}{Style.RESET_ALL} '
+          f'/ Level: {Fore.LIGHTCYAN_EX}{level_steps_bonus()}{Style.RESET_ALL}) '
           f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{char_characteristic["steps_total_used"]}{Style.RESET_ALL})'
           f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus()}{Style.RESET_ALL} ед. / Daily 🔋: + {Fore.GREEN}{char_characteristic["steps_daily_bonus"]}{Style.RESET_ALL} ед.)', end='')
     if debug_mode:
         print(f'(+ 1 эн. через: {abs(speed_skill_equipment_bonus_def(60) - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)', end='')
     print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]:,.0f}{Style.RESET_ALL} $.')
+
+    # Отображение Level персонажа, прогресс и lvl up
+    char_level_view.level_status_bar()
+
     print(f'Вы находитесь в локации: {icon_loc()} {Fore.GREEN}{char_characteristic["loc"].title()}{Style.RESET_ALL}.')
     if char_characteristic['skill_training']:
         skill_end_time = char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())
@@ -87,10 +95,13 @@ def save_game_date_last_enter():
 
     elif str(now_date) == last_enter_date:
         # Текущая дата, и дата последнего входа в игру совпадает.
+        # Похоже, что это место, гда высчитывается общее количество шагов, которое может потратить игрок
+        # Но, это нужно проверить
         char_characteristic['steps_can_use'] = char_characteristic['steps_today'] - char_characteristic['steps_today_used']
         char_characteristic['steps_can_use'] += stamina_skill_bonus_def()                   # Бонус от навыка
         char_characteristic['steps_can_use'] += equipment_bonus_stamina_steps()             # Бонус от экипировки
         char_characteristic['steps_can_use'] += daily_steps_bonus()                         # Бонус за пройденные шаги, более 10к+ в день.
+        char_characteristic['steps_can_use'] += level_steps_bonus()                         # Бонус за прокаченный уровень
     else:
         print('Error (save_game_date_last_enter).')
 
