@@ -73,35 +73,26 @@ class Drop_Item():
                     grade = 's-grade'
                     return grade
 
-        elif hard == 'walk_20k':
-            # При 20к шагов выпадают вещи: A, S, S+ Grade.
+        elif hard == 'walk_25k':
+            # При 25к шагов выпадают вещи: S, S+ Grade.
             i = randint(1, 100 - luck_chr)
-            if i <= drop_percent_gl:    # Определяет выпал предмет или нет.
-                a = randint(1, 100 - luck_chr)
+            if i <= drop_percent_gl:  # Определяет выпал предмет или нет.
                 s = randint(1, 100 - luck_chr)
                 s_ = randint(1, 100 - luck_chr)
-                # A-Grade or S-Grade or S+Grade
-                if a < s and a < s_ and a <= drop_percent_item_a:
-                    grade = 'a-grade'
-                    return grade
-                elif s < a and s < s_ and s <= drop_percent_item_s:
-                    grade = 's-grade'
-                    return grade
-                elif s_ < a and s_ < s and s_ <= drop_percent_item_s_:
-                    grade = 's+grade'
-                    return grade
-
-        elif hard == 'walk_30k':
-            # При 30к шагов выпадают вещи: S, S+ Grade.
-            i = randint(1, 100 - luck_chr)
-            if i <= drop_percent_gl:    # Определяет выпал предмет или нет.
-                s = randint(1, 100 - luck_chr)
-                s_ = randint(1, 100 - luck_chr)
-                #  or S-Grade or S+Grade
+                # S-Grade or S+Grade
                 if s < s_ and s <= drop_percent_item_s:
                     grade = 's-grade'
                     return grade
                 elif s_ < s and s_ <= drop_percent_item_s_:
+                    grade = 's+grade'
+                    return grade
+
+        elif hard == 'walk_30k':
+            # При 30к шагов выпадают вещи: только S+ Grade.
+            i = randint(1, 100 - luck_chr)
+            if i <= drop_percent_gl:  # Определяет выпал предмет или нет.
+                s_ = randint(1, 100 - luck_chr)
+                if s_ <= drop_percent_item_s_:
                     grade = 's+grade'
                     return grade
 

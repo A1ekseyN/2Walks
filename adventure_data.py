@@ -35,11 +35,18 @@ adventure_data_table = {
         'drop_grade': {'a', 's', 's+'},
         'drop_items': {'ring', 'necklace'},
     },
-    'walk_30k': {
-        'steps': 30000,
+    'walk_25k': {
+        'steps': 25000,
         'energy': 60,
         'time': 300,
         'drop_grade': {'s', 's+'},
+        'drop_items': {'ring', 'necklace'},
+    },
+    'walk_30k': {
+        'steps': 30000,
+        'energy': 70,
+        'time': 360,
+        'drop_grade': {'s+'},
         'drop_items': {'ring', 'necklace'},
     },
 }

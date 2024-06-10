@@ -2,6 +2,7 @@ from gym import gym_menu
 from work import Work
 #from work import work_choice
 from adventure import Adventure
+from adventure_data import adventure_data_table
 from characteristics import char_characteristic
 from shop import Shop
 
@@ -55,9 +56,7 @@ def work_location():
 def adventure_location():
     # Локация - Приключения.
 #    print('\n--- 🗺️ Adventure Location 🗺 ---')
-    Adventure.adventure_menu(self=None)
-#    print('В данный момент вы находитесь в Приключениях.')
-#    print('Содержимое локации находится в разработке.')
+    Adventure(adventure_data_table).adventure_menu()
 
 
 def garage_location():

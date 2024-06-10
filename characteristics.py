@@ -161,6 +161,7 @@ char_characteristic = {
     'adventure_walk_hard_counter': loaded_data_char_characteristic['adventure_walk_hard_counter'],                  # Default: 0
     'adventure_walk_15k_counter': loaded_data_char_characteristic['adventure_walk_15k_counter'],                    # Default: 0
     'adventure_walk_20k_counter': loaded_data_char_characteristic['adventure_walk_20k_counter'],                    # Default: 0
+    'adventure_walk_25k_counter': loaded_data_char_characteristic['adventure_walk_25k_counter'],                    # Default: 0
     'adventure_walk_30k_counter': loaded_data_char_characteristic['adventure_walk_30k_counter'],                    # Default: 0
 }
 

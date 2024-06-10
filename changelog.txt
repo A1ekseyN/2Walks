@@ -1,11 +1,16 @@
-Version: 0.0.3d (08.07.2024)
+Version: 0.0.3e (10.06.2024)
+- The 30k step adventure has been changed to 25k steps
+- Added a 30k step adventure, with s+grade drops
+- Adventure class refactoring
+
+Version: 0.0.3d (08.06.2024)
 - Added display of character level in the menu
 - Added display of progress to the next character level
 - Added a key to save character level: 'char_level'
 - Added a key to save character level: 'char_level_up_skills'
 - Added display of bonus of number of steps, from level of skill
 
-Version: 0.0.3c (07.07.2024)
+Version: 0.0.3c (07.06.2024)
 - Added parameter: 'steps_total_used'
 - Added accounting for the number of 'steps_total_used' during: work, adventure, gym.
 - Added Sorting to Equipment section: item_type -> characteristic -> bonus
