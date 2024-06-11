@@ -6,9 +6,9 @@ from characteristics import char_characteristic
 class CharLevel():
     """Класс для вывода информации о level персонажа на основе общего кол-ва потраченных шагов"""
     LEVEL_THRESHOLDS = {
-        0: 9999,
-        1: 19999,
-        2: 49999
+        0: 10000,
+        1: 20000,
+        2: 50000
     }
 
     def __init__(self, char_characteristic):
@@ -27,21 +27,14 @@ class CharLevel():
         """Update переменную char_characteristic['char_level']"""
         global char_characteristic
         char_characteristic['char_level'] = self.level
-        print(f"Update Level to: {self.level}")
 
-    def update_level_up_skills_char_characteristic(self):
+    def update_level_up_skills_char_characteristic(self, level_up_difference):
         """
         Update количество очков навыков, которые мы можем распределить
         При повышении уровня персонажа нам дается + 1 очко для распределения навыков за + 1 level_up
         """
         global char_characteristic
-        print(f"char_characteristic['char_level_up_skills']: {char_characteristic['char_level_up_skills']}")
-
-        level_up_skills_cnt = self.level - char_characteristic['char_level']
-        char_characteristic['char_level_up_skills'] = level_up_skills_cnt
-
-        print(f"level_up_skills_cnt: {level_up_skills_cnt}")
-        print(f"Персонаж повысил уровень до {self.level}.")
+        char_characteristic['char_level_up_skills'] += level_up_difference
 
     def calculate_level_from_total_used_steps(self):
         """Просчёт level персонажа на основе общего количества потраченных шагов"""
@@ -54,18 +47,17 @@ class CharLevel():
             else:
                 break
 
-        self.level = new_level
-
-        print(f"steps: {used_steps}")
-        print(f"level: {self.level}")
+        return new_level
 
     def update_level(self):
         """Update level, если мы переходим на следующий уровень"""
         new_level = self.calculate_level_from_total_used_steps()
         if new_level != self.level:
+            level_up_difference = new_level - self.level
             self.level = new_level
-            self.update_level_up_skills_char_characteristic()
+            self.update_level_up_skills_char_characteristic(level_up_difference)
             self.update_level_char_characteristic()
+            print(f"Персонаж повысил свой уровень до {self.level} уровня.")
 
     def progress_to_next_level(self):
         """Отображение прогресса до следующего уровня в процентах"""
@@ -89,15 +81,15 @@ class CharLevel():
     def progress_bar_lvl_up_message(self):
         """Отображение сообщения о том, что у персонажа есть не распределенные очки навыков"""
         if char_characteristic['char_level_up_skills'] != 0:
-            print(f"[+ {char_characteristic['char_level_up_skills']} Skill points]")
+            return f"[+ {char_characteristic['char_level_up_skills']} Skill points]"
         else:
             return f""
 
-    def view_menu_skill_upgrade(self):
+    def menu_skill_point_allocation(self):
         """Меню для повышения уровня навыков персонажа, после lvl up"""
         global char_characteristic
         if char_characteristic['char_level_up_skills'] > 0:
-            print(f"Вам доступно: + {char_characteristic['char_level_up_skills']} не распределенных очков навыков."
+            print(f"\nВам доступно: + {char_characteristic['char_level_up_skills']} не распределенных очков навыков."
                   f" Текущие навыки от уровня персонажа:"
                   f"\n\t1. Stamina: + {char_characteristic['lvl_up_skill_stamina']}"
                   f"\n\t2. Energy: + {char_characteristic['lvl_up_skill_energy_max']}"
@@ -109,34 +101,45 @@ class CharLevel():
                 if ask == 1:
                     char_characteristic['lvl_up_skill_stamina'] += 1
                     char_characteristic['char_level_up_skills'] -= 1
+                    print(f"\nНавык Stamina повышен до {char_characteristic['lvl_up_skill_stamina']}.")
                 elif ask == 2:
                     char_characteristic['lvl_up_skill_energy_max'] += 1
                     char_characteristic['char_level_up_skills'] -= 1
+                    print(f"\nНавык Energy повышен до {char_characteristic['lvl_up_skill_energy_max']}.")
                 elif ask == 3:
                     char_characteristic['lvl_up_skill_speed'] += 1
                     char_characteristic['char_level_up_skills'] -= 1
+                    print(f"\nНавык Speed Skill повышен до {char_characteristic['lvl_up_skill_speed']}.")
                 elif ask == 4:
                     char_characteristic['lvl_up_skill_luck'] += 1
                     char_characteristic['char_level_up_skills'] -= 1
+                    print(f"\nНавык Luck повышен до {char_characteristic['lvl_up_skill_luck']}.")
                 elif ask == 0:
                     return
                 else:
                     print("\nНеверный ввод. Попробуйте снова.")
-                    self.view_menu_skill_upgrade()
+                    self.menu_skill_point_allocation()
             except ValueError:
                 print("\nНеверный ввод. Пожалуйста, введите число.")
-                self.view_menu_skill_upgrade()
+                self.menu_skill_point_allocation()
         else:
             print("\nУ вас нет очков навыков для распределения.")
+            print(f"\nНавыки: "
+                  f"\n\tStamina: {char_characteristic['lvl_up_skill_stamina']}"
+                  f"\n\tEnergy Max: {char_characteristic['lvl_up_skill_energy_max']}"
+                  f"\n\tSpeed Skill: {char_characteristic['lvl_up_skill_speed']}"
+                  f"\n\tLuck: { char_characteristic['lvl_up_skill_luck']}")
 
     def level_status_bar(self):
         """Отображение информации об Level персонажа, Прогресс бар, lvl-up"""
+        self.update_level()  # Проверка и обновление уровня персонажа
         progress_bar = self.progress_bar()
         print(f"Уровень: {self.level} {progress_bar} {self.progress_bar_lvl_up_message()}")
 
 
-print()
-char_level_view = CharLevel(char_characteristic)
-char_level_view.view_total_used_steps()
-char_level_view.view_char_level()
-char_level_view.level_status_bar()
+if __name__ == "__main__":
+    print()
+    char_level_view = CharLevel(char_characteristic)
+    char_level_view.view_total_used_steps()
+    char_level_view.view_char_level()
+    char_level_view.level_status_bar()

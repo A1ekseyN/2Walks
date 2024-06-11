@@ -184,8 +184,10 @@ def equipment_energy_max_bonus_for_char_characteristics():
     return bonus
 
 
+# Просчёт Energy Max в зависимости от навыков, скиллов, уровня
 char_characteristic['energy_max'] += char_characteristic['energy_max_skill'] + equipment_energy_max_bonus_for_char_characteristics()
 char_characteristic['energy_max'] += char_characteristic['steps_daily_bonus']
+char_characteristic['energy_max'] += char_characteristic['lvl_up_skill_energy_max']
 
 
 skill_training_table = {

@@ -9,7 +9,7 @@ drop_percent_item_a = 45
 drop_percent_item_s = 30
 drop_percent_item_s_ = 15       # s_ = s+ Grade
 
-luck_chr = char_characteristic['luck_skill'] + equipment_luck_bonus()
+luck_chr = char_characteristic['luck_skill'] + equipment_luck_bonus() + char_characteristic['lvl_up_skill_luck']
 
 
 class Drop_Item():

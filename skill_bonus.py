@@ -9,9 +9,9 @@ def stamina_skill_bonus_def():
     return stamina_skill_bonus
 
 
-def speed_skill_equipment_bonus_def(x):
+def speed_skill_equipment_and_level_bonus(x):
     # Бонус от скорости
-    x = int(x - (x / 100) * (char_characteristic['speed_skill'] + equipment_speed_skill_bonus()))
+    x = int(x - (x / 100) * (char_characteristic['speed_skill'] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))
     return x
 
 

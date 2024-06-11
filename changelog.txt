@@ -1,3 +1,11 @@
+Version: 0.0.3f (11.06.2024)
+- Added and tested a character level up algorithm. Added +1 skill point for each level.
+- Added new menu for skill increase from character level increase
+- Added level skill to calculate the number of available Steps
+- Added level skill to calculate the Maximum Energy
+- Added level skill for Luck calculation, when items Drop
+- Added level skill to calculate speed bonus
+
 Version: 0.0.3e (10.06.2024)
 - The 30k step adventure has been changed to 25k steps
 - Added a 30k step adventure, with s+grade drops

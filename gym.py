@@ -10,19 +10,19 @@ from equipment_bonus import equipment_speed_skill_bonus, equipment_energy_max_bo
 lvl_up_stamina = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["stamina"] + 1]["steps"]:,.0f}{Style.RESET_ALL} / ' \
                  f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["stamina"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
                  f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["stamina"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                 f'🕑: {time(round(skill_training_table[char_characteristic["stamina"] + 1]["time"] - ((skill_training_table[char_characteristic["stamina"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}'
+                 f'🕑: {time(round(skill_training_table[char_characteristic["stamina"] + 1]["time"] - ((skill_training_table[char_characteristic["stamina"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
 lvl_up_energy_max = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["steps"]:,.0f}{Style.RESET_ALL} / ' \
                     f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["energy"]}{Style.RESET_ALL} эн. / ' \
                     f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["money"]}{Style.RESET_ALL} $ / ' \
-                    f'🕑: {time(round(skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["time"] - ((skill_training_table[char_characteristic["energy_max"] - 49]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}'
+                    f'🕑: {time(round(skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["time"] - ((skill_training_table[char_characteristic["energy_max"] - 49]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
 lvl_up_speed_skill = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["speed_skill"] + 1]["steps"]:,.0f}{Style.RESET_ALL} / ' \
                      f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["speed_skill"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
                      f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["speed_skill"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                     f'🕑: {time(round(skill_training_table[char_characteristic["speed_skill"] + 1]["time"] - ((skill_training_table[char_characteristic["speed_skill"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}'
+                     f'🕑: {time(round(skill_training_table[char_characteristic["speed_skill"] + 1]["time"] - ((skill_training_table[char_characteristic["speed_skill"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
 lvl_up_luck_skill = f'🏃: {Fore.LIGHTCYAN_EX}{skill_training_table[char_characteristic["luck_skill"] + 1]["steps"]:,.0f}{Style.RESET_ALL} / ' \
                      f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["luck_skill"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
                      f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["luck_skill"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                     f'🕑: {time(round(skill_training_table[char_characteristic["luck_skill"] + 1]["time"] - ((skill_training_table[char_characteristic["luck_skill"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}'
+                     f'🕑: {time(round(skill_training_table[char_characteristic["luck_skill"] + 1]["time"] - ((skill_training_table[char_characteristic["luck_skill"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
 
 
 def gym_menu():
@@ -53,7 +53,11 @@ def gym_menu():
                             '\n\t0. Назад\n>>> ')
                 if ask == '1':
                     char_characteristic['skill_training_name'] = 'stamina'
-                    Start = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'], char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
+                    Start = Skill_Training(char_characteristic['skill_training'],
+                                           char_characteristic['skill_training_name'],
+                                           char_characteristic['skill_training_timestamp'],
+                                           char_characteristic['skill_training_time_end'],
+                                           datetime.now().timestamp())
                     Start.check_requirements()
                 elif ask == '0':
                     gym_menu()
@@ -69,7 +73,11 @@ def gym_menu():
                             f'\n\t0. Назад.\n>>> ')
                 if ask == '1':
                     char_characteristic['skill_training_name'] = 'energy_max_skill'
-                    Start = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'], char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
+                    Start = Skill_Training(char_characteristic['skill_training'],
+                                           char_characteristic['skill_training_name'],
+                                           char_characteristic['skill_training_timestamp'],
+                                           char_characteristic['skill_training_time_end'],
+                                           datetime.now().timestamp())
                     Start.check_requirements()
                 elif ask == '0':
                     gym_menu()
@@ -85,7 +93,11 @@ def gym_menu():
                             '\n\t0. Назад.\n>>> ')
                 if ask == '1':
                     char_characteristic['skill_training_name'] = 'speed_skill'
-                    Start = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'], char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
+                    Start = Skill_Training(char_characteristic['skill_training'],
+                                           char_characteristic['skill_training_name'],
+                                           char_characteristic['skill_training_timestamp'],
+                                           char_characteristic['skill_training_time_end'],
+                                           datetime.now().timestamp())
                     Start.check_requirements()
                 elif ask == '0':
                     gym_menu()
@@ -101,7 +113,11 @@ def gym_menu():
                             '\n\t0. Назад.\n>>> ')
                 if ask == '1':
                     char_characteristic['skill_training_name'] = 'luck_skill'
-                    Start = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'], char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'], datetime.now().timestamp())
+                    Start = Skill_Training(char_characteristic['skill_training'],
+                                           char_characteristic['skill_training_name'],
+                                           char_characteristic['skill_training_timestamp'],
+                                           char_characteristic['skill_training_time_end'],
+                                           datetime.now().timestamp())
                     Start.check_requirements()
                 elif ask == '0':
                     gym_menu()
@@ -170,13 +186,12 @@ class Skill_Training():
     def start_skill_training(self):
         # Начало обучения навыка
         skill_training_time = round(skill_training_table[char_characteristic[self.name] + 1]['time']) * 60
-        skill_training_speed_skill = skill_training_time - ((skill_training_time / 100) * char_characteristic[self.name])
+        skill_training_speed_skill = skill_training_time - ((skill_training_time / 100) * (char_characteristic[self.name] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))
         skill_training_time_with_bonus = datetime.fromtimestamp(datetime.now().timestamp() + skill_training_speed_skill)
 
         char_characteristic['skill_training'] = True
         char_characteristic['skill_training_name'] = self.name
         char_characteristic['skill_training_timestamp'] = datetime.now().timestamp()
-#        char_characteristic['skill_training_time_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + timedelta(minutes=(skill_training_table[char_characteristic[self.name] + 1]['time']))
         char_characteristic['skill_training_time_end'] = skill_training_time_with_bonus
         char_characteristic['steps_today_used'] += skill_training_table[char_characteristic[self.name] + 1]['steps']
         char_characteristic['steps_total_used'] += skill_training_table[char_characteristic[self.name] + 1]['steps']
@@ -188,7 +203,7 @@ class Skill_Training():
               f'\n- 🏃: {skill_training_table[char_characteristic[self.name] + 1]["steps"]:,.0f} steps'
               f'\n- 🔋: {skill_training_table[char_characteristic[self.name] + 1]["energy"]} эн.'
               f'\n- 💰: {skill_training_table[char_characteristic[self.name] + 1]["money"]} $'
-              f'\n- 🕑 Окончание тренировки навыка через: {Fore.LIGHTBLUE_EX}{time(round(skill_training_table[char_characteristic[self.name] + 1]["time"] - ((skill_training_table[char_characteristic[self.name] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}{Style.RESET_ALL}')
+              f'\n- 🕑 Окончание тренировки навыка через: {Fore.LIGHTBLUE_EX}{time(round(skill_training_table[char_characteristic[self.name] + 1]["time"] - ((skill_training_table[char_characteristic[self.name] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}{Style.RESET_ALL}')
         return char_characteristic
 
     def stamina_skill_training(self):

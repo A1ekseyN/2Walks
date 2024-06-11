@@ -77,30 +77,3 @@ def equipment_luck_bonus():
                 equipment_bonus_luck += item['bonus'][0]
 #    print(f'Luck: {equipment_bonus_luck}')
     return equipment_bonus_luck
-
-
-"""
-def equipment_bonus():
-    print(char_characteristic['stamina'])
-    char_characteristic['stamina'] += equipment_stamina_bonus()
-    print(char_characteristic['stamina'])
-
-    print(char_characteristic['energy_max'])
-    char_characteristic['energy_max'] += equipment_energy_max_bonus()
-    print(char_characteristic['energy_max'])
-
-    print(char_characteristic['speed_skill'])
-    char_characteristic['speed_skill'] += equipment_speed_skill_bonus()
-    print(char_characteristic['speed_skill'])
-
-    print(char_characteristic['luck_skill'])
-    char_characteristic['luck_skill'] += equipment_luck_bonus()
-    print(char_characteristic['luck_skill'])
-"""
-
-#equipment_stamina_bonus()
-#equipment_energy_max_bonus()
-#equipment_speed_skill_bonus()
-#equipment_luck_bonus()
-
-#equipment_bonus()

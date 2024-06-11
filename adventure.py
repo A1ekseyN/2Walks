@@ -4,7 +4,7 @@ from colors import steps, energy
 from datetime import datetime, timedelta
 from drop import Drop_Item
 from functions_02 import time
-from skill_bonus import speed_skill_equipment_bonus_def
+from skill_bonus import speed_skill_equipment_and_level_bonus
 from colorama import Fore, Style
 from settings import debug_mode
 
@@ -55,25 +55,25 @@ class Adventure():
 
         self.walk_easy_requirements = f'🏃: {steps(self.walk_easy["steps"])} шагов, ' \
                                       f'🔋: {energy(self.walk_easy["energy"])} энергии, ' \
-                                      f'🕑: {time(speed_skill_equipment_bonus_def(self.walk_easy["time"]))}'
+                                      f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_easy["time"]))}'
         self.walk_normal_requirements = f'🏃: {steps(self.walk_normal["steps"])} шагов, ' \
                                         f'🔋: {energy(self.walk_normal["energy"])} энергии, ' \
-                                        f'🕑: {time(speed_skill_equipment_bonus_def(self.walk_normal["time"]))}'
+                                        f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_normal["time"]))}'
         self.walk_hard_requirements = f'🏃: {steps(self.walk_hard["steps"])} шагов, ' \
                                       f'🔋: {energy(self.walk_hard["energy"])} энергии, ' \
-                                      f'🕑: {time(speed_skill_equipment_bonus_def(self.walk_hard["time"]))}'
+                                      f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_hard["time"]))}'
         self.walk_15k_requirements = f'🏃: {steps(self.walk_15k["steps"])} шагов, ' \
                                      f'🔋: {energy(self.walk_15k["energy"])} энергии, ' \
-                                     f'🕑: {time(speed_skill_equipment_bonus_def(self.walk_15k["time"]))}'
+                                     f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_15k["time"]))}'
         self.walk_20k_requirements = f'🏃: {steps(self.walk_20k["steps"])} шагов, ' \
                                      f'🔋: {energy(self.walk_20k["energy"])} энергии, ' \
-                                     f'🕑: {time(speed_skill_equipment_bonus_def(self.walk_20k["time"]))}'
+                                     f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_20k["time"]))}'
         self.walk_25k_requirements = f'🏃: {steps(self.walk_25k["steps"])} шагов, ' \
                                      f'🔋: {energy(self.walk_25k["energy"])} энергии, ' \
-                                     f'🕑: {time(speed_skill_equipment_bonus_def(self.walk_25k["time"]))}'
+                                     f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_25k["time"]))}'
         self.walk_30k_requirements = f'🏃: {steps(self.walk_30k["steps"])} шагов, ' \
                                      f'🔋: {energy(self.walk_30k["energy"])} энергии, ' \
-                                     f'🕑: {time(speed_skill_equipment_bonus_def(self.walk_30k["time"]))}'
+                                     f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_30k["time"]))}'
 
     def adventure_check_done(self):
         # Проверка или начатое Приключение - закончилось.
@@ -160,49 +160,49 @@ class Adventure():
                 adv_req = self.walk_easy_requirements
                 adv_steps = self.walk_easy['steps']
                 adv_energy = self.walk_easy['energy']
-                adv_time = speed_skill_equipment_bonus_def(self.walk_easy['time'])
+                adv_time = speed_skill_equipment_and_level_bonus(self.walk_easy['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '2':
                 adv_name = 'walk_normal'
                 adv_req = self.walk_normal_requirements
                 adv_steps = self.walk_normal['steps']
                 adv_energy = self.walk_normal['energy']
-                adv_time = speed_skill_equipment_bonus_def(self.walk_normal['time'])
+                adv_time = speed_skill_equipment_and_level_bonus(self.walk_normal['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '3':
                 adv_name = 'walk_hard'
                 adv_req = self.walk_hard_requirements
                 adv_steps = self.walk_hard['steps']
                 adv_energy = self.walk_hard['energy']
-                adv_time = speed_skill_equipment_bonus_def(self.walk_hard['time'])
+                adv_time = speed_skill_equipment_and_level_bonus(self.walk_hard['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '4':
                 adv_name = 'walk_15k'
                 adv_req = self.walk_15k_requirements
                 adv_steps = self.walk_15k['steps']
                 adv_energy = self.walk_15k['energy']
-                adv_time = speed_skill_equipment_bonus_def(self.walk_15k['time'])
+                adv_time = speed_skill_equipment_and_level_bonus(self.walk_15k['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '5':
                 adv_name = 'walk_20k'
                 adv_req = self.walk_20k_requirements
                 adv_steps = self.walk_20k['steps']
                 adv_energy = self.walk_20k['energy']
-                adv_time = speed_skill_equipment_bonus_def(self.walk_20k['time'])
+                adv_time = speed_skill_equipment_and_level_bonus(self.walk_20k['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '6':
                 adv_name = 'walk_25k'
                 adv_req = self.walk_25k_requirements
                 adv_steps = self.walk_25k['steps']
                 adv_energy = self.walk_25k['energy']
-                adv_time = speed_skill_equipment_bonus_def(self.walk_25k['time'])
+                adv_time = speed_skill_equipment_and_level_bonus(self.walk_25k['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
             elif ask == '7':
                 adv_name = 'walk_30k'
                 adv_req = self.walk_30k_requirements
                 adv_steps = self.walk_30k['steps']
                 adv_energy = self.walk_30k['energy']
-                adv_time = speed_skill_equipment_bonus_def(self.walk_30k['time'])
+                adv_time = speed_skill_equipment_and_level_bonus(self.walk_30k['time'])
                 Adventure.adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time)
 
             elif ask == '0':

@@ -7,7 +7,7 @@ from bonus import equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_
 from characteristics import char_characteristic
 from locations import icon_loc
 from settings import debug_mode
-from skill_bonus import stamina_skill_bonus_def, speed_skill_equipment_bonus_def
+from skill_bonus import stamina_skill_bonus_def, speed_skill_equipment_and_level_bonus
 from equipment_bonus import equipment_stamina_bonus, equipment_energy_max_bonus, equipment_speed_skill_bonus, equipment_luck_bonus
 from level import CharLevel
 
@@ -18,21 +18,21 @@ def energy_time_charge():
     global char_characteristic
 
     if char_characteristic['energy'] < char_characteristic['energy_max']:
-        if timestamp_now() - char_characteristic['energy_time_stamp'] > speed_skill_equipment_bonus_def(60):
+        if timestamp_now() - char_characteristic['energy_time_stamp'] > speed_skill_equipment_and_level_bonus(60):
             # (Тестируем): Нужно добавить Speed bonus + Speed Equipment bonus
             # Bug: Нужно добавить деление остатка и минусовать его от 'energy_time_stamp'
             # Bug: Поправить char_characteristic['energy'] += round (округление). Ошибка в округлении 1.6, округляет в большую сторону.
-            char_characteristic['energy'] += round((timestamp_now() - char_characteristic['energy_time_stamp']) // speed_skill_equipment_bonus_def(60))
-            char_characteristic['energy_time_stamp'] = timestamp_now() - ((timestamp_now() - char_characteristic['energy_time_stamp']) % speed_skill_equipment_bonus_def(60))
+            char_characteristic['energy'] += round((timestamp_now() - char_characteristic['energy_time_stamp']) // speed_skill_equipment_and_level_bonus(60))
+            char_characteristic['energy_time_stamp'] = timestamp_now() - ((timestamp_now() - char_characteristic['energy_time_stamp']) % speed_skill_equipment_and_level_bonus(60))
             if debug_mode:
                 print('\n--- Energy Check!!! ---')
-                print(f"Добавлено energy: {round((timestamp_now() - char_characteristic['energy_time_stamp']) // speed_skill_equipment_bonus_def(60))}")
+                print(f"Добавлено energy: {round((timestamp_now() - char_characteristic['energy_time_stamp']) // speed_skill_equipment_and_level_bonus(60))}")
                 print(f"Счётчик времени: {round(timestamp_now() - char_characteristic['energy_time_stamp'])} sec.")
 
     if char_characteristic['energy'] > char_characteristic['energy_max']:
         char_characteristic['energy'] = char_characteristic['energy_max']
 
-    if datetime.now().timestamp() - char_characteristic['energy_time_stamp'] >= speed_skill_equipment_bonus_def(60):
+    if datetime.now().timestamp() - char_characteristic['energy_time_stamp'] >= speed_skill_equipment_and_level_bonus(60):
         char_characteristic['energy_time_stamp'] = datetime.now().timestamp()
 
 
@@ -46,9 +46,13 @@ def status_bar():
           f'/ Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus()}{Style.RESET_ALL} '
           f'/ Level: {Fore.LIGHTCYAN_EX}{level_steps_bonus()}{Style.RESET_ALL}) '
           f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{char_characteristic["steps_total_used"]}{Style.RESET_ALL})'
-          f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} (Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus()}{Style.RESET_ALL} ед. / Daily 🔋: + {Fore.GREEN}{char_characteristic["steps_daily_bonus"]}{Style.RESET_ALL} ед.)', end='')
+          
+          f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} '
+          f'(Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus()}{Style.RESET_ALL} / '
+          f'Daily 🔋: + {Fore.GREEN}{char_characteristic["steps_daily_bonus"]}{Style.RESET_ALL} / '
+          f'Level: + {Fore.GREEN}{char_characteristic["lvl_up_skill_energy_max"]}{Style.RESET_ALL})', end='')
     if debug_mode:
-        print(f'(+ 1 эн. через: {abs(speed_skill_equipment_bonus_def(60) - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)', end='')
+        print(f'(+ 1 эн. через: {abs(speed_skill_equipment_and_level_bonus(60) - (timestamp_now() - char_characteristic["energy_time_stamp"])):,.0f} sec.)', end='')
     print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]:,.0f}{Style.RESET_ALL} $.')
 
     # Отображение Level персонажа, прогресс и lvl up
@@ -134,26 +138,36 @@ def steps_today_update_manual():
 
 def char_info():
     # Функция отображения характеристик персонажа. Пока сюда буду добавлять все подряд, а дальше будет видно.
-    print('\n####################################')
+    print('\n################################')
     print('### Характеристики персонажа ###')
-    print('####################################')
+    print('################################')
     print(f'- Пройдено шагов за сегодня 🏃: {char_characteristic["steps_today"]:,.0f}')
     print(f'- Потрачено шагов за сегодня 🏃: {char_characteristic["steps_today_used"]:,.0f}')
-    print('### Бонусы за навыки: ###')
-    print(f'\n- Запас энергии 🔋: {char_characteristic["energy"]} эд.')
+
+    print('\n### Бонусы за навыки: ###')
+    print(f'- Запас энергии 🔋: {char_characteristic["energy"]} эд.')
     print(f'- Макс. запас энергии 🔋: {char_characteristic["energy_max"]} эд.')
     print(f'\n- Выносливость: + {char_characteristic["stamina"]} % (+ {stamina_skill_bonus_def()} шагов).')
     print(f'- Максимальный запас энергии: + {char_characteristic["energy_max_skill"]} энергии.')
     print(f'- Скорость: + {char_characteristic["speed_skill"]} %.')
     print(f'- Удача: + {char_characteristic["luck_skill"]} %.')
+
     print('\n### Бонусы экипировки: ###')
-    print(f'- Stamina: + {equipment_stamina_bonus()} %'
-          f'\n- Energy Max: + {equipment_energy_max_bonus()} эд.'
-          f'\n- Speed: + {equipment_speed_skill_bonus()} %'
-          f'\n- Luck: + {equipment_luck_bonus()} %')
+    print(f'\t- Stamina: + {equipment_stamina_bonus()} %'
+          f'\n\t- Energy Max: + {equipment_energy_max_bonus()} эд.'
+          f'\n\t- Speed: + {equipment_speed_skill_bonus()} %'
+          f'\n\t- Luck: + {equipment_luck_bonus()} %')
+
     print(f'\n### Бонусы за прохождение каждый день 10к+ шагов:'
-          f'\n- Steps: + {char_characteristic["steps_daily_bonus"]} %'
-          f'\n- Energy Max: + {char_characteristic["steps_daily_bonus"]} эд.')
+          f'\n\t- Steps: + {char_characteristic["steps_daily_bonus"]} %'
+          f'\n\t- Energy Max: + {char_characteristic["steps_daily_bonus"]} эд.')
+
+    print(f"\n### Прокачка навыков от уровня персонажа ###"
+          f"\n\t- Stamina: {char_characteristic['lvl_up_skill_stamina']}"
+          f"\n\t- Energy Max: {char_characteristic['lvl_up_skill_energy_max']}"
+          f"\n\t- Speed Skill: {char_characteristic['lvl_up_skill_speed']}"
+          f"\n\t- Luck: { char_characteristic['lvl_up_skill_luck']}")
+
     print('\n####################################')
     print('P.S. Сюда так же будут добавлены характеристики по мере их добавления в игру.')
     print('####################################')
