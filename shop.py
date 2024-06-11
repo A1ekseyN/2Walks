@@ -1,10 +1,10 @@
-from characteristics import char_characteristic
 from colorama import Fore, Style
+
+from characteristics import char_characteristic
 
 
 class Shop():
     # Класс для магазина
-
     def shop_menu(self):
         money = f'Money 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]}{Style.RESET_ALL} $.'
         item = {

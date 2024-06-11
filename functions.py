@@ -212,3 +212,7 @@ def today_steps_to_yesterday_steps():
     else:
         char_characteristic['steps_daily_bonus'] = 0
     return char_characteristic['steps_yesterday'], char_characteristic['steps_daily_bonus']
+
+
+if __name__ == "__main__":
+    pass

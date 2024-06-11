@@ -89,12 +89,12 @@ class CharLevel():
         """Меню для повышения уровня навыков персонажа, после lvl up"""
         global char_characteristic
         if char_characteristic['char_level_up_skills'] > 0:
-            print(f"\nВам доступно: + {char_characteristic['char_level_up_skills']} не распределенных очков навыков."
+            print(f"\nВам доступно: + {char_characteristic['char_level_up_skills']} очков навыков."
                   f" Текущие навыки от уровня персонажа:"
-                  f"\n\t1. Stamina: + {char_characteristic['lvl_up_skill_stamina']}"
-                  f"\n\t2. Energy: + {char_characteristic['lvl_up_skill_energy_max']}"
-                  f"\n\t3. Speed: + {char_characteristic['lvl_up_skill_speed']}"
-                  f"\n\t4. Luck: + {char_characteristic['lvl_up_skill_luck']}"
+                  f"\n\t1. Stamina: + {char_characteristic['lvl_up_skill_stamina']} Добавляет + 1 % к общему количеству шагов"
+                  f"\n\t2. Energy: + {char_characteristic['lvl_up_skill_energy_max']}  Добавляет + 1 ед. к общему запасу энергии "
+                  f"\n\t3. Speed: + {char_characteristic['lvl_up_skill_speed']}   Добавляет + 1 % к скорости выполнения активностей"
+                  f"\n\t4. Luck: + {char_characteristic['lvl_up_skill_luck']}    Добавляет + 1 % к удаче."
                   f"\n\t0. Назад")
             try:
                 ask = int(input(f"\nВведите навык, который хотите улучшить: \n>>> "))
@@ -125,10 +125,10 @@ class CharLevel():
         else:
             print("\nУ вас нет очков навыков для распределения.")
             print(f"\nНавыки: "
-                  f"\n\tStamina: {char_characteristic['lvl_up_skill_stamina']}"
-                  f"\n\tEnergy Max: {char_characteristic['lvl_up_skill_energy_max']}"
-                  f"\n\tSpeed Skill: {char_characteristic['lvl_up_skill_speed']}"
-                  f"\n\tLuck: { char_characteristic['lvl_up_skill_luck']}")
+                  f"\n\t1. Stamina: + {char_characteristic['lvl_up_skill_stamina']} Добавляет + 1 % к общему количеству шагов"
+                  f"\n\t2. Energy: + {char_characteristic['lvl_up_skill_energy_max']}  Добавляет + 1 ед. к общему запасу энергии "
+                  f"\n\t3. Speed: + {char_characteristic['lvl_up_skill_speed']}   Добавляет + 1 % к скорости выполнения активностей"
+                  f"\n\t4. Luck: + {char_characteristic['lvl_up_skill_luck']}    Добавляет + 1 % к удаче.")
 
     def level_status_bar(self):
         """Отображение информации об Level персонажа, Прогресс бар, lvl-up"""

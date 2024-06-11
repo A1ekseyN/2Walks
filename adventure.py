@@ -1,6 +1,6 @@
 from adventure_data import adventure_data_table
 from characteristics import char_characteristic
-from colors import steps, energy
+from colors import steps_color, energy_color
 from datetime import datetime, timedelta
 from drop import Drop_Item
 from functions_02 import time
@@ -8,39 +8,6 @@ from skill_bonus import speed_skill_equipment_and_level_bonus
 from colorama import Fore, Style
 from settings import debug_mode
 
-
-"""
-walk_easy = adventure_data_table['walk_easy']
-walk_normal = adventure_data_table['walk_normal']
-walk_hard = adventure_data_table['walk_hard']
-walk_15k = adventure_data_table['walk_15k']
-walk_20k = adventure_data_table['walk_20k']
-walk_25k = adventure_data_table['walk_25k']
-walk_30k = adventure_data_table['walk_30k']
-
-
-walk_easy_requirements = f'🏃: {steps(walk_easy["steps"])} шагов, ' \
-                         f'🔋: {energy(walk_easy["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_easy["time"]))} '
-walk_normal_requirements = f'🏃: {steps(walk_normal["steps"])} шагов, ' \
-                           f'🔋: {energy(walk_normal["energy"])} энергии, ' \
-                           f'🕑: {time(speed_skill_equipment_bonus_def(walk_normal["time"]))}'
-walk_hard_requirements = f'🏃: {steps(walk_hard["steps"])} шагов, ' \
-                         f'🔋: {energy(walk_hard["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_hard["time"]))}'
-walk_15k_requirements = f'🏃: {steps(walk_15k["steps"])} шагов, ' \
-                         f'🔋: {energy(walk_15k["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_15k["time"]))}'
-walk_20k_requirements = f'🏃: {steps(walk_20k["steps"])} шагов, ' \
-                         f'🔋: {energy(walk_20k["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_20k["time"]))}'
-walk_25k_requirements = f'🏃: {steps(walk_25k["steps"])} шагов, ' \
-                         f'🔋: {energy(walk_25k["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_25k["time"]))}'
-walk_30k_requirements = f'🏃: {steps(walk_30k["steps"])} шагов, ' \
-                         f'🔋: {energy(walk_30k["energy"])} энергии, ' \
-                         f'🕑: {time(speed_skill_equipment_bonus_def(walk_30k["time"]))}'
-"""
 
 class Adventure():
     # Класс для Adventure (Приключений).
@@ -53,26 +20,26 @@ class Adventure():
         self.walk_25k = adventure_data_table['walk_25k']
         self.walk_30k = adventure_data_table['walk_30k']
 
-        self.walk_easy_requirements = f'🏃: {steps(self.walk_easy["steps"])} шагов, ' \
-                                      f'🔋: {energy(self.walk_easy["energy"])} энергии, ' \
+        self.walk_easy_requirements = f'🏃: {steps_color(self.walk_easy["steps"])} шагов, ' \
+                                      f'🔋: {energy_color(self.walk_easy["energy"])} энергии, ' \
                                       f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_easy["time"]))}'
-        self.walk_normal_requirements = f'🏃: {steps(self.walk_normal["steps"])} шагов, ' \
-                                        f'🔋: {energy(self.walk_normal["energy"])} энергии, ' \
+        self.walk_normal_requirements = f'🏃: {steps_color(self.walk_normal["steps"])} шагов, ' \
+                                        f'🔋: {energy_color(self.walk_normal["energy"])} энергии, ' \
                                         f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_normal["time"]))}'
-        self.walk_hard_requirements = f'🏃: {steps(self.walk_hard["steps"])} шагов, ' \
-                                      f'🔋: {energy(self.walk_hard["energy"])} энергии, ' \
+        self.walk_hard_requirements = f'🏃: {steps_color(self.walk_hard["steps"])} шагов, ' \
+                                      f'🔋: {energy_color(self.walk_hard["energy"])} энергии, ' \
                                       f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_hard["time"]))}'
-        self.walk_15k_requirements = f'🏃: {steps(self.walk_15k["steps"])} шагов, ' \
-                                     f'🔋: {energy(self.walk_15k["energy"])} энергии, ' \
+        self.walk_15k_requirements = f'🏃: {steps_color(self.walk_15k["steps"])} шагов, ' \
+                                     f'🔋: {energy_color(self.walk_15k["energy"])} энергии, ' \
                                      f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_15k["time"]))}'
-        self.walk_20k_requirements = f'🏃: {steps(self.walk_20k["steps"])} шагов, ' \
-                                     f'🔋: {energy(self.walk_20k["energy"])} энергии, ' \
+        self.walk_20k_requirements = f'🏃: {steps_color(self.walk_20k["steps"])} шагов, ' \
+                                     f'🔋: {energy_color(self.walk_20k["energy"])} энергии, ' \
                                      f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_20k["time"]))}'
-        self.walk_25k_requirements = f'🏃: {steps(self.walk_25k["steps"])} шагов, ' \
-                                     f'🔋: {energy(self.walk_25k["energy"])} энергии, ' \
+        self.walk_25k_requirements = f'🏃: {steps_color(self.walk_25k["steps"])} шагов, ' \
+                                     f'🔋: {energy_color(self.walk_25k["energy"])} энергии, ' \
                                      f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_25k["time"]))}'
-        self.walk_30k_requirements = f'🏃: {steps(self.walk_30k["steps"])} шагов, ' \
-                                     f'🔋: {energy(self.walk_30k["energy"])} энергии, ' \
+        self.walk_30k_requirements = f'🏃: {steps_color(self.walk_30k["steps"])} шагов, ' \
+                                     f'🔋: {energy_color(self.walk_30k["energy"])} энергии, ' \
                                      f'🕑: {time(speed_skill_equipment_and_level_bonus(self.walk_30k["time"]))}'
 
     def adventure_check_done(self):
