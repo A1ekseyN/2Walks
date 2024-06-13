@@ -4,24 +4,17 @@ from settings import debug_mode
 from colorama import Fore, Style
 from functions_02 import time
 from equipment_bonus import equipment_speed_skill_bonus
+from bonus import apply_move_optimization_work
 
-"""""""""
-work_requirements = {
-    'watchman': {'steps': 200, 'energy': 4, 'salary': 2},
-    'factory': {'steps': 500, 'energy': 7, 'salary': 5},
-    'courier_foot': {'steps': 1000, 'energy': 10, 'salary': 10},
-    'forwarder': {'steps': 5000, 'energy': 30, 'salary': 50},
-}
-"""""""""
 
 class Work():
     """Клас для работы"""
     def __init__(self, char_characteristic):
         self.work_requirements = {
-            'watchman': {'steps': 200, 'energy': 4, 'salary': 2},
-            'factory': {'steps': 500, 'energy': 7, 'salary': 5},
-            'courier_foot': {'steps': 1000, 'energy': 10, 'salary': 10},
-            'forwarder': {'steps': 5000, 'energy': 30, 'salary': 50},
+            'watchman': {'steps': apply_move_optimization_work(200), 'energy': 4, 'salary': 2},
+            'factory': {'steps': apply_move_optimization_work(500), 'energy': 7, 'salary': 5},
+            'courier_foot': {'steps': apply_move_optimization_work(1000), 'energy': 10, 'salary': 10},
+            'forwarder': {'steps': apply_move_optimization_work(5000), 'energy': 30, 'salary': 50},
         }
 
     def work_choice(self):
@@ -32,10 +25,10 @@ class Work():
                   f'\nОплата почасовая 🕑: '
                   f'1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"])))}')
             print('\nНа данный момент доступны вакансии:'
-                  f'\n\t1. Сторож     - 💰: {Fore.LIGHTYELLOW_EX}2{Style.RESET_ALL} $ (🏃: 200 + 🔋: 4)'
-                  f'\n\t2. Завод      - 💰: {Fore.LIGHTYELLOW_EX}5{Style.RESET_ALL} $ (🏃: 500 + 🔋: 7)'
-                  f'\n\t3. Курьер     - 💰: {Fore.LIGHTYELLOW_EX}10{Style.RESET_ALL} $ (🏃: 1000 + 🔋: 10)'
-                  f'\n\t4. Экспедитор - 💰: {Fore.LIGHTYELLOW_EX}50{Style.RESET_ALL} $ (🏃: 5000 + 🔋: 50)'
+                  f'\n\t1. Сторож     - 💰: {Fore.LIGHTYELLOW_EX}2{Style.RESET_ALL} $ (🏃: {self.work_requirements["watchman"]["steps"]} + 🔋: 4)'
+                  f'\n\t2. Завод      - 💰: {Fore.LIGHTYELLOW_EX}5{Style.RESET_ALL} $ (🏃: {self.work_requirements["factory"]["steps"]} + 🔋: 7)'
+                  f'\n\t3. Курьер     - 💰: {Fore.LIGHTYELLOW_EX}10{Style.RESET_ALL} $ (🏃: {self.work_requirements["courier_foot"]["steps"]} + 🔋: 10)'
+                  f'\n\t4. Экспедитор - 💰: {Fore.LIGHTYELLOW_EX}50{Style.RESET_ALL} $ (🏃: {self.work_requirements["forwarder"]["steps"]} + 🔋: 50)'
                   '\n\t0. Вернуться назад.')
             try:
                 working = input('\nВыберите вакансию, или вернитесь обратно:\n>>> ')

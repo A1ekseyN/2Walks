@@ -25,6 +25,39 @@ def level_steps_bonus():
     return bonus
 
 
+def apply_move_optimization_adventure(steps):
+    """
+    Функция для уменьшения необходимого количества шагов для прохождения Adventure
+    Количество steps уменьшается на % прокачки навыка Оптимизация движений Adventure
+    :param steps: Словарь с параметрами для прохождения Adventure
+    """
+    steps['steps'] *= (1 - char_characteristic['move_optimization_adventure'] / 100)
+    steps['steps'] = int(steps['steps'])
+    return steps
+
+
+def apply_move_optimization_gym(steps):
+    """
+    Функция для уменьшения необходимого количества шагов для улучшения навыков в Gym
+    Количество steps уменьшается на % прокачки навыка Оптимизация движений Gym
+    :param steps: Словарь с параметрами для прохождения Gym
+    """
+    steps *= (1 - char_characteristic['move_optimization_gym'] / 100)
+    steps = int(steps)
+    return steps
+
+
+def apply_move_optimization_work(steps):
+    """
+    Функция для уменьшения необходимого количества шагов для улучшения навыков в Gym
+    Количество steps уменьшается на % прокачки навыка Оптимизация движений Gym
+    :param steps: Словарь с параметрами для прохождения Gym
+    """
+    steps *= (1 - char_characteristic['move_optimization_work'] / 100)
+    steps = int(steps)
+    return steps
+
+
 #equipment_bonus_stamina_steps()
 #equipment_bonus_energy_max()
 #daily_steps_bonus()

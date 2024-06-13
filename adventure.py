@@ -7,18 +7,19 @@ from functions_02 import time
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from colorama import Fore, Style
 from settings import debug_mode
+from bonus import apply_move_optimization_adventure
 
 
 class Adventure():
     # Класс для Adventure (Приключений).
     def __init__(self, adventure_data_table):
-        self.walk_easy = adventure_data_table['walk_easy']
-        self.walk_normal = adventure_data_table['walk_normal']
-        self.walk_hard = adventure_data_table['walk_hard']
-        self.walk_15k = adventure_data_table['walk_15k']
-        self.walk_20k = adventure_data_table['walk_20k']
-        self.walk_25k = adventure_data_table['walk_25k']
-        self.walk_30k = adventure_data_table['walk_30k']
+        self.walk_easy = apply_move_optimization_adventure(adventure_data_table['walk_easy'])
+        self.walk_normal = apply_move_optimization_adventure(adventure_data_table['walk_normal'])
+        self.walk_hard = apply_move_optimization_adventure(adventure_data_table['walk_hard'])
+        self.walk_15k = apply_move_optimization_adventure(adventure_data_table['walk_15k'])
+        self.walk_20k = apply_move_optimization_adventure(adventure_data_table['walk_20k'])
+        self.walk_25k = apply_move_optimization_adventure(adventure_data_table['walk_25k'])
+        self.walk_30k = apply_move_optimization_adventure(adventure_data_table['walk_30k'])
 
         self.walk_easy_requirements = f'🏃: {steps_color(self.walk_easy["steps"])} шагов, ' \
                                       f'🔋: {energy_color(self.walk_easy["energy"])} энергии, ' \

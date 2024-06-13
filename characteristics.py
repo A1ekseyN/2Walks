@@ -130,6 +130,11 @@ char_characteristic = {
     'mechanics': 0,
     'it_technologies' : 0,
 
+    # Навыки оптимизаций движения персонажа, в разных активностях
+    'move_optimization_adventure': loaded_data_char_characteristic['move_optimization_adventure'],      # Default: 0
+    'move_optimization_gym': loaded_data_char_characteristic['move_optimization_gym'],                  # Default: 0
+    'move_optimization_work': loaded_data_char_characteristic['move_optimization_work'],                # Default: 0
+
     'work': loaded_data_char_characteristic['work'],   # Название работы          # Default: None
     'work_salary': loaded_data_char_characteristic['work_salary'],                # Default: 0
     'working': loaded_data_char_characteristic['working'],                        # Default: False
