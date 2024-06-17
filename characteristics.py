@@ -344,7 +344,7 @@ skill_training_table = {
         'steps': 25000,
         'energy': 125,
         'money': 1050,
-        'time': 4800,       # 8000 часов
+        'time': 4800,       # 80 часов
     },
 }
 

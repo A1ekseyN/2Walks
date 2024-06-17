@@ -112,9 +112,11 @@ class Work():
                       f'🔋: {Fore.GREEN}{working_hours * self.work_requirements[work]["energy"]}{Style.RESET_ALL}.')
                 print(f'Время работы 🕑: {time(working_hours * (round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}')
                 print(f'Зарплата 💰: {Fore.LIGHTYELLOW_EX}{working_hours * char_characteristic["work_salary"]}{Style.RESET_ALL} $.')
+                return True
             else:
                 print('\nДописать функционал, который показывает, чего именно не хватило. Можно использовать метод класса.')
                 print('Не достаточно: 🏃 или 🔋')
+                return False
 
 
 def work_check_done():

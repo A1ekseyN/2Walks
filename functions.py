@@ -108,6 +108,7 @@ def save_game_date_last_enter():
         char_characteristic['steps_can_use'] += level_steps_bonus()                         # Бонус за прокаченный уровень
     else:
         print('Error (save_game_date_last_enter).')
+    return char_characteristic['steps_can_use']
 
 
 def steps_today_update_manual():

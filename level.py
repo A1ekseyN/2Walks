@@ -8,7 +8,9 @@ class CharLevel():
     LEVEL_THRESHOLDS = {
         0: 10000,
         1: 20000,
-        2: 50000
+        2: 50000,
+        3: 100000,
+        4: 250000
     }
 
     def __init__(self, char_characteristic):

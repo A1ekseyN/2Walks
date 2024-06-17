@@ -1,3 +1,13 @@
+Version: 0.0.4b (17.06.2024)
+- Changed placement to AnchorLayout
+- Added buttons for selecting the number of operating hours
+- Added updating of character information when changing the screen: adventures, gym, work
+- Added game saving via kivy interface
+- Added progress bar to work
+- Added a display of the number of skill points we can add from leveling up
+- Added level up to 4-5
+- Added a button to update the number of steps
+
 Version: 0.0.4a (13.06.2024)
 - Create main_kivy.py for kivy interface
 - Create folder screens for screens files: adventure, gym, home, shop, work
