@@ -22,6 +22,7 @@ def steps_today_update():
             result_steps_today = r.json()
             steps_today = result_steps_today['steps_count'][0]['value']
             print('--- Запрос NoCodeApi успешный. ---\n')
+
             if debug_mode:
                 print(f'API Steps update: {steps_today}.')
             return steps_today
@@ -30,11 +31,12 @@ def steps_today_update():
             steps_today = 1555      # Если ошибка подключения к интернету, тогда указано число 1555 для тестов.
             return steps_today
     else:
-        # Если дата не изменилась, то заберам данные о кол-ве загов из переменной.
+        # Если дата не изменилась, то забираем данные о кол-ве шагов из переменной.
         # Сделать, чтобы данные забирались из файла.
         # По сути эта часть функции не нужна, и ее можно перенести в characteristics.py
         if debug_mode:
             print('-- Кол-во шагов не обновлялось.\n-- Шаги взяты из файла api.py + characteristic.txt')
+
         with open('characteristic.txt', 'rb') as f:
             data = pickle.load(f)
             if debug_mode:

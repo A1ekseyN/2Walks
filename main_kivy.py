@@ -41,7 +41,7 @@ class MainScreen(Screen):
 
         # AnchorLayout для кнопок меню в центре
         button_layout = AnchorLayout(anchor_x='center', anchor_y='center')
-        button_box = BoxLayout(orientation='vertical', spacing=dp(10), size_hint=(None, None), size=(dp(200), dp(300)))
+        button_box = BoxLayout(orientation='vertical', spacing=dp(5), size_hint=(None, None), size=(dp(200), dp(300)))
 
         button_info = [
             ('Home', "Home (Don't work)"),
@@ -115,7 +115,6 @@ class MainScreen(Screen):
     def update_steps_api(self, instance):
         """Метод для обновления количество шагов через API"""
         steps_today_update_manual()
-        # Вызываем метод on_enter() экрана MainScreen для обновления информации
         self.on_enter()
 
 class MyGameApp(App):
@@ -123,6 +122,8 @@ class MyGameApp(App):
         # Устанавливаем серый цвет фона для всего окна приложения
         Window.clearcolor = (0.8, 0.8, 0.8, 1)  # серый цвет фона
         sm = ScreenManager()
+
+#        Window.size = (2340 // 2, 1080 // 2)
 
         # Добавляем экраны
         sm.add_widget(MainScreen(name='main_kivy'))

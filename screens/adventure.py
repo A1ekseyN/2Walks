@@ -2,12 +2,17 @@ from kivy.uix.screenmanager import Screen
 from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.anchorlayout import AnchorLayout
+from kivy.uix.popup import Popup
+from kivy.uix.label import Label
 from kivy.metrics import dp
 from widgets.character_info_widget import CharacterInfoWidget
 from kivy.properties import ObjectProperty
 
 from characteristics import char_characteristic  # Импортируем данные о характеристиках персонажа
 from functions import save_game_date_last_enter, energy_time_charge
+from skill_bonus import speed_skill_equipment_and_level_bonus
+from adventure_data import adventure_data_table
+from adventure import Adventure
 
 
 class AdventureScreen(Screen):
@@ -15,6 +20,7 @@ class AdventureScreen(Screen):
 
     def __init__(self, **kwargs):
         super(AdventureScreen, self).__init__(**kwargs)
+        self.adventure = Adventure(adventure_data_table)
 
         # Основной AnchorLayout для размещения других Layout
         main_layout = AnchorLayout()
@@ -31,13 +37,13 @@ class AdventureScreen(Screen):
         button_box = BoxLayout(orientation='vertical', spacing=dp(5), size_hint=(None, None), size=(dp(200), dp(350)))
 
         button_info = [
-            ('walk_easy', 'Прогулка вокруг озера'),
-            ('walk_normal', 'Прогулка по району'),
-            ('walk_hard', 'Прогулка в лес'),
-            ('walk_15k', 'Прогулка на 15к шагов'),
-            ('walk_20k', 'Прогулка на 20к шагов'),
-            ('walk_25k', 'Прогулка на 25к шагов'),
-            ('walk_30k', 'Прогулка на 30к шагов'),
+            ('Прогулка: 2500 шагов', '1'),
+            ('Прогулка: 5000 шагов', '2'),
+            ('Прогулка: 10к шагов', '3'),
+            ('Прогулка: 15к шагов', '4'),
+            ('Прогулка: 20к шагов', '5'),
+            ('Прогулка: 25к шагов', '6'),
+            ('Прогулка: 30к шагов', '7'),
             ('Go Back', 'go_back')
         ]
 
@@ -50,6 +56,8 @@ class AdventureScreen(Screen):
                          border=(20, 20, 20, 20))
             if action == 'go_back':
                 btn.bind(on_release=self.go_back)
+            else:
+                btn.bind(on_release=lambda instance, act=action: self.show_confirmation_popup(act))
             button_box.add_widget(btn)
 
         button_layout.add_widget(button_box)
@@ -63,6 +71,31 @@ class AdventureScreen(Screen):
         # Инициализация информации о персонаже
         self.update_character_info()
 
+        self.popup = Popup(title='Подтверждение приключения',
+                           size_hint=(None, None), size=(400, 200),
+                           auto_dismiss=False,
+                           title_color=(1, 1, 1, 1),  # цвет текста заголовка (белый)
+                           background_color=(3, 3, 3, 1),  # цвет фона Popup (светло-серый)
+                           separator_color=(1, 1, 1, 1))  # цвет полоски (белый)
+
+        # Контент внутри Popup
+        content = BoxLayout(orientation='vertical', spacing=10)
+        self.popup_content_label = Label(text='Вы уверены, что хотите начать приключение?')
+        buttons_layout = BoxLayout(spacing=10)
+
+        btn_ok = Button(text='Ок', size_hint=(None, None), size=(100, 50))
+        btn_ok.bind(on_release=self.on_ok_pressed)
+        btn_cancel = Button(text='Отмена', size_hint=(None, None), size=(100, 50))
+        btn_cancel.bind(on_release=self.popup.dismiss)
+
+        buttons_layout.add_widget(btn_ok)
+        buttons_layout.add_widget(btn_cancel)
+
+        content.add_widget(self.popup_content_label)
+        content.add_widget(buttons_layout)
+
+        self.popup.content = content
+
     def update_character_info(self):
         # Обновление информации о персонаже на основе данных из char_characteristic_info
         steps = save_game_date_last_enter()
@@ -74,6 +107,7 @@ class AdventureScreen(Screen):
         self.character_info_widget.update_info(steps=steps, energy=energy, max_energy=max_energy,
                                                money=money, level=level, exp=7500, max_exp=10000)
 
+
     def on_enter(self, *args):
         # Метод on_enter вызывается каждый раз при показе экрана WorkScreen
         self.update_character_info()
@@ -83,6 +117,42 @@ class AdventureScreen(Screen):
         """Метод для обновления количества энергии"""
         energy_time_charge()
 
-
     def go_back(self, instance):
         self.manager.current = 'main_kivy'
+
+    def show_confirmation_popup(self, adventure_id):
+        # Отображение Popup для подтверждения начала приключения
+        self.current_adventure_id = adventure_id  # сохраняем adventure_id для последующего использования в методе on_ok_pressed
+        self.popup.open()
+
+    def on_ok_pressed(self, instance):
+        # Логика при нажатии на кнопку Ок в Popup
+        self.popup.dismiss()
+        adventure_id = self.current_adventure_id
+        if adventure_id in self.adventure.adventures:
+            adv = self.adventure.adventures[adventure_id]
+            adv_name = adv['name']
+            adv_data = adv['data']
+            adv_steps = adv_data['steps']
+            adv_energy = adv_data['energy']
+            adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'])
+
+            if self.adventure.check_requirements(adv_name, adv_steps, adv_energy, adv_time):
+                self.adventure.start_adventure(adv_name, adv_steps, adv_energy, adv_time)
+            else:
+                print('Не выполнены требования для начала приключения.')
+
+    def check_and_start_adventure(self, adventure_id):
+        # Проверяем и запускаем приключение
+        if adventure_id in self.adventure.adventures:
+            adv = self.adventure.adventures[adventure_id]
+            adv_name = adv['name']
+            adv_data = adv['data']
+            adv_steps = adv_data['steps']
+            adv_energy = adv_data['energy']
+            adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'])
+
+            if self.adventure.check_requirements(adv_name, adv_steps, adv_energy, adv_time):
+                self.adventure.start_adventure(adv_name, adv_steps, adv_energy, adv_time)
+            else:
+                print('Не выполнены требования для начала приключения.')

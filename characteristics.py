@@ -157,6 +157,7 @@ char_characteristic = {
     # Adventure / Приключения
     'adventure': loaded_data_char_characteristic['adventure'],
     'adventure_name': loaded_data_char_characteristic['adventure_name'],
+    'adventure_start_timestamp': loaded_data_char_characteristic['adventure_start_timestamp'],
     'adventure_end_timestamp': loaded_data_char_characteristic['adventure_end_timestamp'],
 
     # Adventure Counters

@@ -1,3 +1,10 @@
+Version: 0.0.4c (18.06.2024)
+- Fixed salary display when a job is running
+- Refactoring Adventure Class
+- Added launching Adventures via kivy GUI
+- Added the time at which the adventure began
+- Added visual display of Skill Training progress bar. Kivy GUI
+
 Version: 0.0.4b (17.06.2024)
 - Changed placement to AnchorLayout
 - Added buttons for selecting the number of operating hours
