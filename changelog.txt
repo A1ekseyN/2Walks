@@ -1,3 +1,10 @@
+Version: 0.0.4b (19.06.2024)
+- Fixed launching Adventures via GUI
+- Fixed display progress bar of Adventures
+- Added Inventory Screen
+- Added Character Info screen
+- Added display of character information on the character info screen.
+
 Version: 0.0.4c (18.06.2024)
 - Fixed salary display when a job is running
 - Refactoring Adventure Class

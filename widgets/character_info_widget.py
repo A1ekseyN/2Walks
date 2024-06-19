@@ -22,6 +22,8 @@ class CharacterInfoWidget(BoxLayout):
         self.work_salary = char_characteristic["work_salary"]
 
         self.adventure = char_characteristic["adventure"]               # Проверка Adventure
+        self.adventure_start_time = char_characteristic["adventure_start_timestamp"]
+        self.adventure_end_time = char_characteristic["adventure_end_timestamp"]
         self.adventure_name = char_characteristic["adventure_name"]
 
         self.skill_training = char_characteristic["skill_training"]
@@ -79,12 +81,15 @@ class CharacterInfoWidget(BoxLayout):
         """Метод для отображения виджета с Adventure"""
         if self.adventure:
             self.update_adventure_progressbar()
-#            self.adventure_bar = ProgressBar(max=100, value=50, size_hint=(None, None),
-#                                        size=(dp(100), dp(10)))
-            self.adventure_label = Label(text=f'Adventure: True, Time Left: {self.adventure_time_left}',
+            total_time = self.adventure_end_time - self.adventure_start_time
+            time_left = self.adventure_time_left
+
+            self.adventure_bar = ProgressBar(max=total_time, value=total_time - time_left, size_hint=(None, None),
+                                             size=(dp(100), dp(10)))
+            self.adventure_label = Label(text=f'Adventure: {self.adventure_name}',
                                          halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0))
             self.add_widget(self.adventure_label)
-#            self.add_widget(self.adventure_bar)
+            self.add_widget(self.adventure_bar)
 
     def view_skill_training_widget(self):
         """Метод для отображения виджета с Gym Skill Training"""
@@ -110,8 +115,8 @@ class CharacterInfoWidget(BoxLayout):
     def update_adventure_progressbar(self):
         """Обновление ProgressBar для Adventure"""
         if self.adventure:
-            self.adventure_end_time = char_characteristic["adventure_end_timestamp"]
-            self.adventure_time_left = self.adventure_end_time - int(datetime.now().timestamp())
+            self.adventure_time_total = self.adventure_end_time - self.adventure_start_time
+            self.adventure_time_left = self.adventure_end_time - datetime.now().timestamp()
 
     def update_skill_training_progressbar(self):
         """Обновление ProgressBar для Gym - Skill Training"""

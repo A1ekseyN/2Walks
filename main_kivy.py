@@ -11,6 +11,8 @@ from screens.adventure import AdventureScreen
 from screens.gym import GymScreen
 from screens.shop import ShopScreen
 from screens.work import WorkScreen
+from screens.inventory import InventoryScreen
+from screens.character_info import CharacterInfoScreen
 from widgets.character_info_widget import CharacterInfoWidget
 
 from characteristics import char_characteristic, save_characteristic
@@ -41,7 +43,7 @@ class MainScreen(Screen):
 
         # AnchorLayout для кнопок меню в центре
         button_layout = AnchorLayout(anchor_x='center', anchor_y='center')
-        button_box = BoxLayout(orientation='vertical', spacing=dp(5), size_hint=(None, None), size=(dp(200), dp(300)))
+        button_box = BoxLayout(orientation='vertical', spacing=dp(5), size_hint=(None, None), size=(dp(200), dp(400)))
 
         button_info = [
             ('Home', "Home (Don't work)"),
@@ -49,6 +51,8 @@ class MainScreen(Screen):
 #            ('Shop', "Shop (Don't work)"),
             ('Work', 'Work'),
             ('Adventure', 'Adventure'),
+            ('Inventory', 'Inventory'),
+            ('character_info', 'Character Info'),
             ('save', 'Save'),
             ('update_steps', "Update Steps")
         ]
@@ -132,7 +136,8 @@ class MyGameApp(App):
         sm.add_widget(ShopScreen(name='shop'))
         sm.add_widget(WorkScreen(name='work'))
         sm.add_widget(AdventureScreen(name='adventure'))
-
+        sm.add_widget(InventoryScreen(name='inventory'))
+        sm.add_widget(CharacterInfoScreen(name='character_info'))
         return sm
 
 

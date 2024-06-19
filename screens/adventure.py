@@ -21,6 +21,7 @@ class AdventureScreen(Screen):
     def __init__(self, **kwargs):
         super(AdventureScreen, self).__init__(**kwargs)
         self.adventure = Adventure(adventure_data_table)
+        self.buttons = {}  # Словарь для хранения кнопок и их действий
 
         # Основной AnchorLayout для размещения других Layout
         main_layout = AnchorLayout()
@@ -59,6 +60,7 @@ class AdventureScreen(Screen):
             else:
                 btn.bind(on_release=lambda instance, act=action: self.show_confirmation_popup(act))
             button_box.add_widget(btn)
+            self.buttons[action] = btn  # Сохраняем кнопку в словарь
 
         button_layout.add_widget(button_box)
 
@@ -68,14 +70,15 @@ class AdventureScreen(Screen):
 
         self.add_widget(main_layout)
 
-        # Инициализация информации о персонаже
+        # Инициализация информации о персонаже и счётчиков
         self.update_character_info()
+        self.update_character_counters()
 
         self.popup = Popup(title='Подтверждение приключения',
                            size_hint=(None, None), size=(400, 200),
                            auto_dismiss=False,
                            title_color=(1, 1, 1, 1),  # цвет текста заголовка (белый)
-                           background_color=(3, 3, 3, 1),  # цвет фона Popup (светло-серый)
+                           background_color=(0.9, 0.9, 0.9, 1),  # цвет фона Popup (светло-серый)
                            separator_color=(1, 1, 1, 1))  # цвет полоски (белый)
 
         # Контент внутри Popup
@@ -107,10 +110,34 @@ class AdventureScreen(Screen):
         self.character_info_widget.update_info(steps=steps, energy=energy, max_energy=max_energy,
                                                money=money, level=level, exp=7500, max_exp=10000)
 
+    def update_character_counters(self):
+        # Обновление счётчиков приключений из char_characteristic
+        key_map = {
+            '1': 'adventure_walk_easy_counter',
+            '2': 'adventure_walk_normal_counter',
+            '3': 'adventure_walk_hard_counter',
+            '4': 'adventure_walk_15k_counter',
+            '5': 'adventure_walk_20k_counter',
+            '6': 'adventure_walk_25k_counter',
+            '7': 'adventure_walk_30k_counter'
+        }
+
+        # Обновление счётчиков приключений из char_characteristic
+        for action, btn in self.buttons.items():
+            if action != 'go_back':
+                counter_key = key_map.get(action)
+                if counter_key in char_characteristic:
+                    counter_value = char_characteristic[counter_key]
+#                    print(f"Ключ: {counter_key}, Значение: {counter_value}")  # Отладка
+                    btn.disabled = counter_value < 3
+                else:
+#                    print(f"Ключ {counter_key} не найден в char_characteristic")  # Отладка
+                    btn.disabled = True
 
     def on_enter(self, *args):
         # Метод on_enter вызывается каждый раз при показе экрана WorkScreen
         self.update_character_info()
+        self.update_character_counters()  # Обновляем счётчики при входе на экран
         self.energy_update(char_characteristic)
 
     def energy_update(self, instance):
@@ -138,7 +165,9 @@ class AdventureScreen(Screen):
             adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'])
 
             if self.adventure.check_requirements(adv_name, adv_steps, adv_energy, adv_time):
-                self.adventure.start_adventure(adv_name, adv_steps, adv_energy, adv_time)
+                self.on_enter()
+                pass
+#                self.adventure.start_adventure(adv_name, adv_steps, adv_energy, adv_time)
             else:
                 print('Не выполнены требования для начала приключения.')
 
@@ -153,6 +182,7 @@ class AdventureScreen(Screen):
             adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'])
 
             if self.adventure.check_requirements(adv_name, adv_steps, adv_energy, adv_time):
-                self.adventure.start_adventure(adv_name, adv_steps, adv_energy, adv_time)
+                pass
+#                self.adventure.start_adventure(adv_name, adv_steps, adv_energy, adv_time)
             else:
                 print('Не выполнены требования для начала приключения.')

@@ -124,12 +124,6 @@ class WorkScreen(Screen):
             self.show_error_popup(f"Не удалось запустить работу: {work_type}. \n"
                                   f"Не достаточно Steps or Energy.")
 
-
-#    def check_requirements(self, work, working_hours):
-#        # Логика проверки требований работы и выполнения действий
-#        print(f"Проверка требований для работы: {work} на {working_hours} часов")
-#        # Добавьте вашу логику здесь
-
     def show_error_popup(self, message):
         """Отображение ошибки, если не достаточно steps, energy для запуска wokr"""
         layout = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
