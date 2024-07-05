@@ -111,26 +111,54 @@ class Wear_Equipped_Items:
         self.max_durability = 10000000  # Максимальная прочность в единицах: 10.000.000
         self.durability = self.max_durability  # Начальная прочность, 100% (или 100/100)
         self.equipment_items = self.equipped_items
+        self.neatness_factor = 1 - (char_characteristic['neatness_in_using_things'] / 100)
 
     def decrease_durability(self, steps):
-        """Метод для уменьшения прочности предметов на указанное количество шагов"""
+        """Метод для уменьшения прочности предметов на указанное количество шагов с учетом аккуратности"""
+        adjusted_steps = steps * self.neatness_factor
+
         for key, item_info in self.equipment_items.items():
             if item_info is not None:
-                item_durability = self.durability * (item_info['quality'][0] / 100)
-                item_durability -= steps
+                initial_quality = item_info['quality'][0]
+                item_durability = self.durability * (initial_quality / 100)
+
+                # Износ без учета аккуратности
+                wear_without_skill = steps / self.max_durability * 100
+
+                # Износ с учетом аккуратности
+                wear_with_skill = adjusted_steps / self.max_durability * 100
+
+                item_durability -= adjusted_steps
                 if item_durability < 0:
                     item_durability = 0
-                self.equipment_items[key]['quality'][0] = (item_durability / self.max_durability) * 100
+                final_quality = (item_durability / self.max_durability) * 100
+                self.equipment_items[key]['quality'][0] = final_quality
 
                 # Обновляем char_characteristics после изменения прочности предмета
                 if key in char_characteristic:
-                    char_characteristic[key]['quality'][0] = self.equipment_items[key]['quality'][0]
+                    char_characteristic[key]['quality'][0] = final_quality
 
-                # Можно также обновить self.durability, если требуется отслеживать общую прочность
-                # self.durability = item_durability
+                # Отладочный вывод
+                self.view_wear_reduce_change(key, initial_quality, steps, adjusted_steps, final_quality, wear_without_skill, wear_with_skill)
 
-# Пример использования:
+    def reduce_wear(self, steps):
+        """Метод для уменьшения износа предметов на процент, основанный на навыке: Аккуратность использования предметов"""
+        reduced_steps = steps * (1 - (char_characteristic['neatness_in_using_things'] / 100))
+        self.decrease_durability(reduced_steps)
 
+    def view_wear_reduce_change(self, item_name, initial_quality, steps, adjusted_steps, final_quality, wear_without_skill, wear_with_skill):
+        """Метод для отображения изменения прочности предметов"""
+        wear_reduction_percentage = ((steps - adjusted_steps) / steps) * 100  # Расчет процента уменьшения износа
+        saved_wear = wear_without_skill - wear_with_skill  # Экономия износа в процентах
+
+        print(f"\nИзменение прочности предмета '{item_name}':"
+              f"\n- Начальная прочность: {initial_quality:.6f} %"
+              f"\n- Количество шагов: {steps}"
+              f"\n- Количество шагов с учетом навыка аккуратности: {adjusted_steps:.6f}"
+              f"\n- Значение износа: {initial_quality - final_quality:.6f} %"
+              f"\n- Конечная прочность: {final_quality:.6f} %"
+              f"\n- Процент уменьшения износа благодаря навыку аккуратности: {int(wear_reduction_percentage)} %"
+              f"\n- Экономия износа благодаря навыку аккуратности: {saved_wear:.6f} %")
 
 # Создание экземпляра класса для работы с экипированными предметами
 #equipped_items_reduce_quality = Wear_Equipped_Items()
@@ -142,4 +170,3 @@ class Wear_Equipped_Items:
 #for key, item_info in equipped_items_reduce_quality.equipment_items.items():
 #    if item_info is not None:
 #        print(f"Прочность предмета '{key}': {item_info['quality']:.2f}%")
-

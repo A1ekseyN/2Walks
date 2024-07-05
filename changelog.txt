@@ -1,3 +1,7 @@
+Version: 0.0.4d (05.07.2024)
+- Added the skill Carefulness of using things. Reduces wear and tear of things by 1% for each level of strength.
+- Added pumping skill Careful use of things.
+
 Version: 0.0.4c (20.06.2024)
 - Added ability to improve skills through the Kivy GUI
 - Added + 3 Level up.

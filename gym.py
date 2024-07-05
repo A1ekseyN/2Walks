@@ -39,6 +39,11 @@ lvl_up_move_optimization_work = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimizat
                                 f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["move_optimization_work"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
                                 f'🕑: {time(round(skill_training_table[char_characteristic["move_optimization_work"] + 1]["time"] - ((skill_training_table[char_characteristic["move_optimization_work"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
 
+lvl_up_neatness_in_using_things = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
+                                 f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
+                                 f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
+                                 f'🕑: {time(round(skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["time"] - ((skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
+
 
 description_stamina = f'\nВыносливость: {Fore.GREEN}{char_characteristic["stamina"]}{Style.RESET_ALL} уровень.' \
                       f'\nКаждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.' \
@@ -70,6 +75,10 @@ description_move_optimization_work = f"\nОптимизация движений
                                      f"\nКаждый уровень уменьшает на 1 % количество шагов необходимых для активности." \
                                      f"\n\nДля улучшения необходимо: ({lvl_up_move_optimization_work})"
 
+description_neatness_in_using_things = f"\nАккуратность при использовании вещей: {Fore.GREEN}{char_characteristic['neatness_in_using_things']}{Style.RESET_ALL}. " \
+                                       f"\nКаждый уровень навыка уменьшает износ вещей на 1 %. " \
+                                       f"\n\nДля улучшения необходимо: ({lvl_up_neatness_in_using_things})" \
+
 
 def gym_menu():
     # Меню выбора навыка для прокачки.
@@ -87,9 +96,10 @@ def gym_menu():
                       'steps_daily_bonus']),
             '3': ('speed_skill', 'Speed:      ', char_characteristic['speed_skill'] + 1),
             '4': ('luck_skill', 'Luck:       ', char_characteristic['luck_skill'] + 1),
-            '5': ('move_optimization_adventure', 'Оптимизация движений Adventure: ', char_characteristic['move_optimization_adventure'] + 1),
-            '6': ('move_optimization_gym', 'Оптимизация движений Gym:       ', char_characteristic['move_optimization_gym'] + 1),
-            '7': ('move_optimization_work', 'Оптимизация движений Work:      ', char_characteristic['move_optimization_work'] + 1)
+            '5': ('move_optimization_adventure', 'Оптимизация движений Adventure:   ', char_characteristic['move_optimization_adventure'] + 1),
+            '6': ('move_optimization_gym', 'Оптимизация движений Gym:         ', char_characteristic['move_optimization_gym'] + 1),
+            '7': ('move_optimization_work', 'Оптимизация движений Work:        ', char_characteristic['move_optimization_work'] + 1),
+            '8': ('neatness_in_using_things', 'Аккуратность использования вещей: ', char_characteristic['neatness_in_using_things'] + 1)
         }
 
         print('На данный момент вы можете улучшить: ')
@@ -159,6 +169,8 @@ def display_skill_description(skill_name):
         print(description_move_optimization_gym)
     elif skill_name == 'move_optimization_work':
         print(description_move_optimization_work)
+    elif skill_name == 'neatness_in_using_things':
+        print(description_neatness_in_using_things)
 
 
 def start_training():

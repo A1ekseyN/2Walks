@@ -127,6 +127,7 @@ char_characteristic = {
     'energy_max_skill': loaded_data_char_characteristic['energy_max_skill'], # Навык для прокачки макс. энергии. (Нужен еще одна переменная, для прокачки.            # Default: 0
     'speed_skill': loaded_data_char_characteristic['speed_skill'],           # Скорость: + 1% к скорости действий игрока на 1 %.                                      # Default: 0
     'luck_skill': loaded_data_char_characteristic['luck_skill'],            # Удача: + 1% к удаче в игре. Влияет на шанс выпадения лута, на качество самого лута.     # Default: 0
+    'neatness_in_using_things': loaded_data_char_characteristic['neatness_in_using_things'],              # Навык аккуратного использования вещей. Уменьшает износ вещей на 1 %.
     'mechanics': 0,
     'it_technologies' : 0,
 
