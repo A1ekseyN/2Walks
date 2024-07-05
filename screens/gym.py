@@ -8,6 +8,7 @@ from kivy.metrics import dp
 from kivy.properties import ObjectProperty
 
 from widgets.character_info_widget import CharacterInfoWidget
+from gym import Skill_Training
 
 from characteristics import char_characteristic
 from functions import save_game_date_last_enter, energy_time_charge
@@ -54,6 +55,7 @@ class GymScreen(Screen):
             if action == 'go_back':
                 btn.bind(on_release=self.go_back)
             else:
+                self.skill_name = action
                 btn.action = action
                 btn.bind(on_release=self.show_confirmation_popup)
             button_box.add_widget(btn)
@@ -115,6 +117,40 @@ class GymScreen(Screen):
         popup.open()
 
     def perform_action(self, action, popup):
-        # Здесь должна быть логика выполнения действия в зависимости от нажатой кнопки
-        print(f'Action confirmed: {action}')
+        """
+        При подтверждении от пользователя проходит проверка или достаточно Steps, Energy.
+        Если проверка удачная, тогда запускается обучения навыка
+        """
+        char_characteristic['skill_training_name'] = self.skill_name
+        skill_training = Skill_Training(training=True, name=self.skill_name, timestamp=None, time_end=None,
+                                        time_stamp_now=None)
+
+        # Проверка требований, и запуск обучения навыкам
+        if skill_training.check_requirements():
+            print(f"test_skill_name: {self.skill_name}")
+            self.show_training_started_popup(self.skill_name)       # Отображение уведомления, что начала прокачка навыка
+
         popup.dismiss()
+
+    def show_training_started_popup(self, skill_name):
+        """
+        Метод для отображения подтверждения, что началось улучшение skill
+        :param skill_name: Название навыка, который улучшается
+        """
+        content = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
+
+        message = Label(text=f'Training for {skill_name} has started!')
+        ok_button = Button(text='OK', size_hint_y=None, height=dp(40))
+
+        content.add_widget(message)
+        content.add_widget(ok_button)
+
+        popup = Popup(title='Training Started',
+                      content=content,
+                      size_hint=(None, None),
+                      size=(dp(300), dp(200)),
+                      auto_dismiss=False)
+
+        ok_button.bind(on_release=popup.dismiss)
+
+        popup.open()

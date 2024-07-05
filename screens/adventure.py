@@ -5,9 +5,9 @@ from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.popup import Popup
 from kivy.uix.label import Label
 from kivy.metrics import dp
-from widgets.character_info_widget import CharacterInfoWidget
 from kivy.properties import ObjectProperty
 
+from widgets.character_info_widget import CharacterInfoWidget
 from characteristics import char_characteristic  # Импортируем данные о характеристиках персонажа
 from functions import save_game_date_last_enter, energy_time_charge
 from skill_bonus import speed_skill_equipment_and_level_bonus

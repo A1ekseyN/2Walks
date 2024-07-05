@@ -1,3 +1,8 @@
+Version: 0.0.4c (20.06.2024)
+- Added ability to improve skills through the Kivy GUI
+- Added + 3 Level up.
+- Added wear and tear to items in activities: Adventures, Gym, Work
+
 Version: 0.0.4b (19.06.2024)
 - Fixed launching Adventures via GUI
 - Fixed display progress bar of Adventures

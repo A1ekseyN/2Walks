@@ -94,4 +94,52 @@ def sold_item():
     except:
         sold_item()
 
-#inventory_menu()
+
+class Wear_Equipped_Items:
+    """Класс для подсчёта износа предметов"""
+    equipped_items = {
+        'equipment_head': char_characteristic['equipment_head'],
+        'equipment_neck': char_characteristic['equipment_neck'],
+        'equipment_torso': char_characteristic['equipment_torso'],
+        'equipment_finger_01': char_characteristic['equipment_finger_01'],
+        'equipment_finger_02': char_characteristic['equipment_finger_02'],
+        'equipment_legs': char_characteristic['equipment_legs'],
+        'equipment_foots': char_characteristic['equipment_foots'],
+    }
+
+    def __init__(self):
+        self.max_durability = 10000000  # Максимальная прочность в единицах: 10.000.000
+        self.durability = self.max_durability  # Начальная прочность, 100% (или 100/100)
+        self.equipment_items = self.equipped_items
+
+    def decrease_durability(self, steps):
+        """Метод для уменьшения прочности предметов на указанное количество шагов"""
+        for key, item_info in self.equipment_items.items():
+            if item_info is not None:
+                item_durability = self.durability * (item_info['quality'][0] / 100)
+                item_durability -= steps
+                if item_durability < 0:
+                    item_durability = 0
+                self.equipment_items[key]['quality'][0] = (item_durability / self.max_durability) * 100
+
+                # Обновляем char_characteristics после изменения прочности предмета
+                if key in char_characteristic:
+                    char_characteristic[key]['quality'][0] = self.equipment_items[key]['quality'][0]
+
+                # Можно также обновить self.durability, если требуется отслеживать общую прочность
+                # self.durability = item_durability
+
+# Пример использования:
+
+
+# Создание экземпляра класса для работы с экипированными предметами
+#equipped_items_reduce_quality = Wear_Equipped_Items()
+
+# Запуск активности на 5000 шагов и уменьшение прочности предметов
+#equipped_items_reduce_quality.decrease_durability(steps=200)
+
+# Вывод текущей прочности экипированных предметов
+#for key, item_info in equipped_items_reduce_quality.equipment_items.items():
+#    if item_info is not None:
+#        print(f"Прочность предмета '{key}': {item_info['quality']:.2f}%")
+

@@ -8,6 +8,7 @@ from skill_bonus import speed_skill_equipment_and_level_bonus
 from colorama import Fore, Style
 from settings import debug_mode
 from bonus import apply_move_optimization_adventure
+from inventory import Wear_Equipped_Items
 
 
 class Adventure():
@@ -144,13 +145,19 @@ class Adventure():
                 self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
         except Exception as error:
             print(f'Ошибка подтверждения выбора Приключения: {error}')
-            self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
+#            self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
 
     def check_requirements(self, adv_name, adv_steps, adv_energy, adv_time):
         # Проверка требований для Приключения.
         if char_characteristic['steps_can_use'] >= adv_steps and char_characteristic['energy'] >= adv_energy:
             print('\nПроверка требований успешна.')
             self.start_adventure(adv_name, adv_steps, adv_energy, adv_time)
+
+            # Износ Экипировки
+            steps = adv_steps
+            equipped_items_manager = Wear_Equipped_Items()
+            equipped_items_manager.decrease_durability(steps)
+
             return True
         else:
             if char_characteristic['steps_can_use'] < adv_steps:

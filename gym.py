@@ -6,6 +6,7 @@ from skill_bonus import stamina_skill_bonus, stamina_skill_bonus_def
 from functions_02 import time
 from equipment_bonus import equipment_speed_skill_bonus, equipment_energy_max_bonus
 from bonus import apply_move_optimization_gym
+from inventory import Wear_Equipped_Items
 
 
 lvl_up_stamina = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["stamina"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
@@ -115,15 +116,23 @@ def gym_menu():
 
                     # Проверка наличия достаточных ресурсов
                     if skill_training.check_requirements():
+                        # Запуск прокачки навыка
                         skill_training.start_skill_training()
+
+                        # Износ Экипировки
+                        steps = apply_move_optimization_gym(skill_training_table[char_characteristic[skill_name] + 1]["steps"])
+                        equipped_items_manager = Wear_Equipped_Items()
+                        equipped_items_manager.decrease_durability(steps)
+
+
                     else:
                         gym_menu()
                 else:
                     gym_menu()
             else:
                 gym_menu()
-        except:
-            print('\nОшибка ввода. Введите число.')
+        except Exception as error:
+            print(f'\nОшибка Gym: {error}')
             gym_menu()
 
 
@@ -212,7 +221,9 @@ class Skill_Training():
             print('\nПроверка кол-ва шагов, энергии и денег - успешна.')
 
             ### Проверить или здесь все нормально работает. И все ли хорошо с переменными.
-            Skill_Training.start_skill_training(self)       # Начало прокачки навыка, если выполнены требования.
+#            Skill_Training.start_skill_training(self)       # Начало прокачки навыка, если выполнены требования.
+
+            return True
 
         else:
             print(f'\n{Fore.RED}У вас не достаточно ресурсов: {Style.RESET_ALL}')
@@ -223,6 +234,7 @@ class Skill_Training():
             if char_characteristic['money'] <= skill_training_table[char_characteristic[self.name] + 1]["money"]:
                 print(f'\t- 💰: Не хватает - {skill_training_table[char_characteristic[self.name] + 1]["money"] - char_characteristic["money"]} money.')
             gym_menu()
+            return False
 
     def start_skill_training(self):
         # Начало обучения навыка

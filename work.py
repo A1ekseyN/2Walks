@@ -5,6 +5,7 @@ from colorama import Fore, Style
 from functions_02 import time
 from equipment_bonus import equipment_speed_skill_bonus
 from bonus import apply_move_optimization_work
+from inventory import Wear_Equipped_Items
 
 
 class Work():
@@ -68,6 +69,13 @@ class Work():
             working_hours = abs(int(input('\nВведите количество рабочих часов: 1 - 8.\n0. Выход.\n>>> ')))
             if working_hours >= 1 and working_hours <= 8:
                 self.check_requirements(work, working_hours)
+
+                # Износ Экипировки
+                steps = working_hours * self.work_requirements[work]["steps"]
+                equipped_items_manager = Wear_Equipped_Items()
+                equipped_items_manager.decrease_durability(steps)
+
+
             elif working_hours == 0:
                 self.work_choice()
             else:
