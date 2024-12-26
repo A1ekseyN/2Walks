@@ -1,7 +1,9 @@
-from api import steps_today_update
-from colorama import Fore, Style
-from datetime import datetime
 import requests
+import json
+from colorama import Fore, Style
+from datetime import datetime, timedelta
+
+from api import steps_today_update
 from adventure import Adventure
 from bonus import equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
 from characteristics import char_characteristic
@@ -112,6 +114,67 @@ def save_game_date_last_enter():
 
 
 def steps_today_update_manual():
+    """Получаем данные о количестве шагов за сегодня через Fitness API (Google Fit)."""
+    global steps_today_api
+    global steps_today
+    global char_characteristic
+
+    # Токен доступа к Fitness API
+    token = load_token_from_file("token.json")
+    url = "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate"
+
+    # Временной диапазон (с полуночи текущего дня до текущего времени)
+    now = datetime.now()
+    start_time = int(datetime(now.year, now.month, now.day).timestamp() * 1e9)  # Полночь текущего дня в наносекундах
+    end_time = int(now.timestamp() * 1e9)  # Текущее время в наносекундах
+
+    body = {
+        "aggregateBy": [{
+            "dataTypeName": "com.google.step_count.delta",
+            "dataSourceId": "derived:com.google.step_count.delta:com.google.android.gms:estimated_steps"
+        }],
+        "bucketByTime": {"durationMillis": 86400000},  # 1 день
+        "startTimeMillis": start_time // 1e6,  # Преобразуем в миллисекунды
+        "endTimeMillis": end_time // 1e6  # Преобразуем в миллисекунды
+    }
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    print('\nFitness API запрос на Steps Update.')
+
+    # Запрос к API
+    try:
+        response = requests.post(url, headers=headers, json=body)
+
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                # Извлекаем количество шагов
+                steps = data['bucket'][0]['dataset'][0]['point'][0]['value'][0]['intVal']
+                steps_today = steps  # Обновляем глобальную переменную
+                char_characteristic['steps_today'] = steps  # Сохраняем в структуру
+                print(f"Steps Updated: {steps}")
+                return steps
+            except (IndexError, KeyError):
+                print("Нет данных за сегодняшний день.")
+                steps_today = 0  # Если нет данных, сохраняем 0
+                char_characteristic['steps_today'] = 0
+                return steps_today
+        else:
+            print("Ошибка:", response.json())
+            steps_today = 404  # Обновляем переменную при ошибке соединения
+            return None
+    except Exception as e:
+        print('\n--- Ошибка API соединения. Обновление данных о кол-ве шагов не произошло ---\n')
+        steps_today = 404  # Если ошибка подключения к интернету
+        char_characteristic['steps_today'] = 404
+        return None
+
+
+def steps_today_update_manual_nocodeapi_old():
     # Функция для ручного обновления кол-ва шагов через NoCodeAPI
     global steps_today_api
     global steps_today
@@ -215,5 +278,20 @@ def today_steps_to_yesterday_steps():
     return char_characteristic['steps_yesterday'], char_characteristic['steps_daily_bonus']
 
 
+def load_token_from_file(file_path="token.json"):
+    """Загружает токен доступа из файла token.json."""
+    try:
+        with open(file_path, 'r') as file:
+            data = json.load(file)
+            return data.get('token')
+    except FileNotFoundError:
+        print(f"Файл {file_path} не найден.")
+        return None
+    except json.JSONDecodeError:
+        print("Ошибка чтения JSON из файла.")
+        return None
+
+
 if __name__ == "__main__":
+    print(steps_today_update_manual())
     pass

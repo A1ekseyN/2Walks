@@ -1,3 +1,6 @@
+Version: 0.0.4e (26.12.2024)
+- Steps number receive from Fitness API (Google Fit)
+
 Version: 0.0.4d (05.07.2024)
 - Added the skill Carefulness of using things. Reduces wear and tear of things by 1% for each level of strength.
 - Added pumping skill Careful use of things.

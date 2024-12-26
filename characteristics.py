@@ -26,7 +26,7 @@ def load_characteristic_pickle():
         char_characteristic = pickle.load(f)
         if debug_mode:
             print(f'Чтение сохранения: {char_characteristic}')
-        print(f"load_char_pickle: {char_characteristic}")
+#        print(f"load_char_pickle: {char_characteristic}")
         return char_characteristic
 
 # На данный момент данная функция используется как резервная, чтобы понимать или все правильно save/load.
@@ -89,7 +89,7 @@ def date_check_steps_today_used():
 
 # Загружаем данные из csv файла
 loaded_data_char_characteristic = load_characteristic()
-print(f"loaded_csv      : {loaded_data_char_characteristic}")
+#print(f"loaded_csv      : {loaded_data_char_characteristic}")
 
 
 # TODO: 'date_last_enter' - Добавить дату последнего входа в игру.
