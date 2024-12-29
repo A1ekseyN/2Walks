@@ -12,6 +12,7 @@ from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def, speed_skill_equipment_and_level_bonus
 from equipment_bonus import equipment_stamina_bonus, equipment_energy_max_bonus, equipment_speed_skill_bonus, equipment_luck_bonus
 from level import CharLevel
+from get_token_fitnes_api import get_access_token
 
 
 def energy_time_charge():
@@ -114,13 +115,26 @@ def save_game_date_last_enter():
 
 
 def steps_today_update_manual():
-    """Получаем данные о количестве шагов за сегодня через Fitness API (Google Fit)."""
+    """Получает данные о количестве шагов за сегодня через Fitness API (Google Fit)."""
     global steps_today_api
     global steps_today
     global char_characteristic
 
-    # Токен доступа к Fitness API
-    token = load_token_from_file("token.json")
+    # Получение токена через Fitness API
+    token = None
+    try:
+        token = load_token_from_file()  # Попытка загрузить токен из файла
+    except AttributeError:
+        print("Токен отсутствует или недействителен. Попробуем обновить его.")
+        token = get_access_token()
+
+    if not token:
+        print("Не удалось получить токен для Fitness API.")
+        steps_today = 401  # Ошибка авторизации
+        char_characteristic['steps_today'] = 401
+        return None
+
+    # URL для запроса Fitness API
     url = "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate"
 
     # Временной диапазон (с полуночи текущего дня до текущего времени)
@@ -139,15 +153,25 @@ def steps_today_update_manual():
     }
 
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {token}",  # Используем токен
         "Content-Type": "application/json"
     }
 
     print('\nFitness API запрос на Steps Update.')
 
-    # Запрос к API
     try:
         response = requests.post(url, headers=headers, json=body)
+
+        if response.status_code == 401:  # Ошибка авторизации, возможно, токен истек
+            print("Токен истек. Обновляем токен и повторяем запрос...")
+            token = get_access_token()
+            if not token:
+                print("Не удалось обновить токен.")
+                steps_today = 401  # Ошибка авторизации
+                char_characteristic['steps_today'] = 401
+                return None
+            headers["Authorization"] = f"Bearer {token}"
+            response = requests.post(url, headers=headers, json=body)  # Повторяем запрос
 
         if response.status_code == 200:
             try:

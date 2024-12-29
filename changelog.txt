@@ -1,3 +1,6 @@
+Version: 0.0.4f (27.12.2024)
+- BugFix. Fix authorization in Fitness API using token. Now token is correctly saved in token.json file
+
 Version: 0.0.4e (26.12.2024)
 - Steps number receive from Fitness API (Google Fit)
 
