@@ -3,7 +3,7 @@ import json
 from colorama import Fore, Style
 from datetime import datetime, timedelta
 
-from api import steps_today_update
+from api import steps_today_update, load_token_from_file
 from adventure import Adventure
 from bonus import equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
 from characteristics import char_characteristic
@@ -302,18 +302,18 @@ def today_steps_to_yesterday_steps():
     return char_characteristic['steps_yesterday'], char_characteristic['steps_daily_bonus']
 
 
-def load_token_from_file(file_path="token.json"):
-    """Загружает токен доступа из файла token.json."""
-    try:
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-            return data.get('token')
-    except FileNotFoundError:
-        print(f"Файл {file_path} не найден.")
-        return None
-    except json.JSONDecodeError:
-        print("Ошибка чтения JSON из файла.")
-        return None
+#def load_token_from_file(file_path="token.json"):
+#    """Загружает токен доступа из файла token.json."""
+#    try:
+#        with open(file_path, 'r') as file:
+#            data = json.load(file)
+#            return data.get('token')
+#    except FileNotFoundError:
+#        print(f"Файл {file_path} не найден.")
+#        return None
+#    except json.JSONDecodeError:
+#        print("Ошибка чтения JSON из файла.")
+#        return None
 
 
 if __name__ == "__main__":

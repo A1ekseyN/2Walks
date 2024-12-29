@@ -1,3 +1,9 @@
+Version: 0.0.4g (29.12.2024)
+- Created a function to save char_characteristics to Google Sheet DB
+- Created a function to load char_characteristics from Google Sheet DB
+- Create folder: Credentials
+- BugFix. Fixed an error when loading the number of steps for the first time in a day
+
 Version: 0.0.4f (27.12.2024)
 - BugFix. Fix authorization in Fitness API using token. Now token is correctly saved in token.json file
 
