@@ -83,15 +83,27 @@ def save_game_date_last_enter():
     # Используется для обновления энергии и шагов на протяжении дня.
     # Если вход был выполнен не сегодня, то происходит обновление кол-ва шагов, через API.
     # Если последний вход был сегодня, то ничего не происходит.
-    save_game_last_enter_date_file = open('save.txt', 'r')
-    last_enter_date = save_game_last_enter_date_file.read()
+
+    # Текущая дата
     now_date = datetime.now().date()
-    if str(now_date) != last_enter_date:
-        print(f"\nПоследний вход в игру: {now_date}.")
-        # Обновления даты последнего входа в игру.
-        save_game_last_enter_date_file = open('save.txt', 'w')
-        save_game_last_enter_date_file.write(f"{str(now_date)}")
-        save_game_last_enter_date_file.close()
+
+    # Считываем дату последнего входа
+    with open('save.txt', 'r') as save_file:
+        last_enter_date = save_file.read()
+
+    # Проверяем дату последнего входа через ключ 'date_last_enter'
+    last_enter_date_char = char_characteristic.get('date_last_enter', None)
+#    print(f"now_date: {now_date}, last_date_txt: {last_enter_date}, last_date_char_characteristic: {last_enter_date_char}")
+#    print(f"char: {char_characteristic}")
+
+    # Новый день
+    if str(now_date) != str(last_enter_date_char):
+#    if str(now_date) != last_enter_date:
+        print(f"\nNew Day: {now_date}. Обновляем шаги и бонусы.")
+
+        # Обновляем дату последнего входа
+        with open('save.txt', 'w') as save_file:
+            save_file.write(str(now_date))
 
         # Обновление числа шагов, пройденных за вчера.
         # Если более 10к, то дается бонус.
@@ -100,7 +112,15 @@ def save_game_date_last_enter():
         # Обновление данных о кол-ве шагов за день.
         steps_today_update()
 
-    elif str(now_date) == last_enter_date:
+        # Обновляем количество потраченных шагов за сегодня
+        char_characteristic['steps_today_used'] = 0
+
+        # Обновляем дату последнего входа в ключе 'date_last_enter'
+        char_characteristic['date_last_enter'] = str(now_date)
+
+    # Текущий день
+    elif str(now_date) == str(last_enter_date_char):
+    #    elif str(now_date) == last_enter_date:
         # Текущая дата, и дата последнего входа в игру совпадает.
         # Похоже, что это место, гда высчитывается общее количество шагов, которое может потратить игрок
         # Но, это нужно проверить

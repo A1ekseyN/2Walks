@@ -1,3 +1,6 @@
+Version: 0.0.4h (30.12.2024)
+- BugFix. Add key: 'date_last_enter'. Try to fix bug with last date. Need to finish.
+
 Version: 0.0.4g (29.12.2024)
 - Created a function to save char_characteristics to Google Sheet DB
 - Created a function to load char_characteristics from Google Sheet DB

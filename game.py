@@ -16,10 +16,7 @@ def game():
             global char_characteristic
 
             while True:
-                if debug_mode:
-                    print(char_characteristic)
-
-                save_game_date_last_enter()     # Проверка даты последнего захода в игру.
+#                save_game_date_last_enter()     # Проверка даты последнего захода в игру.
                 energy_time_charge()            # Проверка и восстановление игровой энергии.
                 work_check_done()               # Проверка работает ли персонаж, и закончил ли он работу по таймауту.
                 skill_training_check_done()     # Проверка или закончилось улучшение навыка и повышение lvl навыка.

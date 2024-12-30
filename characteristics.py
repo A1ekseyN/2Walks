@@ -34,7 +34,7 @@ def load_characteristic_pickle():
 
 # На данный момент данная функция используется как резервная, чтобы понимать или все правильно save/load.
 # load_characteristic_pickle() работает только как вывод информации
-load_characteristic_pickle()
+#load_characteristic_pickle()
 
 
 def load_characteristic():
@@ -82,9 +82,6 @@ def date_check_steps_today_used():
     last_enter_date = date_today_check.read()
     now_date = datetime.now().date()
     if str(now_date) != last_enter_date:
-        if debug_mode:
-            print('Данные обновлены: [steps_today_used] - 0.')
-            return 0
         return 0
     elif str(now_date) == last_enter_date:
         return load_characteristic()['steps_today_used']
@@ -114,7 +111,7 @@ def load_data_from_google_sheet_or_csv(spreadsheet_id: str, sheet_name: str):
 
 
 # TODO: При загрузке данных из Google Sheets Возникает ошибка в ключе 'inventory'.
-#  Нужно в Google таблицу сохранять данные в таком же формате, как они находятя в переменной. Словарь в словаре.
+#  Нужно в Google таблицу сохранять данные в таком же формате, как они находятся в переменной. Словарь в словаре.
 # Попытка загрузить данные из char_characteristic из Google Sheet.
 # При ошибке загружаем данные из csv файла
 #loaded_data_char_characteristic = load_data_from_google_sheet_or_csv('1l1SfzodtHAAIVsmsQjZPK2YEltilVzu5psv0_2p4MLM',
@@ -130,7 +127,7 @@ print(f"loaded_csv      : {loaded_data_char_characteristic}")
 # TODO: 'date_last_enter' - Добавить дату последнего входа в игру.
 #  На данный момент это значение сохраняется в файл save.txt
 char_characteristic = {
-    'date_last_enter': None,    # Добавить дату последнего входа в игру
+    'date_last_enter': loaded_data_char_characteristic['date_last_enter'],              # Добавить дату последнего входа в игру. Default: None
     'timestamp_last_enter': datetime.now().timestamp(),    # TimeStamp для расчёта игрового времени
     'steps_today' : steps_today(),                                                      # Default: 0
     'steps_can_use': 0,                                                                 # Default: 0
