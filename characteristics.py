@@ -89,17 +89,24 @@ def date_check_steps_today_used():
 
 def load_data_from_google_sheet_or_csv():
     """
-    Сначала пытается загрузить данные из Google Sheets, если это не удастся, загружает данные из CSV файла.
+    Сначала пытается загрузить данные из Google Sheets.
+    Если это не удастся или данные пусты, загружает данные из CSV файла.
 
-    :param spreadsheet_id: ID Google Sheets документа.
-    :param sheet_name: Имя листа в таблице.
     :return: Словарь данных.
     """
     try:
         # Попытка загрузить данные из Google Sheets
         loaded_data_char_characteristic = load_char_characteristic_from_google_sheet()
-        if loaded_data_char_characteristic is not None:
-#            print("Данные успешно загружены из Google Sheets.")
+
+        if loaded_data_char_characteristic:
+            # Если данные успешно загружены и они не пустые
+            print("Данные успешно загружены из Google Sheets.")
+            return loaded_data_char_characteristic
+        else:
+            # Если Google Sheets пуст, загружаем данные из CSV
+            print("Google Sheets пуст. Загружаем данные из CSV файла.")
+            loaded_data_char_characteristic = load_characteristic()
+            print("Loaded Data from CSV.")
             return loaded_data_char_characteristic
 
     except Exception as error:

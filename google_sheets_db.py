@@ -30,10 +30,14 @@ def save_char_characteristic_to_google_sheet(file_path='characteristic.txt',
     rows = [["Key", "Value"]]
 
     for key, value in data.items():
-        if isinstance(value, list) or isinstance(value, dict):
+        if isinstance(value, (list, dict)):
             # Сохранение списков и словарей как JSON строки
             rows.append([key, json.dumps(value)])
+        elif isinstance(value, datetime):
+            # Преобразование datetime в строку
+            rows.append([key, value.strftime('%Y-%m-%d %H:%M:%S.%f')])
         else:
+            # Записываем остальные данные как есть (включая timestamp)
             rows.append([key, value])
 
     # Очистка листа перед записью новых данных

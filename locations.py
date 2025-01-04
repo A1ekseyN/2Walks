@@ -50,7 +50,7 @@ def shop_location():
 
 def work_location():
     # Локация - Работа.
-    print(f"char: {char_characteristic}")
+#    print(f"char: {char_characteristic}")
     Work(char_characteristic).work_choice()
 
 

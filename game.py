@@ -149,7 +149,7 @@ def game():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.0.5b")
+    print(f"Version: 0.0.5ba")
     os.system("chcp 65001")         # Включение Unicode для консоли. Все равно это не работает
 
 #    try:

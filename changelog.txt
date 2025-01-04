@@ -1,4 +1,7 @@
-Version: 0.0.5b (05.01.2025)
+Version: 0.0.5ba (04.01.2025)
+- HotFix. Fixed a bug with saving data when pumping skills. Datetime -> str().
+
+Version: 0.0.5b (04.01.2025)
 - Small changes
 - Add *.ico files for icons
 - Create buildozer.spec for APK GUI (don't work)
