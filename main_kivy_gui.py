@@ -121,6 +121,7 @@ class MainScreen(Screen):
         steps_today_update_manual()
         self.on_enter()
 
+
 class MyGameApp(App):
     def build(self):
         # Устанавливаем серый цвет фона для всего окна приложения

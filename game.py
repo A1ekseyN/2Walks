@@ -1,3 +1,9 @@
+#pyinstaller --onefile --icon=icons/2walks.ico game.py
+
+import os
+import sys
+import time
+
 from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar
 from characteristics import *
 from equipment import Equipment
@@ -7,6 +13,8 @@ from work import Work, work_check_done
 from inventory import inventory_menu
 from level import CharLevel
 from google_sheets_db import save_char_characteristic_to_google_sheet, load_char_characteristic_from_google_sheet
+
+from colorama import init
 
 
 def game():
@@ -110,11 +118,10 @@ def game():
                     save_characteristic()
                     save_char_characteristic_to_google_sheet()
                     print('🚪 Спасибо за игру. До встречи.')
-                    quit()
+                    sys.exit()
+#                    quit()
 
-#                elif temp_number == 'l' or temp_number == 'д':
-#                    load_characteristic()
-
+        # Запуск функции, которая относится к локациям
         if char_characteristic['loc'] == 'home':
             home_location()
             location_selection()
@@ -140,5 +147,13 @@ def game():
             bank_location()
             location_selection()
 
+
 if __name__ == "__main__":
+    print(f"Version: 0.0.5b")
+    os.system("chcp 65001")         # Включение Unicode для консоли. Все равно это не работает
+
+#    try:
     game()
+#    except Exception as error:
+#        print(f"Error: {error}")
+#        time.sleep(30)

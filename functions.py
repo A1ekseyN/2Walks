@@ -93,12 +93,9 @@ def save_game_date_last_enter():
 
     # Проверяем дату последнего входа через ключ 'date_last_enter'
     last_enter_date_char = char_characteristic.get('date_last_enter', None)
-#    print(f"now_date: {now_date}, last_date_txt: {last_enter_date}, last_date_char_characteristic: {last_enter_date_char}")
-#    print(f"char: {char_characteristic}")
 
     # Новый день
     if str(now_date) != str(last_enter_date_char):
-#    if str(now_date) != last_enter_date:
         print(f"\nNew Day: {now_date}. Обновляем шаги и бонусы.")
 
         # Обновляем дату последнего входа
@@ -120,7 +117,6 @@ def save_game_date_last_enter():
 
     # Текущий день
     elif str(now_date) == str(last_enter_date_char):
-    #    elif str(now_date) == last_enter_date:
         # Текущая дата, и дата последнего входа в игру совпадает.
         # Похоже, что это место, гда высчитывается общее количество шагов, которое может потратить игрок
         # Но, это нужно проверить
@@ -320,20 +316,6 @@ def today_steps_to_yesterday_steps():
     else:
         char_characteristic['steps_daily_bonus'] = 0
     return char_characteristic['steps_yesterday'], char_characteristic['steps_daily_bonus']
-
-
-#def load_token_from_file(file_path="token.json"):
-#    """Загружает токен доступа из файла token.json."""
-#    try:
-#        with open(file_path, 'r') as file:
-#            data = json.load(file)
-#            return data.get('token')
-#    except FileNotFoundError:
-#        print(f"Файл {file_path} не найден.")
-#        return None
-#    except json.JSONDecodeError:
-#        print("Ошибка чтения JSON из файла.")
-#        return None
 
 
 if __name__ == "__main__":

@@ -160,6 +160,7 @@ class Wear_Equipped_Items:
               f"\n- Процент уменьшения износа благодаря навыку аккуратности: {int(wear_reduction_percentage)} %"
               f"\n- Экономия износа благодаря навыку аккуратности: {saved_wear:.6f} %")
 
+
 # Создание экземпляра класса для работы с экипированными предметами
 #equipped_items_reduce_quality = Wear_Equipped_Items()
 

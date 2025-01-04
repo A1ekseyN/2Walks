@@ -110,12 +110,10 @@ def load_data_from_google_sheet_or_csv():
         return loaded_data_char_characteristic
 
 
-# TODO: При загрузке данных из Google Sheets Возникает ошибка в ключе 'inventory'.
-#  Нужно в Google таблицу сохранять данные в таком же формате, как они находятся в переменной. Словарь в словаре.
 # Попытка загрузить данные из char_characteristic из Google Sheet.
 # При ошибке загружаем данные из csv файла
 loaded_data_char_characteristic = load_data_from_google_sheet_or_csv()
-print(f"loaded_data_char_characteristic: {loaded_data_char_characteristic}")
+#print(f"loaded_data_char_characteristic: {loaded_data_char_characteristic}")
 
 
 # Загружаем данные char_characteristics из characteristic.csv

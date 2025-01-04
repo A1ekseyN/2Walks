@@ -1,3 +1,10 @@
+Version: 0.0.5b (05.01.2025)
+- Small changes
+- Add *.ico files for icons
+- Create buildozer.spec for APK GUI (don't work)
+- Created a file for console launch of the game. main_kivy_console.py (don't work)
+- Refactoring
+
 Version: 0.0.5a (04.01.2025)
 - Added saving game to Google Sheets
 - Added loading game to Google Sheets
