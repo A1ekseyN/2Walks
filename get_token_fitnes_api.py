@@ -1,8 +1,8 @@
+import os
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 import json
-
 
 SCOPES = ['https://www.googleapis.com/auth/fitness.activity.read']
 TOKEN_FILE = 'token.json'
@@ -29,6 +29,7 @@ def save_token(creds):
     except Exception as e:
         print(f"Ошибка при сохранении токена: {e}")
 
+
 def load_token():
     """
     Загружает токены из файла.
@@ -49,22 +50,32 @@ def load_token():
 def get_access_token():
     """
     Получает access token. Если токен недействителен, выполняется обновление или повторная авторизация.
+    При ошибке обновления токена удаляет файл token.json и повторяет авторизацию.
     :return: Строка access token.
     """
     creds = load_token()
 
-    if not creds or not creds.valid:
+    if not creds or not creds.valid:  # Если токен отсутствует или недействителен
         try:
             if creds and creds.expired and creds.refresh_token:
-                print("Token has expired. Update token...")
+                print("Token has expired. Trying to refresh...")
                 creds.refresh(Request())
             else:
-                print("New authorization")
+                print("Starting new authorization...")
                 flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
                 creds = flow.run_local_server(port=0)
-            save_token(creds)
+
+            save_token(creds)  # Сохраняем новый токен
+
         except Exception as e:
-            print(f"Ошибка при получении токена: {e}")
+            print(f"Ошибка при обновлении или получении токена: {e}")
+
+            # Если обновление не удалось, удаляем файл token.json и повторяем авторизацию
+            if os.path.exists(TOKEN_FILE):
+                print(f"Удаляем файл {TOKEN_FILE} и повторяем авторизацию...")
+                os.remove(TOKEN_FILE)
+                return get_access_token()  # Рекурсивный вызов для повторной авторизации
+
             return None
 
     return creds.token
