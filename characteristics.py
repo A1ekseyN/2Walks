@@ -6,7 +6,7 @@ import ast
 
 from api import steps_today_update
 from settings import debug_mode
-from google_sheets_db import read_char_characteristic_from_google_sheet
+from google_sheets_db import load_char_characteristic_from_google_sheet
 
 
 # Шаги за сегодня
@@ -87,7 +87,7 @@ def date_check_steps_today_used():
         return load_characteristic()['steps_today_used']
 
 
-def load_data_from_google_sheet_or_csv(spreadsheet_id: str, sheet_name: str):
+def load_data_from_google_sheet_or_csv():
     """
     Сначала пытается загрузить данные из Google Sheets, если это не удастся, загружает данные из CSV файла.
 
@@ -97,16 +97,16 @@ def load_data_from_google_sheet_or_csv(spreadsheet_id: str, sheet_name: str):
     """
     try:
         # Попытка загрузить данные из Google Sheets
-        loaded_data_char_characteristic = read_char_characteristic_from_google_sheet(spreadsheet_id, sheet_name)
+        loaded_data_char_characteristic = load_char_characteristic_from_google_sheet()
         if loaded_data_char_characteristic is not None:
-            print("Данные успешно загружены из Google Sheets.")
+#            print("Данные успешно загружены из Google Sheets.")
             return loaded_data_char_characteristic
 
     except Exception as error:
         print(f"Ошибка при загрузке данных из Google Sheets: {error}. Загружаем данные из CSV файла.")
         # В случае ошибки загрузки из Google Sheets, загружаем данные из CSV файла
         loaded_data_char_characteristic = load_characteristic()
-        print("Данные успешно загружены из CSV файла.")
+        print("Loaded Data from CSV.")
         return loaded_data_char_characteristic
 
 
@@ -114,14 +114,13 @@ def load_data_from_google_sheet_or_csv(spreadsheet_id: str, sheet_name: str):
 #  Нужно в Google таблицу сохранять данные в таком же формате, как они находятся в переменной. Словарь в словаре.
 # Попытка загрузить данные из char_characteristic из Google Sheet.
 # При ошибке загружаем данные из csv файла
-#loaded_data_char_characteristic = load_data_from_google_sheet_or_csv('1l1SfzodtHAAIVsmsQjZPK2YEltilVzu5psv0_2p4MLM',
-#                                                                     'Sheet1')
-#print(f"loaded_data_char_characteristic: {loaded_data_char_characteristic}")
+loaded_data_char_characteristic = load_data_from_google_sheet_or_csv()
+print(f"loaded_data_char_characteristic: {loaded_data_char_characteristic}")
 
 
-# Загружаем данные char_characteristics из csv файла
-loaded_data_char_characteristic = load_characteristic()
-print(f"loaded_csv      : {loaded_data_char_characteristic}")
+# Загружаем данные char_characteristics из characteristic.csv
+#loaded_data_char_characteristic = load_characteristic()
+#print(f"loaded_csv      : {loaded_data_char_characteristic}")
 
 
 # TODO: 'date_last_enter' - Добавить дату последнего входа в игру.

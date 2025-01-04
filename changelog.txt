@@ -1,3 +1,7 @@
+Version: 0.0.5a (04.01.2025)
+- Added saving game to Google Sheets
+- Added loading game to Google Sheets
+
 Version: 0.0.4i (03.01.2025)
 - BugFix. Added re-creation of token.json for Fitness API authorization. If the old token.json has expired
 

@@ -6,6 +6,7 @@ from gym import skill_training_check_done
 from work import Work, work_check_done
 from inventory import inventory_menu
 from level import CharLevel
+from google_sheets_db import save_char_characteristic_to_google_sheet, load_char_characteristic_from_google_sheet
 
 
 def game():
@@ -38,6 +39,7 @@ def game():
                       f'e. 🎒 Экипировка // '
                       f'c. Характеристики // '
                       f'u. Level'
+                      f'\n\tl. ☁ Load from Cloud'
                       f'\n\ts. 💾 Save Game'
                       f'\n\tq/e. 💾 + 🚪 Save & Exit')
                 try:
@@ -96,12 +98,17 @@ def game():
                     char_info()
                 elif temp_number == 'u' or temp_number == 'г':
                     CharLevel(char_characteristic).menu_skill_point_allocation()
+                elif temp_number == 'l' or temp_number == 'д':
+                    # Загрузка игры из Google Sheets
+                    char_characteristic = load_char_characteristic_from_google_sheet()
                 elif temp_number == 's' or temp_number == 'ы':
                     # Сохранение игры.
                     save_characteristic()
+                    save_char_characteristic_to_google_sheet()
                 elif temp_number == 'q' or temp_number == 'й':
                     # Сохранение игры, и выход.
                     save_characteristic()
+                    save_char_characteristic_to_google_sheet()
                     print('🚪 Спасибо за игру. До встречи.')
                     quit()
 
