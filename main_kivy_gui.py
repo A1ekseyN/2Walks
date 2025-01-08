@@ -5,6 +5,8 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.metrics import dp
 from kivy.core.window import Window
+from kivy.uix.image import Image
+from kivy.uix.label import Label
 
 from screens.home import HomeScreen
 from screens.adventure import AdventureScreen
@@ -18,6 +20,8 @@ from widgets.character_info_widget import CharacterInfoWidget
 from characteristics import char_characteristic, save_characteristic
 from functions import save_game_date_last_enter, energy_time_charge, steps_today_update_manual
 from work import work_check_done
+from google_sheets_db import save_char_characteristic_to_google_sheet
+
 
 class MainScreen(Screen):
     def __init__(self, **kwargs):
@@ -75,6 +79,12 @@ class MainScreen(Screen):
 
         button_layout.add_widget(button_box)
 
+        # Вызываем метод для добавления фона
+        self.add_background_main(main_layout)
+
+        # Вызываем метод для добавления версии игры
+        self.version_view(main_layout)
+
         # Добавляем AnchorLayout для информации о персонаже и кнопок в основной AnchorLayout
         main_layout.add_widget(character_info_layout)
         main_layout.add_widget(button_layout)
@@ -106,7 +116,8 @@ class MainScreen(Screen):
 
     def save_characteristics(self, instance):
         """Метод для сохранения прогресса в игре. Сохраняет переменную char_characteristic в cvs, txt"""
-        save_characteristic()
+        save_characteristic()                           # Сохраняем данные в CSV
+        save_char_characteristic_to_google_sheet()      # Сохраняем данные в Google Sheets
 
     def energy_update(self, instance):
         """Метод для обновления количества энергии"""
@@ -120,6 +131,35 @@ class MainScreen(Screen):
         """Метод для обновления количество шагов через API"""
         steps_today_update_manual()
         self.on_enter()
+
+    def add_background_main(self, layout):
+        """Метод для добавления фона"""
+        background_image = Image(
+            source='screens/background/background_main.png',
+            allow_stretch=False,  # Отключаем растяжение картинки
+            keep_ratio=True,  # Сохраняем пропорции картинки
+            size_hint=(None, None)  # Отключаем автоматическое изменение размера
+        )
+
+        # Устанавливаем исходный размер картинки
+        background_image.size = (768, 1366)
+
+        # Центрируем картинку на экране
+        background_image.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+        layout.add_widget(background_image)
+
+    def version_view(self, layout):
+        """Метод для добавления информации о версии игры внизу справа"""
+        version = "Version: 0.0.5c "
+        version_layout = AnchorLayout(anchor_x='right', anchor_y='bottom')
+        version_label = Label(text=version,
+                              size_hint=(None, None),
+                              size=(dp(100), dp(30)),
+                              color=(0, 0, 0, 1))  # Черный цвет текста
+        version_layout.add_widget(version_label)
+
+        # Добавляем Layout с версией в основной макет
+        layout.add_widget(version_layout)
 
 
 class MyGameApp(App):
@@ -143,5 +183,4 @@ class MyGameApp(App):
 
 
 if __name__ == '__main__':
-    print(f"char: {char_characteristic}")
     MyGameApp().run()

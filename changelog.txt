@@ -1,3 +1,11 @@
+Version: 0.0.5d
+- Added display of the number of steps spent, energy, when getting a job. (Max. work hours)
+
+Version: 0.0.5c
+- Added background picture to Main screen.
+- The text color of the character characteristics widget has been changed to black
+- Added display of client version in GUI interface
+
 Version: 0.0.5ba (04.01.2025)
 - HotFix. Fixed a bug with saving data when pumping skills. Datetime -> str().
 

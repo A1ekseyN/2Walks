@@ -22,6 +22,7 @@ class Work():
         # Выбор места работы для персонажа.
         if not char_characteristic['working']:
             print('\n--- 🏭 Work Location 🏭 ---')
+            print(f'\nSteps 🏃: {char_characteristic["steps_can_use"]}; Energy 🔋: {char_characteristic["energy"]}')
             print(f'В этой локации можно устроится на работу. '
                   f'\nОплата почасовая 🕑: '
                   f'1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"])))}')
@@ -62,12 +63,28 @@ class Work():
     def ask_hours(self, work):
         # Сколько рабочих часов
         try:
+#            print(f'char: {char_characteristic}')
             print(f'\nSteps 🏃: {char_characteristic["steps_can_use"]}; Energy 🔋: {char_characteristic["energy"]}')
             print(f'Вы выбрали вакансию: {Fore.GREEN}{work.title()}{Style.RESET_ALL} c зарплатой: {Fore.LIGHTYELLOW_EX}{self.work_requirements[work]["salary"]}{Style.RESET_ALL} $ в час.')
-            print(f'Оплата почасовая 🕑: '
-                  f'1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"])))}')
+
+            # Оплата почасовая 🕑
+            work_time_per_hour = round(60 - (
+                    (60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus() +
+                    char_characteristic["lvl_up_skill_speed"]))
+            print(f'Оплата почасовая 🕑: 1 час = {time(work_time_per_hour)}')
+
+            # Расчёт максимального доступного количества рабочих часов
+            max_hours_by_steps = char_characteristic["steps_can_use"] // self.work_requirements[work]["steps"]
+            max_hours_by_energy = char_characteristic["energy"] // self.work_requirements[work]["energy"]
+            max_available_hours = min(max_hours_by_steps, max_hours_by_energy, 8)  # Ограничиваем максимум 8 часами
+
+            print(f'Max work hours: {Fore.LIGHTBLUE_EX}{max_available_hours}{Style.RESET_ALL} '
+                  f'({Fore.LIGHTCYAN_EX}{max_available_hours * self.work_requirements[work]["steps"]}{Style.RESET_ALL} шагов, '
+                  f'{Fore.LIGHTGREEN_EX}{max_available_hours * self.work_requirements[work]["energy"]}{Style.RESET_ALL} энергии, '
+                  f'{Fore.LIGHTYELLOW_EX}{max_available_hours * self.work_requirements[work]["salary"]}{Style.RESET_ALL} $ заработка).')
+
             working_hours = abs(int(input('\nВведите количество рабочих часов: 1 - 8.\n0. Выход.\n>>> ')))
-            if working_hours >= 1 and working_hours <= 8:
+            if working_hours >= 1 and working_hours <= max_available_hours:
                 self.check_requirements(work, working_hours)
 
                 # Износ Экипировки
@@ -75,14 +92,13 @@ class Work():
                 equipped_items_manager = Wear_Equipped_Items()
                 equipped_items_manager.decrease_durability(steps)
 
-
             elif working_hours == 0:
                 self.work_choice()
             else:
-                print('\nНужно ввести число рабочих часов в диапазоне 1 - 8.')
+                print(f'\nНужно ввести число рабочих часов в диапазоне 1 - {max_available_hours}.')
                 self.ask_hours(work)
         except:
-            print('\nВы ввели не правильные данные. Попробуйте еще раз.')
+            print('\nВы ввели неправильные данные. Попробуйте ещё раз.')
             self.ask_hours(work)
 
     def add_working_hours(self, work):

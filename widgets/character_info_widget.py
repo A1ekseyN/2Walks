@@ -35,11 +35,11 @@ class CharacterInfoWidget(BoxLayout):
         self.padding = dp(10)
         self.spacing = dp(2)
 
-        self.steps_label = Label(text=f'Steps: {self.steps}', halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0))
-        self.energy_label = Label(text=f'Energy: {self.energy}/{self.energy_max}', halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0))
+        self.steps_label = Label(text=f'Steps: {self.steps}', halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0), color=(0, 0, 0, 1))
+        self.energy_label = Label(text=f'Energy: {self.energy}/{self.energy_max}', halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0), color=(0, 0, 0, 1))
         self.energy_bar = ProgressBar(max=100, value=50, size_hint=(None, None), size=(dp(100), dp(10)))
-        self.money_label = Label(text=f'Money: ${self.money}', halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0))
-        self.level_label = Label(text=f'Level: {self.level}', halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0))
+        self.money_label = Label(text=f'Money: ${self.money}', halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0), color=(0, 0, 0, 1))
+        self.level_label = Label(text=f'Level: {self.level}', halign='left', valign='middle', text_size=(dp(200), None), padding=(dp(10), 0), color=(0, 0, 0, 1))
         self.exp_bar = ProgressBar(max=10000, value=7500, size_hint=(None, None), size=(dp(100), dp(10)))
 
         # Добавляем widget
