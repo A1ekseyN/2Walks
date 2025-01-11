@@ -1,4 +1,9 @@
-Version: 0.0.5d
+Version:: 0.0.5e (11.01.2025)
+- Gym. Added status display when entering the Gym location.
+- Adventure. Added status display when entering the Adventure location.
+- When checking an authorization token, an update of this token is added. (Not clear or working)
+
+Version: 0.0.5d (08.01.2025)
 - Added display of the number of steps spent, energy, when getting a job. (Max. work hours)
 
 Version: 0.0.5c

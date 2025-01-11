@@ -102,6 +102,9 @@ def gym_menu():
             '8': ('neatness_in_using_things', 'Аккуратность использования вещей: ', char_characteristic['neatness_in_using_things'] + 1)
         }
 
+        print(f"Steps 🏃: {char_characteristic['steps_can_use']}, "
+              f"Energy 🔋: {char_characteristic['energy']}, "
+              f"Money 💰: {char_characteristic['money']} $.")
         print('На данный момент вы можете улучшить: ')
         for key, (skill, name, level) in skill_options.items():
             print(f'\t{key}. {name}{Fore.LIGHTCYAN_EX}{level}{Style.RESET_ALL} lvl ({get_lvl_up_info(skill, level)})')
