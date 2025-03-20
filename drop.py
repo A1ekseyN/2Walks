@@ -110,15 +110,35 @@ class Drop_Item():
             return 5
 
     def item_type(self):
-        # Определение типа предмета (Ring, Necklace)
+        # Определение типа предмета (Ring, Necklace, Helmet, Shoes, T-Shirt)
         ring = randint(1, 100 + luck_chr)
         necklace = randint(1, 100 + luck_chr)
-        if ring > necklace:
+        helmet = randint(1, 100 + luck_chr)
+        shoes = randint(1, 100 + luck_chr)
+        tshirt = randint(1, 100 + luck_chr)
+
+        # Находим максимальное значение
+        max_value = max(ring, necklace, helmet, shoes, tshirt)
+
+        # Определяем, какой предмет имеет максимальное значение
+        if ring == max_value:
             item_type = 'ring'
-        elif necklace > ring:
+        elif necklace == max_value:
             item_type = 'necklace'
+        elif helmet == max_value:
+            item_type = 'helmet'
+        elif shoes == max_value:
+            item_type = 'shoes'
+        elif tshirt == max_value:
+            item_type = 't-shirt'
         else:
             return None
+
+        # Проверяем, есть ли дубликаты максимального значения
+        values = [ring, necklace, helmet, shoes, tshirt]
+        if values.count(max_value) > 1:
+            return None
+
         return item_type
 
     def characteristic_type(self):

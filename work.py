@@ -9,7 +9,8 @@ from inventory import Wear_Equipped_Items
 
 
 class Work():
-    """Клас для работы"""
+    """Класс для работы"""
+
     def __init__(self, char_characteristic):
         self.work_requirements = {
             'watchman': {'steps': apply_move_optimization_work(200), 'energy': 4, 'salary': 2},
@@ -57,7 +58,7 @@ class Work():
                 self.work_choice()
             return working
         elif char_characteristic['working']:
-            # Если персонаж находится на работе, можно добавить несколько рабочих часов.
+            # Если персонаж уже на работе, можно добавить рабочие часы.
             self.add_working_hours(char_characteristic['work'])
 
     def ask_hours(self, work):
@@ -121,19 +122,41 @@ class Work():
     def check_requirements(self, work, working_hours):
         # Проверка требований для устройства на работу.
         if working_hours >= 1:
-            if char_characteristic['steps_can_use'] >= working_hours * self.work_requirements[work]["steps"] and char_characteristic['energy'] >= working_hours * self.work_requirements[work]["energy"]:
+            if (char_characteristic['steps_can_use'] >= working_hours * self.work_requirements[work]["steps"] and
+                char_characteristic['energy'] >= working_hours * self.work_requirements[work]["energy"]):
+
                 char_characteristic['steps_today_used'] += working_hours * self.work_requirements[work]["steps"]
                 char_characteristic['steps_total_used'] += working_hours * self.work_requirements[work]["steps"]
                 char_characteristic['energy'] -= working_hours * self.work_requirements[work]["energy"]
                 char_characteristic['work'] = work
                 char_characteristic['working'] = True
-                char_characteristic['working_start'] = datetime.now().timestamp()
-                char_characteristic['working_end'] = datetime.fromtimestamp(datetime.now().timestamp()) + (timedelta(minutes=(char_characteristic["working_hours"] + working_hours) * 60) - ((timedelta(minutes=char_characteristic["working_hours"] + working_hours * 60) / 100) * (char_characteristic['speed_skill'] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"])))
+
+                # Обновление времени работы с учетом уже оставшегося времени.
+                now = datetime.now()
+                if char_characteristic.get('working_end'):
+                    current_end = char_characteristic['working_end']
+                    if isinstance(current_end, (int, float)):
+                        current_end = datetime.fromtimestamp(current_end)
+                    remaining_time = current_end - now
+                    if remaining_time < timedelta(0):
+                        remaining_time = timedelta(0)
+                else:
+                    remaining_time = timedelta(0)
+
+                # Вычисляем дополнительное время для новых рабочих часов
+                raw_duration = timedelta(minutes=working_hours * 60)
+                bonus_percent = char_characteristic['speed_skill'] + equipment_speed_skill_bonus() + \
+                                char_characteristic["lvl_up_skill_speed"]
+                adjusted_duration = raw_duration - (raw_duration * bonus_percent / 100)
+
+                new_working_end = now + remaining_time + adjusted_duration
+                char_characteristic['working_end'] = new_working_end
+
                 char_characteristic['work_salary'] = self.work_requirements[work]['salary']
                 char_characteristic['working_hours'] += working_hours
 
                 print(f'\nИспользовано 🏃: {Fore.LIGHTCYAN_EX}{working_hours * self.work_requirements[work]["steps"]}{Style.RESET_ALL} + '
-                      f'🔋: {Fore.GREEN}{working_hours * self.work_requirements[work]["energy"]}{Style.RESET_ALL}.')
+                    f'🔋: {Fore.GREEN}{working_hours * self.work_requirements[work]["energy"]}{Style.RESET_ALL}.')
                 print(f'Время работы 🕑: {time(working_hours * (round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}')
                 print(f'Зарплата 💰: {Fore.LIGHTYELLOW_EX}{working_hours * char_characteristic["work_salary"]}{Style.RESET_ALL} $.')
                 return True

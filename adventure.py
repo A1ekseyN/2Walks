@@ -90,18 +90,24 @@ class Adventure():
         else:
             print(f'\t- Пройдите - "Прогулку по району" еще: {3 - char_characteristic["adventure_walk_normal_counter"]} раз.')
 
+        # Пункт 4 – новый: unlock для walk_15k (например, после 3 раз прохождения walk_hard)
+        if char_characteristic.get('adventure_walk_hard_counter', 0) >= 3:
+            print(f'\t4. Прогулка 15к шагов:    {self.adventure_requirements["4"]} - (Need to Test) (Награда: B-Grade, A-Grade, S-Grade)')
+        else:
+            print(f'\t- Пройдите "Прогулку в лес" еще: {3 - char_characteristic.get("adventure_walk_hard_counter", 0)} раз.')
+
         if char_characteristic['adventure_walk_15k_counter'] >= 3:
-            print(f'\t5. Прогулка на 20к шагов: {self.adventure_requirements["5"]} - (Награда: A-Grade, S-Grade, S+Grade (Ring, Necklace))')
+            print(f'\t5. Прогулка 20к шагов:    {self.adventure_requirements["5"]} - (Награда: A-Grade, S-Grade, S+Grade (Ring, Necklace))')
         else:
             print(f'\t- Пройдите прогулку на 15к еще: {3 - char_characteristic["adventure_walk_15k_counter"]} раз.')
 
         if char_characteristic['adventure_walk_20k_counter'] >= 3:
-            print(f'\t6. Прогулка на 25к шагов: {self.adventure_requirements["6"]} - (Награда: S-Grade, S+Grade (Ring, Necklace))')
+            print(f'\t6. Прогулка 25к шагов:    {self.adventure_requirements["6"]} - (Награда: S-Grade, S+Grade (Ring, Necklace))')
         else:
             print(f'\t- Пройдите прогулку на 20к еще: {3 - char_characteristic["adventure_walk_20k_counter"]} раз.')
 
         if char_characteristic['adventure_walk_25k_counter'] >= 3:
-            print(f'\t7. Прогулка на 30к шагов: {self.adventure_requirements["7"]} - (Награда: S+Grade (Ring, Necklace))')
+            print(f'\t7. Прогулка 30к шагов:    {self.adventure_requirements["7"]} - (Награда: S+Grade (Ring, Necklace))')
         else:
             print(f'\t- Пройдите прогулку на 25к еще: {3 - char_characteristic["adventure_walk_25k_counter"]} раз.')
 

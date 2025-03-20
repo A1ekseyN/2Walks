@@ -30,14 +30,18 @@ def inventory_view():
         )
     )
 
-    if not sorted_inventory:
-        print(' - Пусто')
-    else:
+    if sorted_inventory:
         for ind, item in enumerate(sorted_inventory, start=1):
-            print(f"\t{ind}. {item['item_type'][0].title()} {item['grade'][0]}, "
+            space = "" if ind >= 10 else " "
+            if isinstance(item['quality'][0], float):
+                item['quality'][0] = round(item['quality'][0], 2)
+
+            print(f"\t{space}{ind}. {item['item_type'][0].title()} {item['grade'][0]}, "
                   f"+ {item['bonus'][0]} {item['characteristic'][0].title()}, "
                   f"(Quality: {item['quality'][0]}), "
                   f"(Price: {item['price'][0]} $) ")
+    else:
+        print(' - Пусто')
 
     return sorted_inventory
 
@@ -151,14 +155,17 @@ class Wear_Equipped_Items:
         wear_reduction_percentage = ((steps - adjusted_steps) / steps) * 100  # Расчет процента уменьшения износа
         saved_wear = wear_without_skill - wear_with_skill  # Экономия износа в процентах
 
-        print(f"\nИзменение прочности предмета '{item_name}':"
-              f"\n- Начальная прочность: {initial_quality:.6f} %"
-              f"\n- Количество шагов: {steps}"
-              f"\n- Количество шагов с учетом навыка аккуратности: {adjusted_steps:.6f}"
-              f"\n- Значение износа: {initial_quality - final_quality:.6f} %"
-              f"\n- Конечная прочность: {final_quality:.6f} %"
-              f"\n- Процент уменьшения износа благодаря навыку аккуратности: {int(wear_reduction_percentage)} %"
-              f"\n- Экономия износа благодаря навыку аккуратности: {saved_wear:.6f} %")
+        show_changes = False
+
+        if show_changes:
+            print(f"\nИзменение прочности предмета '{item_name}':"
+                  f"\n- Начальная прочность: {initial_quality:.6f} %"
+                  f"\n- Количество шагов: {steps}"
+                  f"\n- Количество шагов с учетом навыка аккуратности: {adjusted_steps:.6f}"
+                  f"\n- Значение износа: {initial_quality - final_quality:.6f} %"
+                  f"\n- Конечная прочность: {final_quality:.6f} %"
+                  f"\n- Процент уменьшения износа благодаря навыку аккуратности: {int(wear_reduction_percentage)} %"
+                  f"\n- Экономия износа благодаря навыку аккуратности: {saved_wear:.6f} %")
 
 
 # Создание экземпляра класса для работы с экипированными предметами

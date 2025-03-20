@@ -1,17 +1,14 @@
 import requests
-import pickle
 import json
 from datetime import datetime
 from settings import debug_mode
 
-#from characteristics import char_characteristic
 from get_token_fitnes_api import get_access_token
 
 
 def steps_today_update():
     """Обновляет количество шагов за сегодня через Fitness API (Google Fit)."""
     global steps_today
-#    global char_characteristic  # Оставлено для совместимости, если нужно использовать глобальную переменную
 
     save_game_last_enter_date_file = open('save.txt', 'r')
     last_enter_date = save_game_last_enter_date_file.read()
@@ -31,7 +28,6 @@ def steps_today_update():
         if not token:
             print("Не удалось получить токен для Fitness API.")
             steps_today = 401  # Ошибка авторизации
-#            char_characteristic['steps_today'] = 401
             return steps_today
 
         # Временной диапазон для сегодняшнего дня
@@ -64,7 +60,6 @@ def steps_today_update():
                 if not token:
                     print("Не удалось обновить токен.")
                     steps_today = 401
-#                    char_characteristic['steps_today'] = 401
                     return steps_today
                 headers["Authorization"] = f"Bearer {token}"
                 response = requests.post(url, headers=headers, json=body)
@@ -74,23 +69,21 @@ def steps_today_update():
                 try:
                     # Извлекаем данные о количестве шагов
                     steps_today = data['bucket'][0]['dataset'][0]['point'][0]['value'][0]['intVal']
-#                    char_characteristic['steps_today'] = steps_today  # Обновляем глобальную структуру
                     print(f"Steps Updated: {steps_today}")
 
                     # Сохраняем дату обновления
                     with open('save.txt', 'w') as save_file:
                         save_file.write(str(now_date))
 
-                    # Сохраняем данные в файл
-                    with open('characteristic.txt', 'wb') as f:
-                        pickle.dump({'steps_today': steps_today}, f)
+                    # Сохраняем данные в файл в формате JSON
+                    with open('characteristic.txt', 'w', encoding='utf-8') as f:
+                        json.dump({'steps_today': steps_today}, f, ensure_ascii=False, indent=4)
                     print('Данные успешно сохранены.')
 
                     return steps_today
                 except (IndexError, KeyError):
                     print("Нет данных за сегодняшний день.")
                     steps_today = 0
-#                    char_characteristic['steps_today'] = 0
                     return steps_today
             else:
                 print(f"Ошибка API Fitness: {response.status_code} - {response.json()}")
@@ -99,15 +92,18 @@ def steps_today_update():
         except Exception as e:
             print(f"\n--- Ошибка API соединения: {e} ---\n")
             steps_today = 404
-#            char_characteristic['steps_today'] = 404
             return steps_today
     else:
         print('Дата совпадает с последним обновлением. Шаги не обновлялись.')
-        # Загружаем шаги из файла
-        with open('characteristic.txt', 'rb') as f:
-            data = pickle.load(f)
-            steps_today = data.get("steps_today", 0)
-            print(f"Загружено из файла: {steps_today} шагов.")
+        # Загружаем шаги из файла в формате JSON
+        try:
+            with open('characteristic.txt', 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                steps_today = data.get("steps_today", 0)
+                print(f"Загружено из файла: {steps_today} шагов.")
+        except Exception as e:
+            print(f"Ошибка чтения characteristic.json: {e}")
+            steps_today = 0
         return steps_today
 
 
@@ -123,45 +119,3 @@ def load_token_from_file(file_path="token.json"):
     except json.JSONDecodeError:
         print("Ошибка чтения JSON из файла.")
         return None
-
-
-def steps_today_update_old_nocode():
-    # Функция обновления кол-ва шагов за сегодня через API NoCodeAPI
-    global steps_today
-    global char_characteristic      # Нужно проверить или тут нужна эта переменная
-
-    save_game_last_enter_date_file = open('save.txt', 'r')
-    last_enter_date = save_game_last_enter_date_file.read()
-    now_date = datetime.now().date()
-
-    if str(now_date) != last_enter_date:
-        print('\nAPI запрос на обновление данных о кол-ве шагов.')
-        try:
-            url = "https://v1.nocodeapi.com/alexeyn/fit/kxgLPAuehlTGiEaC/aggregatesDatasets?dataTypeName=steps_count&timePeriod=today"
-            params = {}
-            r = requests.get(url=url, params=params)
-            result_steps_today = r.json()
-            steps_today = result_steps_today['steps_count'][0]['value']
-            print('--- Запрос NoCodeApi успешный. ---\n')
-
-            if debug_mode:
-                print(f'API Steps update: {steps_today}.')
-            return steps_today
-        except:
-            print('\n--- Ошибка API соеднинения. Обновление данных о кол-ве шагов не произошло ---\n')
-            steps_today = 1555      # Если ошибка подключения к интернету, тогда указано число 1555 для тестов.
-            return steps_today
-    else:
-        # Если дата не изменилась, то забираем данные о кол-ве шагов из переменной.
-        # Сделать, чтобы данные забирались из файла.
-        # По сути эта часть функции не нужна, и ее можно перенести в characteristics.py
-        if debug_mode:
-            print('-- Кол-во шагов не обновлялось.\n-- Шаги взяты из файла api.py + characteristic.txt')
-
-        with open('characteristic.txt', 'rb') as f:
-            data = pickle.load(f)
-            if debug_mode:
-                print(f'\nLoading Game Data: {data}')
-            steps_today = data["steps_today"]
-            print(f'\nLoad Steps Today Count - Successfully.')
-        return steps_today

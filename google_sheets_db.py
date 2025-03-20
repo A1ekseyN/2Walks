@@ -1,6 +1,5 @@
 import json
 import time
-import pickle
 import ast
 from datetime import datetime
 
@@ -14,9 +13,9 @@ def save_char_characteristic_to_google_sheet(file_path='characteristic.txt',
                                              credentials="credentials/2walks_service_account.json"):
     ping_time = time.time()
 
-    # Чтение данных из файла с использованием pickle
-    with open(file_path, 'rb') as file:
-        data = pickle.load(file)
+    # Чтение данных из файла в формате JSON (UTF-8)
+    with open(file_path, 'r', encoding='utf-8') as file:
+        data = json.load(file)
 
     # Установка соединения с Google Sheets
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]

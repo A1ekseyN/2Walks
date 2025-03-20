@@ -1,4 +1,19 @@
-Version:: 0.0.5e (11.01.2025)
+Version: 0.0.5h (20.03.2025)
+- Load/Save logic has been changed. Removed Pickle module. Now JSON is used.
+- The "Legs" slot has been removed from the outfit.
+- Small Refactoring
+
+Version: 0.0.5g (16.03.2025)
+- Adventure. Helmet, T-Shirt, Shoes were added to the pool of items to be dropped
+- Inventory. Added the ability to put on a character: Helmet, T-Shirt, Shoes.
+- BugFix. Adventure. A 15k walk has been added. Previously it was not activated in the Adventure menu.
+- BugFix. When adding working hours, the previously passed time is now taken into account.
+- BugFix. Now Daily Bonus on Energy Max parameter calculates without linking to the pumping table. That allowed to get the bonus without level limitation.
+
+Version: 0.0.5f (25.01.2025)
+- In Console Disabled display of item durability changes.
+
+Version: 0.0.5e (11.01.2025)
 - Gym. Added status display when entering the Gym location.
 - Adventure. Added status display when entering the Adventure location.
 - When checking an authorization token, an update of this token is added. (Not clear or working)

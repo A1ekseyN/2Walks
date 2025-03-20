@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
-import pickle
 import csv
+import json
 import ast
 
 from api import steps_today_update
@@ -14,27 +14,9 @@ from google_sheets_db import load_char_characteristic_from_google_sheet
 # Пытаюсь починить обновление кол-ва шагов за вчера. Чтобы в новый день шаги, не обновлялись раньше записи переменной steps_yesterday.
 # Если этот метод не заработает, то можно будет откатиться.
 def steps_today():
+    # Функция для определения даты. И загрузки кол-ва шагов из txt файла, или из Google Sheets
     steps_today = steps_today_update()
     return steps_today
-
-# Шаги за сегодня
-#steps_today = steps_today_update()
-
-
-def load_characteristic_pickle():
-    # Функция загрузки характеристик из файла
-#    global char_characteristic
-    with open('characteristic.txt', 'rb') as f:
-        char_characteristic = pickle.load(f)
-        if debug_mode:
-            print(f'Чтение сохранения: {char_characteristic}')
-        print(f"load_char_pickle: {char_characteristic}")
-        return char_characteristic
-
-
-# На данный момент данная функция используется как резервная, чтобы понимать или все правильно save/load.
-# load_characteristic_pickle() работает только как вывод информации
-#load_characteristic_pickle()
 
 
 def load_characteristic():
@@ -99,8 +81,6 @@ def load_data_from_google_sheet_or_csv():
         loaded_data_char_characteristic = load_char_characteristic_from_google_sheet()
 
         if loaded_data_char_characteristic:
-            # Если данные успешно загружены и они не пустые
-            print("Данные успешно загружены из Google Sheets.")
             return loaded_data_char_characteristic
         else:
             # Если Google Sheets пуст, загружаем данные из CSV
@@ -117,15 +97,9 @@ def load_data_from_google_sheet_or_csv():
         return loaded_data_char_characteristic
 
 
-# Попытка загрузить данные из char_characteristic из Google Sheet.
-# При ошибке загружаем данные из csv файла
+# Загружаем данные из Google Sheets
 loaded_data_char_characteristic = load_data_from_google_sheet_or_csv()
 #print(f"loaded_data_char_characteristic: {loaded_data_char_characteristic}")
-
-
-# Загружаем данные char_characteristics из characteristic.csv
-#loaded_data_char_characteristic = load_characteristic()
-#print(f"loaded_csv      : {loaded_data_char_characteristic}")
 
 
 # TODO: 'date_last_enter' - Добавить дату последнего входа в игру.
@@ -384,7 +358,80 @@ skill_training_table = {
         'money': 1050,
         'time': 4800,       # 80 часов
     },
+    26: {
+        'steps': 26000,
+        'energy': 130,
+        'money': 1100,
+        'time': 5040,       # 84 часов
+    },
+    27: {
+        'steps': 27000,
+        'energy': 135,
+        'money': 1150,
+        'time': 5280,       # 88 часов
+    },
+    28: {
+        'steps': 28000,
+        'energy': 140,
+        'money': 1200,
+        'time': 5520,       # 92 часов
+    },
+    29: {
+        'steps': 29000,
+        'energy': 145,
+        'money': 1250,
+        'time': 5760,       # 96 часов
+    },
+    30: {
+        'steps': 30000,
+        'energy': 150,
+        'money': 1300,
+        'time': 6000,       # 100 часов
+    },
 }
+
+
+def get_skill_training(level):
+    """
+    Возвращает параметры обучения для заданного уровня.
+    Для уровней 1–30 используется статическая таблица (skill_training_table),
+    для уровней > 30 значения вычисляются по формуле:
+      - steps = level * 1000
+      - energy = базовое значение уровня 30 (150) + (level - 30) * 5
+      - money = базовое значение уровня 30 (1300) + (level - 30) * 50
+      - time = базовое значение уровня 30 (6000) + (level - 30) * 240
+    """
+    if level in skill_training_table:
+        return skill_training_table[level]
+    else:
+        base = {
+            'steps': 30000,
+            'energy': 150,
+            'money': 1300,
+            'time': 6000
+        }
+        return {
+            'steps': level * 1000,
+            'energy': base['energy'] + (level - 30) * 5,
+            'money': base['money'] + (level - 30) * 50,
+            'time': base['time'] + (level - 30) * 240
+        }
+
+
+def get_energy_training_data(level):
+    """
+    Функция для расчёта необходимого уровня для прокачки.
+    Данные берутся из переменной: skill_training_table, в которой есть таблица по прокачке.
+    Если нужного уровня нет в таблице, то рассчитываем нужные данные исходя из base параметров.
+
+    Функция нужна для того, чтобы корректно рассчитывать Daily Bonus, который может выходить за пределы прокачки персонажа
+
+    Возвращает данные об обучении для указанного уровня.
+    Если уровень есть в таблице, берет данные оттуда, иначе вычисляет через get_skill_training().
+    """
+    if level in skill_training_table:
+        return skill_training_table[level]
+    return get_skill_training(level)
 
 
 def save_characteristic():
@@ -392,9 +439,12 @@ def save_characteristic():
     if debug_mode:
         print(f'Сохраняем данные: {char_characteristic}')
 
-    # Сохраняем с помощью pickle
-    with open('characteristic.txt', 'wb') as f:
-        pickle.dump(char_characteristic, f)
+    # Сохраняем данные в текстовый файл в формате JSON (UTF-8)
+    try:
+        with open('characteristic.txt', 'w', encoding='utf-8') as f:
+            json.dump(char_characteristic, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Ошибка записи в characteristic.txt: {e}")
 
     # Сохраняем с помощью csv таблицы
     try:

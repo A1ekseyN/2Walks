@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from characteristics import char_characteristic, skill_training_table, save_characteristic
+from characteristics import char_characteristic, skill_training_table, save_characteristic, get_energy_training_data
 from settings import debug_mode
 from colorama import Fore, Style
 from skill_bonus import stamina_skill_bonus, stamina_skill_bonus_def
@@ -13,10 +13,10 @@ lvl_up_stamina = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_t
                  f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["stamina"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
                  f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["stamina"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
                  f'🕑: {time(round(skill_training_table[char_characteristic["stamina"] + 1]["time"] - ((skill_training_table[char_characteristic["stamina"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
-lvl_up_energy_max = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                    f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["energy"]}{Style.RESET_ALL} эн. / ' \
-                    f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["money"]}{Style.RESET_ALL} $ / ' \
-                    f'🕑: {time(round(skill_training_table[char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"]]["time"] - ((skill_training_table[char_characteristic["energy_max"] - 49]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
+lvl_up_energy_max = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["steps"]):,.0f}{Style.RESET_ALL} / ' \
+                    f'🔋: {Fore.GREEN}{get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["energy"]}{Style.RESET_ALL} эн. / ' \
+                    f'💰: {Fore.LIGHTYELLOW_EX}{get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["money"]}{Style.RESET_ALL} $ / ' \
+                    f'🕑: {time(round(get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["time"] - ((get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
 lvl_up_speed_skill = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["speed_skill"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
                      f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["speed_skill"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
                      f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["speed_skill"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
