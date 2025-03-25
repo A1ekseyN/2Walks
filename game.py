@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+from colorama import init
 
 from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar
 from characteristics import *
@@ -14,8 +15,6 @@ from inventory import inventory_menu
 from level import CharLevel
 from google_sheets_db import save_char_characteristic_to_google_sheet, load_char_characteristic_from_google_sheet
 
-from colorama import init
-
 
 def game():
     # Общая функция для игры
@@ -25,7 +24,6 @@ def game():
             global char_characteristic
 
             while True:
-#                save_game_date_last_enter()     # Проверка даты последнего захода в игру.
                 energy_time_charge()            # Проверка и восстановление игровой энергии.
                 work_check_done()               # Проверка работает ли персонаж, и закончил ли он работу по таймауту.
                 skill_training_check_done()     # Проверка или закончилось улучшение навыка и повышение lvl навыка.
@@ -149,11 +147,7 @@ def game():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.0.5g")
+    print(f"Version: 0.0.5i")
     os.system("chcp 65001")         # Включение Unicode для консоли. Все равно это не работает
 
-#    try:
     game()
-#    except Exception as error:
-#        print(f"Error: {error}")
-#        time.sleep(30)

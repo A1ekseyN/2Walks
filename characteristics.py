@@ -434,35 +434,49 @@ def get_energy_training_data(level):
     return get_skill_training(level)
 
 
+# Список ключей, для которых ожидается дата/время (настройте по необходимости)
+DATE_KEYS = [
+    "date_last_enter",
+    "energy_time_stamp",
+    "working_start",
+    "working_end",
+    "skill_training_time_end",
+    "adventure_end_timestamp"
+]
+
+
+def json_serial(obj):
+    """
+    Функция для преобразования str() -> datetime.
+    Функция нужна для нормальной работы времени в игре.
+    """
+    if isinstance(obj, datetime):
+        return obj.strftime('%Y-%m-%d %H:%M:%S.%f')
+    raise TypeError("Type not serializable")
+
+
 def save_characteristic():
-    # Функция записи характеристик в файл
+    """Записывает характеристики в файл в формате JSON."""
     if debug_mode:
         print(f'Сохраняем данные: {char_characteristic}')
-
-    # Сохраняем данные в текстовый файл в формате JSON (UTF-8)
     try:
         with open('characteristic.txt', 'w', encoding='utf-8') as f:
-            json.dump(char_characteristic, f, ensure_ascii=False, indent=4)
+            json.dump(char_characteristic, f, ensure_ascii=False, indent=4, default=json_serial)
     except Exception as e:
         print(f"Ошибка записи в characteristic.txt: {e}")
-
-    # Сохраняем с помощью csv таблицы
+    # Сохранение в CSV без изменений...
     try:
-        with open('characteristic.csv', 'w', newline='') as csvfile:
+        with open('characteristic.csv', 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=char_characteristic.keys())
             writer.writeheader()
-
-            # Преобразуем значения в строки, если это необходимо
-            processed_char_characteristic = {k: (str(v) if isinstance(v, (dict, list)) else v) for k, v in
-                                             char_characteristic.items()}
-            writer.writerow(processed_char_characteristic)
+            processed_char = {k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
+                              for k, v in char_characteristic.items()}
+            writer.writerow(processed_char)
     except PermissionError:
-        print("\nError writing to file 'characteristic.csv'. "
-              "\nPlease close the file and try again."
-              "\nSleep 30 sec and retry.")
+        print("\nОшибка записи в файл 'characteristic.csv'. "
+              "\nЗакройте файл и повторите попытку. Задержка 30 сек и повторный запуск.")
         time.sleep(30)
         save_characteristic()
-
     print('\n💾 Save Successfully.')
 
 

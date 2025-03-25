@@ -43,13 +43,17 @@ def status_bar():
     # Отображение переменных: шагов, энергии, денег.
     char_level_view = CharLevel(char_characteristic)  # Инициализация уровня персонажа, прогресса, и lvl up
 
-    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {char_characteristic["steps_today"] + stamina_skill_bonus_def() + equipment_bonus_stamina_steps() + daily_steps_bonus() + level_steps_bonus():,.0f}{Style.RESET_ALL} '
+    total_bonus = total_bonus_steps()
+    max_steps = char_characteristic["steps_today"] + total_bonus
+    bonus_percent = bonus_percentage()
+
+    print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps():,.0f} / {max_steps:,.0f}{Style.RESET_ALL} '
           f'(Bonus: Stamina 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def():,.0f}{Style.RESET_ALL} '
           f'/ Equipment 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps():,.0f}{Style.RESET_ALL} '
           f'/ Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus()}{Style.RESET_ALL} '
-          f'/ Level: {Fore.LIGHTCYAN_EX}{level_steps_bonus()}{Style.RESET_ALL}) '
-          f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{char_characteristic["steps_total_used"]}{Style.RESET_ALL})'
-          
+          f'/ Level: {Fore.LIGHTCYAN_EX}{level_steps_bonus()}{Style.RESET_ALL}. '
+          f'[Bonus 🏃: {total_bonus:,.0f}, {bonus_percent:.2f} %]) '
+          f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{char_characteristic["steps_total_used"]:,.0f}{Style.RESET_ALL})'
           f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} '
           f'(Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus()}{Style.RESET_ALL} / '
           f'Daily 🔋: + {Fore.GREEN}{char_characteristic["steps_daily_bonus"]}{Style.RESET_ALL} / '
@@ -318,6 +322,22 @@ def today_steps_to_yesterday_steps():
     return char_characteristic['steps_yesterday'], char_characteristic['steps_daily_bonus']
 
 
-if __name__ == "__main__":
-    print(steps_today_update_manual())
-    pass
+def total_bonus_steps():
+    """Возвращает общее количество бонусных шагов из всех источников."""
+    return (stamina_skill_bonus_def() +
+            equipment_bonus_stamina_steps() +
+            daily_steps_bonus() +
+            level_steps_bonus())
+
+def bonus_percentage():
+    """Возвращает процент бонусных шагов относительно максимального количества шагов."""
+    total_bonus = total_bonus_steps()
+    max_steps = char_characteristic["steps_today"] + total_bonus
+    # Если max_steps равен 0, возвращаем 0%, чтобы избежать деления на ноль
+    if max_steps:
+        return (total_bonus / max_steps) * 100
+    return 0
+
+
+#if __name__ == "__main__":
+#    print(steps_today_update_manual())

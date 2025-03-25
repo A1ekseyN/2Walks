@@ -1,5 +1,5 @@
-from characteristics import char_characteristic
 from operator import itemgetter
+from characteristics import char_characteristic
 
 
 def inventory_menu():
@@ -112,60 +112,92 @@ class Wear_Equipped_Items:
     }
 
     def __init__(self):
-        self.max_durability = 10000000  # Максимальная прочность в единицах: 10.000.000
-        self.durability = self.max_durability  # Начальная прочность, 100% (или 100/100)
+        self.max_durability = 10000000  # Максимальная прочность
+        self.durability = self.max_durability  # Начальная прочность
         self.equipment_items = self.equipped_items
         self.neatness_factor = 1 - (char_characteristic['neatness_in_using_things'] / 100)
 
     def decrease_durability(self, steps):
-        """Метод для уменьшения прочности предметов на указанное количество шагов с учетом аккуратности"""
+        """Уменьшает прочность предметов на заданное число шагов с учётом аккуратности."""
         adjusted_steps = steps * self.neatness_factor
 
         for key, item_info in self.equipment_items.items():
             if item_info is not None:
                 initial_quality = item_info['quality'][0]
-                item_durability = self.durability * (initial_quality / 100)
-
-                # Износ без учета аккуратности
+                # Вычисляем износ в процентах
                 wear_without_skill = steps / self.max_durability * 100
-
-                # Износ с учетом аккуратности
                 wear_with_skill = adjusted_steps / self.max_durability * 100
 
+                # Обновляем прочность: здесь просто уменьшаем прочность пропорционально количеству шагов
+                item_durability = self.durability * (initial_quality / 100)
                 item_durability -= adjusted_steps
                 if item_durability < 0:
                     item_durability = 0
                 final_quality = (item_durability / self.max_durability) * 100
                 self.equipment_items[key]['quality'][0] = final_quality
 
-                # Обновляем char_characteristics после изменения прочности предмета
-                if key in char_characteristic:
+                # Обновляем глобальные характеристики, если есть
+                if key in char_characteristic and char_characteristic[key] is not None:
                     char_characteristic[key]['quality'][0] = final_quality
 
-                # Отладочный вывод
+                # Вывод отладочной информации (если нужно)
                 self.view_wear_reduce_change(key, initial_quality, steps, adjusted_steps, final_quality, wear_without_skill, wear_with_skill)
 
+        # После уменьшения прочности пересчитываем цену
+        self.recalc_item_prices()
+
+    def recalc_item_prices(self):
+        """Пересчитывает стоимость каждого предмета на основе обновлённого качества.
+            Новая цена рассчитывается с использованием коэффициента для грейда и округляется вниз.
+            """
+        for key, item_info in self.equipment_items.items():
+            if item_info is not None:
+                grade = item_info.get('grade', [None])[0]
+                quality = item_info.get('quality', [None])[0]
+                if grade is None or quality is None:
+                    continue
+                if grade == 'c-grade':
+                    new_price = int(quality * 0.5)
+                elif grade == 'b-grade':
+                    new_price = int(quality * 1)
+                elif grade == 'a-grade':
+                    new_price = int(quality * 1.5)
+                elif grade == 's-grade':
+                    new_price = int(quality * 2)
+                elif grade == 's+grade':
+                    new_price = int(quality * 2.5)
+                else:
+                    new_price = item_info.get('price', [0])[0]
+
+                # Обновляем цену в экипированном предмете
+                self.equipment_items[key]['price'][0] = new_price
+                # Если в глобальном словаре char_characteristic также хранится этот предмет, обновляем его цену
+                if key in char_characteristic and char_characteristic[key] is not None:
+                    char_characteristic[key]['price'][0] = new_price
+
+#                print(f"Updated price for {key}: {new_price}")
+
     def reduce_wear(self, steps):
-        """Метод для уменьшения износа предметов на процент, основанный на навыке: Аккуратность использования предметов"""
+        """Метод для уменьшения износа предметов с учётом навыка аккуратности."""
         reduced_steps = steps * (1 - (char_characteristic['neatness_in_using_things'] / 100))
         self.decrease_durability(reduced_steps)
 
     def view_wear_reduce_change(self, item_name, initial_quality, steps, adjusted_steps, final_quality, wear_without_skill, wear_with_skill):
-        """Метод для отображения изменения прочности предметов"""
-        wear_reduction_percentage = ((steps - adjusted_steps) / steps) * 100  # Расчет процента уменьшения износа
-        saved_wear = wear_without_skill - wear_with_skill  # Экономия износа в процентах
+        """Отображает изменения прочности предметов (для отладки)."""
+        wear_reduction_percentage = ((steps - adjusted_steps) / steps) * 100  # Процент уменьшения износа
+        saved_wear = wear_without_skill - wear_with_skill  # Экономия износа
 
         show_changes = False
 
         if show_changes:
-            print(f"\nИзменение прочности предмета '{item_name}':"
-                  f"\n- Начальная прочность: {initial_quality:.6f} %"
-                  f"\n- Количество шагов: {steps}"
-                  f"\n- Количество шагов с учетом навыка аккуратности: {adjusted_steps:.6f}"
-                  f"\n- Значение износа: {initial_quality - final_quality:.6f} %"
-                  f"\n- Конечная прочность: {final_quality:.6f} %"
-                  f"\n- Процент уменьшения износа благодаря навыку аккуратности: {int(wear_reduction_percentage)} %"
-                  f"\n- Экономия износа благодаря навыку аккуратности: {saved_wear:.6f} %")
+            print(f"\nИзменение прочности '{item_name}':"
+                  f"\n- Начальное качество: {initial_quality:.6f} %"
+                  f"\n- Шагов: {steps}"
+                  f"\n- Шагов с учетом навыка: {adjusted_steps:.6f}"
+                  f"\n- Износ: {initial_quality - final_quality:.6f} %"
+                  f"\n- Конечное качество: {final_quality:.6f} %"
+                  f"\n- Уменьшение износа: {int(wear_reduction_percentage)} %"
+                  f"\n- Экономия износа: {saved_wear:.6f} %")
 
 
 # Создание экземпляра класса для работы с экипированными предметами

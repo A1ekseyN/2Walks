@@ -1,23 +1,23 @@
 {
-    "date_last_enter": "2025-03-20",
-    "timestamp_last_enter": 1742464161.743066,
-    "steps_today": 855,
-    "steps_can_use": 1203,
-    "steps_today_used": 0,
-    "steps_yesterday": 544,
+    "date_last_enter": "2025-03-25",
+    "timestamp_last_enter": 1742898963.398256,
+    "steps_today": 391,
+    "steps_can_use": 0,
+    "steps_today_used": 516,
+    "steps_yesterday": 308,
     "steps_daily_bonus": 2,
-    "steps_total_used": 684089,
-    "char_level": 6,
+    "steps_total_used": 750121,
+    "char_level": 7,
     "char_level_up_skills": 0,
-    "lvl_up_skill_stamina": 6,
+    "lvl_up_skill_stamina": 7,
     "lvl_up_skill_energy_max": 0,
     "lvl_up_skill_speed": 0,
     "lvl_up_skill_luck": 0,
     "loc": "home",
-    "energy": 67,
-    "energy_max": 67,
-    "energy_time_stamp": 1742464216.813172,
-    "money": 991,
+    "energy": 70,
+    "energy_max": 70,
+    "energy_time_stamp": 1742898922.0,
+    "money": 1103,
     "skill_training": false,
     "skill_training_name": null,
     "skill_training_timestamp": null,
@@ -39,6 +39,75 @@
     "working_start": null,
     "working_end": null,
     "inventory": [
+        {
+            "item_name": [
+                "t-shirt"
+            ],
+            "item_type": [
+                "t-shirt"
+            ],
+            "grade": [
+                "a-grade"
+            ],
+            "characteristic": [
+                "speed_skill"
+            ],
+            "bonus": [
+                3
+            ],
+            "quality": [
+                100
+            ],
+            "price": [
+                150
+            ]
+        },
+        {
+            "item_name": [
+                "t-shirt"
+            ],
+            "item_type": [
+                "t-shirt"
+            ],
+            "grade": [
+                "a-grade"
+            ],
+            "characteristic": [
+                "luck"
+            ],
+            "bonus": [
+                3
+            ],
+            "quality": [
+                90
+            ],
+            "price": [
+                135
+            ]
+        },
+        {
+            "item_name": [
+                "shoes"
+            ],
+            "item_type": [
+                "shoes"
+            ],
+            "grade": [
+                "a-grade"
+            ],
+            "characteristic": [
+                "speed_skill"
+            ],
+            "bonus": [
+                3
+            ],
+            "quality": [
+                95
+            ],
+            "price": [
+                142
+            ]
+        },
         {
             "item_name": [
                 "ring"
@@ -129,6 +198,29 @@
             ],
             "price": [
                 74
+            ]
+        },
+        {
+            "item_name": [
+                "ring"
+            ],
+            "item_type": [
+                "ring"
+            ],
+            "grade": [
+                "a-grade"
+            ],
+            "characteristic": [
+                "energy_max"
+            ],
+            "bonus": [
+                3
+            ],
+            "quality": [
+                86
+            ],
+            "price": [
+                129
             ]
         },
         {
@@ -248,52 +340,51 @@
         },
         {
             "item_name": [
-                "t-shirt"
+                "shoes"
             ],
             "item_type": [
-                "t-shirt"
+                "shoes"
             ],
             "grade": [
                 "a-grade"
             ],
             "characteristic": [
-                "speed_skill"
+                "stamina"
             ],
             "bonus": [
                 3
             ],
             "quality": [
-                100
+                82.12108560000007
             ],
             "price": [
-                150
-            ]
-        },
-        {
-            "item_name": [
-                "ring"
-            ],
-            "item_type": [
-                "ring"
-            ],
-            "grade": [
-                "a-grade"
-            ],
-            "characteristic": [
-                "energy_max"
-            ],
-            "bonus": [
-                3
-            ],
-            "quality": [
-                86
-            ],
-            "price": [
-                129
+                124
             ]
         }
     ],
-    "equipment_head": null,
+    "equipment_head": {
+        "item_name": [
+            "helmet"
+        ],
+        "item_type": [
+            "helmet"
+        ],
+        "grade": [
+            "a-grade"
+        ],
+        "characteristic": [
+            "stamina"
+        ],
+        "bonus": [
+            3
+        ],
+        "quality": [
+            85.53994039999999
+        ],
+        "price": [
+            128
+        ]
+    },
     "equipment_neck": {
         "item_name": [
             "necklace"
@@ -311,13 +402,35 @@
             4
         ],
         "quality": [
-            71.71144449999993
+            71.11055329999996
         ],
         "price": [
-            156
+            142
         ]
     },
-    "equipment_torso": null,
+    "equipment_torso": {
+        "item_name": [
+            "t-shirt"
+        ],
+        "item_type": [
+            "t-shirt"
+        ],
+        "grade": [
+            "a-grade"
+        ],
+        "characteristic": [
+            "energy_max"
+        ],
+        "bonus": [
+            3
+        ],
+        "quality": [
+            87.75015040000001
+        ],
+        "price": [
+            131
+        ]
+    },
     "equipment_finger_01": {
         "item_name": [
             "ring"
@@ -335,10 +448,10 @@
             5
         ],
         "quality": [
-            47.59805850000007
+            46.99716730000013
         ],
         "price": [
-            135
+            117
         ]
     },
     "equipment_finger_02": {
@@ -358,10 +471,10 @@
             5
         ],
         "quality": [
-            66.59805850000014
+            65.99716730000014
         ],
         "price": [
-            182
+            164
         ]
     },
     "equipment_legs": null,
@@ -373,29 +486,29 @@
             "shoes"
         ],
         "grade": [
-            "a-grade"
+            "s-grade"
         ],
         "characteristic": [
             "stamina"
         ],
         "bonus": [
-            3
+            4
         ],
         "quality": [
-            82.71728120000003
+            61.99530440000001
         ],
         "price": [
-            124
+            123
         ]
     },
     "adventure": false,
     "adventure_name": null,
-    "adventure_start_timestamp": 1742419382,
+    "adventure_start_timestamp": 1742853379,
     "adventure_end_timestamp": null,
     "adventure_walk_easy_counter": 7,
     "adventure_walk_normal_counter": 6,
-    "adventure_walk_hard_counter": 12,
-    "adventure_walk_15k_counter": 7,
+    "adventure_walk_hard_counter": 15,
+    "adventure_walk_15k_counter": 9,
     "adventure_walk_20k_counter": 3,
     "adventure_walk_25k_counter": 0,
     "adventure_walk_30k_counter": 0

@@ -1,3 +1,7 @@
+Version: 0.0.5i (25.03.2025)
+- Added display of Step Bonus. And the percentage of Step Bonus of the total number of steps.
+- Added changing the price of items while items are in use.
+
 Version: 0.0.5h (20.03.2025)
 - Load/Save logic has been changed. Removed Pickle module. Now JSON is used.
 - The "Legs" slot has been removed from the outfit.

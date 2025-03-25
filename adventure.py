@@ -92,7 +92,7 @@ class Adventure():
 
         # Пункт 4 – новый: unlock для walk_15k (например, после 3 раз прохождения walk_hard)
         if char_characteristic.get('adventure_walk_hard_counter', 0) >= 3:
-            print(f'\t4. Прогулка 15к шагов:    {self.adventure_requirements["4"]} - (Need to Test) (Награда: B-Grade, A-Grade, S-Grade)')
+            print(f'\t4. Прогулка 15к шагов:    {self.adventure_requirements["4"]} - (Награда: B-Grade, A-Grade, S-Grade)')
         else:
             print(f'\t- Пройдите "Прогулку в лес" еще: {3 - char_characteristic.get("adventure_walk_hard_counter", 0)} раз.')
 
