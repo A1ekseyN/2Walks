@@ -52,8 +52,8 @@ def status_bar():
           f'/ Equipment 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps():,.0f}{Style.RESET_ALL} '
           f'/ Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus()}{Style.RESET_ALL} '
           f'/ Level: {Fore.LIGHTCYAN_EX}{level_steps_bonus()}{Style.RESET_ALL}. '
-          f'[Bonus 🏃: {total_bonus:,.0f}, {bonus_percent:.2f} %]) '
-          f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{char_characteristic["steps_total_used"]:,.0f}{Style.RESET_ALL})'
+          f'[🏃: {total_bonus:,.0f}, {bonus_percent:.2f} %]) '
+          f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{format_steps(char_characteristic["steps_total_used"])}{Style.RESET_ALL})'
           f'\nEnergy 🔋: {Fore.GREEN}{char_characteristic["energy"]} / {char_characteristic["energy_max"]}{Style.RESET_ALL} '
           f'(Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus()}{Style.RESET_ALL} / '
           f'Daily 🔋: + {Fore.GREEN}{char_characteristic["steps_daily_bonus"]}{Style.RESET_ALL} / '
@@ -337,6 +337,21 @@ def bonus_percentage():
     if max_steps:
         return (total_bonus / max_steps) * 100
     return 0
+
+
+def format_steps(steps):
+    """
+    Форматирует количество шагов:
+    - Если < 10 000, то без изменений.
+    - Если >= 10 000 и < 1 000 000, то округляет до тысяч с "k".
+    - Если >= 1 000 000, то округляет до сотен тысяч с "kk".
+    """
+    if steps < 10_000:
+        return f"{steps}"
+    elif steps < 1_000_000:
+        return f"{steps // 1_000}k"
+    else:
+        return f"{steps / 1_000_000:.1f}kk"
 
 
 #if __name__ == "__main__":

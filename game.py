@@ -19,6 +19,10 @@ from google_sheets_db import save_char_characteristic_to_google_sheet, load_char
 def game():
     # Общая функция для игры
     while True:
+        # Создаем класс для Приключений.
+        # В этом месте у на заранее просчитываются бонусы навыков для прохождения приключений.
+        adventure_instance = Adventure(adventure_data_table)
+
         def location_selection():
             # Функция для выбора локации на карте
             global char_characteristic
@@ -76,7 +80,7 @@ def game():
                     work_location()
                 elif temp_number == '5' and char_characteristic['loc'] != 'adventure':
                     char_characteristic['loc'] = 'adventure'
-                    adventure_location()
+                    adventure_location(adventure_instance)
                 elif temp_number == '6' and char_characteristic['loc'] != 'garage':
                     char_characteristic['loc'] = 'garage'
                     garage_location()
@@ -147,7 +151,7 @@ def game():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.0.5i")
+    print(f"Version: 0.0.5j")
     os.system("chcp 65001")         # Включение Unicode для консоли. Все равно это не работает
 
     game()

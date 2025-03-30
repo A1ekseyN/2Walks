@@ -1,3 +1,7 @@
+Version: 0.0.5j (30.03.2025)
+- BugFix. Fixed a bug that reduces the number of steps required when re-entering the Adventure menu.
+- Changed display of Total Used Steps in the status bar.
+
 Version: 0.0.5i (25.03.2025)
 - Added display of Step Bonus. And the percentage of Step Bonus of the total number of steps.
 - Added changing the price of items while items are in use.

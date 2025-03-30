@@ -55,10 +55,11 @@ def work_location():
 
 
 
-def adventure_location():
+def adventure_location(adventure_instance):
     # Локация - Приключения.
 #    print('\n--- 🗺️ Adventure Location 🗺 ---')
-    Adventure(adventure_data_table).adventure_menu()
+#    Adventure(adventure_data_table).adventure_menu()
+    adventure_instance.adventure_menu()
 
 
 def garage_location():
