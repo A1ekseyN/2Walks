@@ -330,12 +330,11 @@ def total_bonus_steps():
             level_steps_bonus())
 
 def bonus_percentage():
-    """Возвращает процент бонусных шагов относительно максимального количества шагов."""
+    """Возвращает процент бонусных шагов относительно базового количества шагов."""
     total_bonus = total_bonus_steps()
-    max_steps = char_characteristic["steps_today"] + total_bonus
-    # Если max_steps равен 0, возвращаем 0%, чтобы избежать деления на ноль
-    if max_steps:
-        return (total_bonus / max_steps) * 100
+    base_steps = char_characteristic["steps_today"]
+    if base_steps:
+        return (total_bonus / base_steps) * 100
     return 0
 
 

@@ -1,3 +1,7 @@
+Version: 0.0.5k (31.03.2025)
+- Fixed the bonus % of steps in the console.
+- Added bonus for getting level 7-11.
+
 Version: 0.0.5j (30.03.2025)
 - BugFix. Fixed a bug that reduces the number of steps required when re-entering the Adventure menu.
 - Changed display of Total Used Steps in the status bar.
