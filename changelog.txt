@@ -1,3 +1,8 @@
+Version: 0.1.0 ():
+- Connect to Claude Code.
+- Part of the documentation is described.
+- Planning. Discussion and planning for further development.
+
 Version: 0.0.5k (31.03.2025)
 - Fixed the bonus % of steps in the console.
 - Added bonus for getting level 7-11.
