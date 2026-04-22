@@ -16,27 +16,42 @@ from get_token_fitnes_api import get_access_token
 
 
 def energy_time_charge():
-    # Функция для восстановления энергии со временем
-    # Нужно перенести в файл functions.py
+    """Регенерация энергии во времени. Одна единица каждые
+    speed_skill_equipment_and_level_bonus(60) секунд. При достижении
+    energy_max регенерация приостанавливается, стамп синкается к now."""
     global char_characteristic
 
-    if char_characteristic['energy'] < char_characteristic['energy_max']:
-        if timestamp_now() - char_characteristic['energy_time_stamp'] > speed_skill_equipment_and_level_bonus(60):
-            # (Тестируем): Нужно добавить Speed bonus + Speed Equipment bonus
-            # Bug: Нужно добавить деление остатка и минусовать его от 'energy_time_stamp'
-            # Bug: Поправить char_characteristic['energy'] += round (округление). Ошибка в округлении 1.6, округляет в большую сторону.
-            char_characteristic['energy'] += round((timestamp_now() - char_characteristic['energy_time_stamp']) // speed_skill_equipment_and_level_bonus(60))
-            char_characteristic['energy_time_stamp'] = timestamp_now() - ((timestamp_now() - char_characteristic['energy_time_stamp']) % speed_skill_equipment_and_level_bonus(60))
-            if debug_mode:
-                print('\n--- Energy Check!!! ---')
-                print(f"Добавлено energy: {round((timestamp_now() - char_characteristic['energy_time_stamp']) // speed_skill_equipment_and_level_bonus(60))}")
-                print(f"Счётчик времени: {round(timestamp_now() - char_characteristic['energy_time_stamp'])} sec.")
+    now = timestamp_now()
+    energy = char_characteristic['energy']
+    energy_max = char_characteristic['energy_max']
+    interval = speed_skill_equipment_and_level_bonus(60)
 
-    if char_characteristic['energy'] > char_characteristic['energy_max']:
-        char_characteristic['energy'] = char_characteristic['energy_max']
+    if energy >= energy_max:
+        # Клэмп излишка (например, после снятия экипировки energy_max уменьшился).
+        char_characteristic['energy'] = energy_max
+        char_characteristic['energy_time_stamp'] = now
+        return
 
-    if datetime.now().timestamp() - char_characteristic['energy_time_stamp'] >= speed_skill_equipment_and_level_bonus(60):
-        char_characteristic['energy_time_stamp'] = datetime.now().timestamp()
+    elapsed = now - char_characteristic['energy_time_stamp']
+    if elapsed < interval:
+        return
+
+    points = int(elapsed // interval)
+    remainder = elapsed - points * interval
+    new_energy = min(energy + points, energy_max)
+    char_characteristic['energy'] = new_energy
+
+    if new_energy >= energy_max:
+        # Добрали до максимума — остаток времени не копим.
+        char_characteristic['energy_time_stamp'] = now
+    else:
+        char_characteristic['energy_time_stamp'] = now - remainder
+
+    if debug_mode:
+        print('\n--- Energy Check ---')
+        print(f'Добавлено energy: {new_energy - energy}')
+        if new_energy < energy_max:
+            print(f'До следующей +1: {interval - remainder:.1f} sec.')
 
 
 def status_bar():
@@ -216,6 +231,33 @@ def steps_today_update_manual():
         steps_today = 404  # Если ошибка подключения к интернету
         char_characteristic['steps_today'] = 404
         return None
+
+
+def steps_today_manual_entry():
+    """Ручной ввод количества шагов. Перезаписывает steps_today максимумом
+    из текущего значения и введённого. Mi Fitness -> Apple Health
+    синхронизируется с задержкой, поэтому показания на браслете часто свежее
+    того, что доехало автоматически."""
+    global char_characteristic
+
+    try:
+        entered = int(input('Введите текущее количество шагов с браслета:\n>>> '))
+    except ValueError:
+        print('Нужно целое число. Ввод отменён.')
+        return
+
+    if entered < 0:
+        print('Отрицательное число. Ввод отменён.')
+        return
+
+    old = char_characteristic['steps_today']
+    new = max(old, entered)
+    char_characteristic['steps_today'] = new
+
+    if new == old:
+        print(f'Текущее значение ({old:,}) больше или равно введённому ({entered:,}). Оставлено как было.')
+    else:
+        print(f'Обновлено: {old:,} -> {new:,}.')
 
 
 def steps_today_update_manual_nocodeapi_old():

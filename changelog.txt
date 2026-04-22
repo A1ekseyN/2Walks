@@ -1,4 +1,13 @@
-Version: 0.1.0 ():
+Version: 0.1.0a (22.04.2026):
+- Added the ability to manually enter completed steps using the “+” symbol in the console.
+- BugFix. Level calculation. Changed threshold check from `>` to `>=`. Exactly N spent steps now grants level N (previously required N+1)
+- BugFix. Energy timestamp syncs to `now` while at max (no banked regen).
+- BugFix. `Load from Cloud` (`l`) now updates `char_characteristic` in place instead of creating a local rebind.
+- Refactor. Energy regen: atomic `now`, removed `round()`, `>` -> `>=` on interval, clamp via `min()`.
+- Refactor. Introduced `config.py`. Google Sheets ID, sheet name, credentials path moved there.
+- Refactor. Main menu command dispatch: dict + `enter_location` helper + Russian layout auto-mapping.
+
+Version: 0.1.0 (22.04.2026):
 - Connect to Claude Code.
 - Part of the documentation is described.
 - Planning. Discussion and planning for further development.

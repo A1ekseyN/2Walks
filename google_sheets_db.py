@@ -6,11 +6,13 @@ from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+from config import SPREADSHEET_ID, GAME_STATE_SHEET_NAME, CREDENTIALS_PATH
+
 
 def save_char_characteristic_to_google_sheet(file_path='characteristic.txt',
-                                             spreadsheet_id='1l1SfzodtHAAIVsmsQjZPK2YEltilVzu5psv0_2p4MLM',
-                                             sheet_name='Sheet1',
-                                             credentials="credentials/2walks_service_account.json"):
+                                             spreadsheet_id=SPREADSHEET_ID,
+                                             sheet_name=GAME_STATE_SHEET_NAME,
+                                             credentials=CREDENTIALS_PATH):
     ping_time = time.time()
 
     # Чтение данных из файла в формате JSON (UTF-8)
@@ -48,9 +50,9 @@ def save_char_characteristic_to_google_sheet(file_path='characteristic.txt',
     print(f"Save Data to Google Sheets. [{time.time() - ping_time:,.2f} sec]")
 
 
-def load_char_characteristic_from_google_sheet(spreadsheet_id='1l1SfzodtHAAIVsmsQjZPK2YEltilVzu5psv0_2p4MLM',
-                                               sheet_name='Sheet1',
-                                               credentials="credentials/2walks_service_account.json"):
+def load_char_characteristic_from_google_sheet(spreadsheet_id=SPREADSHEET_ID,
+                                               sheet_name=GAME_STATE_SHEET_NAME,
+                                               credentials=CREDENTIALS_PATH):
     ping_time = time.time()
     print(f"Loading...")
 

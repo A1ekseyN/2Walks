@@ -51,7 +51,7 @@ class CharLevel():
         new_level = 0
 
         for level, threshold in sorted(self.LEVEL_THRESHOLDS.items()):
-            if used_steps > threshold:
+            if used_steps >= threshold:
                 new_level = level + 1
             else:
                 break

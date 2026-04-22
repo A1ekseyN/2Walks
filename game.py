@@ -5,7 +5,7 @@ import sys
 import time
 from colorama import init
 
-from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, timestamp_now, energy_timestamp, energy_time_charge, status_bar
+from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, steps_today_manual_entry, timestamp_now, energy_timestamp, energy_time_charge, status_bar
 from characteristics import *
 from equipment import Equipment
 from locations import *
@@ -27,6 +27,72 @@ def game():
             # Функция для выбора локации на карте
             global char_characteristic
 
+            # --- Helpers ---
+            def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
+                """Смена локации: если уже там — молчим либо повторно показываем меню (can_reopen=True)."""
+                current = char_characteristic['loc']
+                if current != loc:
+                    char_characteristic['loc'] = loc
+                    enter_fn()
+                    if call_map_on_switch:
+                        location_change_map()
+                elif can_reopen:
+                    enter_fn()
+
+            def save_game_local_and_cloud():
+                save_characteristic()
+                save_char_characteristic_to_google_sheet()
+
+            def save_and_exit():
+                save_characteristic()
+                save_char_characteristic_to_google_sheet()
+                print('🚪 Спасибо за игру. До встречи.')
+                sys.exit()
+
+            def load_from_cloud():
+                # .update() мутирует существующий dict — все импортёры видят новые данные.
+                char_characteristic.update(load_char_characteristic_from_google_sheet())
+
+            def unknown_command():
+                print('\nНеизвестная команда. Попробуй ещё раз.')
+
+            # --- Command dispatch table ---
+            COMMANDS = {
+                # Локации
+                '1': lambda: enter_location('home', home_location),
+                '2': lambda: enter_location('gym', gym_location, can_reopen=True),
+                '3': lambda: enter_location('shop', shop_location),
+                '4': lambda: enter_location('work', work_location, can_reopen=True),
+                '5': lambda: enter_location('adventure',
+                                            lambda: adventure_location(adventure_instance),
+                                            call_map_on_switch=False),
+                '6': lambda: enter_location('garage', garage_location),
+                '7': lambda: enter_location('auto_dialer', auto_dialer_location),
+                '8': lambda: enter_location('bank', bank_location),
+                # Шаги
+                '0': steps_today_update_manual,
+                '+': steps_today_manual_entry,
+                # Меню персонажа
+                'm': lambda: print('\nРаздел "Меню" - (Пока не работает).'),
+                'i': inventory_menu,
+                'e': lambda: Equipment.equipment_view(self=None),
+                'c': char_info,
+                'u': lambda: CharLevel(char_characteristic).menu_skill_point_allocation(),
+                # Сохранение / загрузка
+                'l': load_from_cloud,
+                's': save_game_local_and_cloud,
+                'q': save_and_exit,
+            }
+
+            # --- Авто-маппинг русской раскладки на Latin-команды ---
+            LAYOUT_RU_TO_EN = {
+                'ь': 'm', 'ш': 'i', 'у': 'e', 'с': 'c', 'г': 'u',
+                'д': 'l', 'ы': 's', 'й': 'q',
+            }
+            for cyr, lat in LAYOUT_RU_TO_EN.items():
+                if lat in COMMANDS:
+                    COMMANDS[cyr] = COMMANDS[lat]
+
             while True:
                 energy_time_charge()            # Проверка и восстановление игровой энергии.
                 work_check_done()               # Проверка работает ли персонаж, и закончил ли он работу по таймауту.
@@ -43,7 +109,8 @@ def game():
 #                      f'\n\t6. 🚗 Гараж (Не работает)'
 #                      f'\n\t7. 🚗 Авто-дилер (Не работает)'
 #                      f'\n\t8. 🏛 Банк (Не работает)'
-                      f'\n\t0. 🔄 Обновить кол-во шагов')
+                      f'\n\t0. 🔄 Обновить кол-во шагов (API)'
+                      f'\n\t+. Ввести шаги вручную')
                 print(f'\tm. Меню // '
                       f'i. 🎒 Инвентарь // '
                       f'e. 🎒 Экипировка // '
@@ -58,70 +125,7 @@ def game():
                     print('\n\nPlease enter digit or letter.')
                     continue
 
-                if temp_number == '1' and char_characteristic['loc'] != 'home':
-                    char_characteristic['loc'] = 'home'
-                    home_location()
-                    location_change_map()
-                elif temp_number == '2' and char_characteristic['loc'] != 'gym':
-                    char_characteristic['loc'] = 'gym'
-                    gym_location()
-                    location_change_map()
-                elif temp_number == '2' and char_characteristic['loc'] == 'gym':
-                    gym_location()
-                elif temp_number == '3' and char_characteristic['loc'] != 'shop':
-                    char_characteristic['loc'] = 'shop'
-                    shop_location()
-                    location_change_map()
-                elif temp_number == '4' and char_characteristic['loc'] != 'work':
-                    char_characteristic['loc'] = 'work'
-                    work_location()
-                    location_change_map()
-                elif temp_number == '4' and char_characteristic['loc'] == 'work':
-                    work_location()
-                elif temp_number == '5' and char_characteristic['loc'] != 'adventure':
-                    char_characteristic['loc'] = 'adventure'
-                    adventure_location(adventure_instance)
-                elif temp_number == '6' and char_characteristic['loc'] != 'garage':
-                    char_characteristic['loc'] = 'garage'
-                    garage_location()
-                    location_change_map()
-                elif temp_number == '7' and char_characteristic['loc'] != 'auto_dialer':
-                    char_characteristic['loc'] = 'auto_dialer'
-                    auto_dialer_location()
-                    location_change_map()
-                elif temp_number == '8' and char_characteristic['loc'] != 'bank':
-                    char_characteristic['loc'] = 'bank'
-                    bank_location()
-                    location_change_map()
-                elif temp_number == '0':
-                    # Обновление кол-ва шагов через API.
-                    steps_today_update_manual()
-
-                # Меню персонажа, инвентаря.
-                elif temp_number == 'm' or temp_number == 'ь':
-                    print('\nРаздел "Меню" - (Пока не работает).')
-                elif temp_number == 'i' or temp_number == 'ш':
-                    inventory_menu()
-                elif temp_number == 'e' or temp_number == 'у':
-                    Equipment.equipment_view(self=None)
-                elif temp_number == 'c' or temp_number == 'с':
-                    char_info()
-                elif temp_number == 'u' or temp_number == 'г':
-                    CharLevel(char_characteristic).menu_skill_point_allocation()
-                elif temp_number == 'l' or temp_number == 'д':
-                    # Загрузка игры из Google Sheets
-                    char_characteristic = load_char_characteristic_from_google_sheet()
-                elif temp_number == 's' or temp_number == 'ы':
-                    # Сохранение игры.
-                    save_characteristic()
-                    save_char_characteristic_to_google_sheet()
-                elif temp_number == 'q' or temp_number == 'й':
-                    # Сохранение игры, и выход.
-                    save_characteristic()
-                    save_char_characteristic_to_google_sheet()
-                    print('🚪 Спасибо за игру. До встречи.')
-                    sys.exit()
-#                    quit()
+                COMMANDS.get(temp_number, unknown_command)()
 
         # Запуск функции, которая относится к локациям
         if char_characteristic['loc'] == 'home':

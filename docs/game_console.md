@@ -16,7 +16,7 @@ python game.py
 ### Требования окружения
 
 - Python 3.x с установленными зависимостями из `requirements.txt` (`colorama`, `requests`, `gspread`, `oauth2client`, `google-auth`, `google-auth-oauthlib`).
-- Терминал с UTF-8 (для эмодзи и русского текста). В `game.py:155` под Windows вызывается `os.system("chcp 65001")`.
+- Терминал с UTF-8 (для эмодзи и русского текста). В `game.py:159` под Windows вызывается `os.system("chcp 65001")`.
 - Опционально для облачного сохранения и обновления шагов:
   - `credentials/2walks_service_account.json` — сервис-аккаунт для Google Sheets;
   - `fitness_api_credential.json` + `token.json` — OAuth-клиент Google Fit (генерируется командой `python get_token_fitnes_api.py`).
@@ -27,16 +27,16 @@ python game.py
 
 Порядок выполнения опирается на то, что Python исполняет код модулей при первом импорте. Важно помнить: **значительная часть "инициализации игры" — это побочные эффекты импорта `characteristics.py`**, а не вызов функции `game()`.
 
-1. `game.py:154` выводит `Version: 0.1.0` и переключает codepage.
+1. `game.py:158` выводит `Version: 0.1.0` и переключает codepage.
 2. Вызывается `game()` (`game.py:19`).
-3. Первое, что делает `game()` — импортирует из `characteristics` всё через `from characteristics import *` (`game.py:11`). На этом импорте происходит:
+3. Первое, что делает `game()` — импортирует из `characteristics` всё через `from characteristics import *` (`game.py:9`). На этом импорте происходит:
    - `characteristics.py:101` — `load_data_from_google_sheet_or_csv()` пытается скачать сейв с Google Sheets (`google_sheets_db.py:51`), при неудаче читает `characteristic.csv`.
    - `characteristics.py:107` — строится основной словарь `char_characteristic` из загруженных полей и текущего `timestamp()`.
    - При построении словаря вычисляется `steps_today()` (`characteristics.py:110`), который в свою очередь вызывает `api.steps_today_update()` (`api.py:9`). Эта функция сверяет `save.txt` с сегодняшней датой и, если день сменился, делает HTTP-запрос к Fitness API. Поэтому **первый импорт `characteristics` может быть медленным и требовать интернет**.
    - `characteristics.py:204-206` дописывают к `energy_max` бонусы от экипировки, навыков и уровня.
-4. Создаётся объект `Adventure(adventure_data_table)` (`game.py:22`) — нужен для меню приключений и предвычисленных бонусов.
+4. Создаётся объект `Adventure(adventure_data_table)` (`game.py:24`) — нужен для меню приключений и предвычисленных бонусов.
 5. Определяется внутренняя функция `location_selection()` (`game.py:26`). Главный цикл игры — именно она, не `game()`.
-6. Проверяется `char_characteristic['loc']` из сохранения (`game.py:127`) и вызывается соответствующая локация (`home_location`, `gym_location`, `work_location`, `adventure_location`, ...), после чего запускается `location_selection()`.
+6. Проверяется `char_characteristic['loc']` из сохранения (`game.py:131`) и вызывается соответствующая локация (`home_location`, `gym_location`, `work_location`, `adventure_location`, ...), после чего запускается `location_selection()`.
 
 ### Глобальное состояние `char_characteristic`
 
@@ -68,7 +68,7 @@ python game.py
 
 В начале каждой итерации последовательно вызываются:
 
-1. `energy_time_charge()` (`functions.py:18`) — регенерация энергии. Сравнивает текущий timestamp с `energy_time_stamp` и, если прошло достаточно секунд (по умолчанию 60, умноженное на модификатор скорости), прибавляет единицы энергии. Считает остаток — чтобы дробные секунды не терялись. Ограничивает `energy` значением `energy_max`.
+1. `energy_time_charge()` (`functions.py:18`) — регенерация энергии. Сравнивает текущий timestamp с `energy_time_stamp` и, если прошло достаточно секунд (по умолчанию 60, умноженное на модификатор скорости), начисляет по одной единице за каждый полный интервал. Остаток сохраняется в стампе (`stamp = now - remainder`), чтобы дробные секунды не терялись. При `energy >= energy_max` стамп сразу синкается к `now` — регенерация "не копится" пока энергия на максимуме, после траты отсчёт интервала начинается заново.
 2. `work_check_done()` (`work.py:169`) — если персонаж на работе и `working_end <= now`, начисляет зарплату, тратит шаги и энергию, сбрасывает `working` и связанные поля.
 3. `skill_training_check_done()` (`gym.py:201`) — если идёт тренировка и `skill_training_time_end <= now`, повышает уровень соответствующего навыка на 1, сбрасывает `skill_training*`.
 4. `status_bar()` (`functions.py:42`) — печатает шаги, энергию, деньги, уровень, текущую локацию, а также информацию о текущей тренировке/работе/приключении с таймером до завершения.
@@ -77,7 +77,7 @@ python game.py
 
 Итог: **пока игрок не нажимает Enter, ничего не происходит**. Чтобы "получить" заработанные деньги или готовую экипировку, нужно вернуться в главное меню (отдать управление `location_selection()`).
 
-### 2.2 Меню глобальной карты (`game.py:37-54`)
+### 2.2 Меню глобальной карты (`game.py:103-121`)
 
 Игрок видит номера локаций и короткий список горячих клавиш:
 
@@ -88,32 +88,44 @@ python game.py
 | `3` | 🛒 Магазин (в тестовом режиме) — `shop_location()` → `Shop.shop_menu()` |
 | `4` | 🏭 Работа — `work_location()` → `Work(char_characteristic).work_choice()` |
 | `5` | 🗺️ Приключение — `adventure_location(adventure_instance)` → `adventure_menu()` |
-| `0` | Обновить количество шагов через API (`steps_today_update_manual()`) |
+| `0` | Обновить количество шагов через Fitness API (`steps_today_update_manual()`) |
+| `+` | Ручной ввод количества шагов (`steps_today_manual_entry()`) — перезаписывает `steps_today` максимумом из текущего и введённого |
 | `m` / `ь` | Раздел "Меню" (заглушка) |
 | `i` / `ш` | `inventory_menu()` — просмотр/продажа инвентаря |
 | `e` / `у` | `Equipment.equipment_view()` — просмотр экипировки |
 | `c` / `с` | `char_info()` — подробные характеристики |
 | `u` / `г` | `CharLevel(char_characteristic).menu_skill_point_allocation()` — распределение очков навыков |
-| `l` / `д` | Загрузка сейва из Google Sheets (перезаписывает `char_characteristic`) |
+| `l` / `д` | Загрузка сейва из Google Sheets (обновляет `char_characteristic` через `.update()`) |
 | `s` / `ы` | Сохранение в CSV + Google Sheets |
 | `q` / `й` | Сохранение и выход (`sys.exit()`) |
+| любое другое | Сообщение "Неизвестная команда. Попробуй ещё раз." |
 
-Все буквенные команды дублируются в русской раскладке (одна и та же кнопка на клавиатуре).
+Все буквенные команды дублируются в русской раскладке (одна и та же кнопка на клавиатуре). Дубли подтягиваются автоматически из таблицы `LAYOUT_RU_TO_EN` внутри `location_selection()` — одна точка правды для раскладки.
+
+Диспатч построен на словаре `COMMANDS: dict[str, Callable]` (`game.py:60-85`) + helper `enter_location(loc, enter_fn, can_reopen, call_map_on_switch)` (`game.py:31-40`), инкапсулирующий логику смены локации. Каждый вызов — `COMMANDS.get(user_input, unknown_command)()`.
 
 ### 2.3 Смена локации и `char_characteristic['loc']`
 
-Когда игрок впервые выбирает локацию отличную от текущей, `loc` обновляется, а затем вызывается `location_change_map()` (`functions.py:291`). Сейчас эта функция заглушка (без трат), но проектировалась как "стоимость перехода между локациями". Повторный вход в ту же локацию `loc` не меняет — это используется для Gym (при повторном выборе сразу открывается меню тренировок, без стартового текста).
+Когда игрок впервые выбирает локацию отличную от текущей, `loc` обновляется, а затем вызывается `location_change_map()` (`functions.py:291`). Сейчас эта функция заглушка (без трат), но проектировалась как "стоимость перехода между локациями". Повторный вход в ту же локацию `loc` не меняет — это используется для Gym и Work (при повторном выборе сразу открывается меню, без стартового текста).
 
-Пример из `game.py:65-70`:
+Логика живёт в helper-функции `enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True)`:
 
 ```python
-elif temp_number == '2' and char_characteristic['loc'] != 'gym':
-    char_characteristic['loc'] = 'gym'
-    gym_location()
-    location_change_map()
-elif temp_number == '2' and char_characteristic['loc'] == 'gym':
-    gym_location()
+def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
+    current = char_characteristic['loc']
+    if current != loc:
+        char_characteristic['loc'] = loc
+        enter_fn()
+        if call_map_on_switch:
+            location_change_map()
+    elif can_reopen:
+        enter_fn()
 ```
+
+Флаги по командам:
+- `1`, `3`, `6`, `7`, `8` — дефолт (смена + `location_change_map`, без повторного захода).
+- `2`, `4` — `can_reopen=True` (повторный вход снова открывает меню локации).
+- `5` — `call_map_on_switch=False` (Adventure не вызывает `location_change_map()`) + колбэк `lambda: adventure_location(adventure_instance)` для передачи замкнутого `adventure_instance`.
 
 ---
 
@@ -243,16 +255,16 @@ elif temp_number == '2' and char_characteristic['loc'] == 'gym':
 ### 6.3 Команды игрока
 
 - `s` — сохранить в CSV + Sheets.
-- `l` — загрузить из Sheets и перезаписать `char_characteristic`.
+- `l` — загрузить из Sheets. Обновляет `char_characteristic` через `.update()` — все модули, импортировавшие его, видят новые данные сразу, без рестарта.
 - `q` — то же, что `s`, плюс `sys.exit()`.
 
-**Важно:** команда `l` перезаписывает глобальный словарь в `characteristics.py` (`game.py:113` делает `char_characteristic = load_char_characteristic_from_google_sheet()`). Это локальное присваивание внутри `game()` — другие модули продолжают смотреть на старый объект. Если ожидается, что все увидят новые данные, может понадобиться рестарт игры.
+Реализация всех трёх — небольшие helper-функции внутри `location_selection()` (`game.py:42-54`).
 
 ---
 
 ## 7. Энергия, скорость, бонусы — формулы коротко
 
-- **Регенерация энергии:** 1 единица за `speed_skill_equipment_and_level_bonus(60)` секунд. Это `60 * (1 - (speed_skill + equipment_speed_bonus + lvl_up_skill_speed)/100)`. То есть при +50 % скорости одна энергия восстанавливается за 30 секунд.
+- **Регенерация энергии:** 1 единица за `speed_skill_equipment_and_level_bonus(60)` секунд. Это `60 * (1 - (speed_skill + equipment_speed_bonus + lvl_up_skill_speed)/100)`. То есть при +50 % скорости одна энергия восстанавливается за 30 секунд. На максимуме (`energy == energy_max`) регенерация приостановлена — стамп двигается к `now`, время не банкуется.
 - **Время активностей (Gym/Work/Adventure):** `time * (1 - speed_bonus/100)` секунд.
 - **Шаги за активность:** `base_steps * (1 - move_optimization_<area>/100)` через `apply_move_optimization_*()` из `bonus.py`.
 - **Daily bonus:** +1 к `steps_daily_bonus` каждый день, если вчера было ≥ 10k шагов; иначе сброс в 0. Применяется и к `steps_can_use`, и к `energy_max`.
@@ -264,7 +276,7 @@ elif temp_number == '2' and char_characteristic['loc'] == 'gym':
 ## 8. Где смотреть исходники
 
 - Игровой цикл: `game.py`.
-- Tick-проверки и меню глобальной карты: `game.py:26-124`.
+- Tick-проверки и меню глобальной карты: `game.py:26-128`.
 - Регенерация и статус-бар: `functions.py:18`, `functions.py:42`.
 - Навыки и тренировки: `gym.py` + таблицы в `characteristics.py:209`.
 - Работа: `work.py`.

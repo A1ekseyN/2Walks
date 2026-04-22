@@ -58,7 +58,7 @@ def calculate_level_from_total_used_steps(self):
     new_level = 0
 
     for level, threshold in sorted(self.LEVEL_THRESHOLDS.items()):
-        if used_steps > threshold:
+        if used_steps >= threshold:
             new_level = level + 1
         else:
             break
@@ -69,7 +69,7 @@ def calculate_level_from_total_used_steps(self):
 **Логика:**
 1. Начинаем с `new_level = 0`.
 2. Перебираем пороги в порядке возрастания.
-3. На каждой итерации: если потраченных шагов **строго больше** текущего порога, устанавливаем `new_level = индекс_порога + 1`.
+3. На каждой итерации: если потраченных шагов **не меньше** текущего порога, устанавливаем `new_level = индекс_порога + 1`.
 4. Как только находим порог, который ещё не пройден — выходим из цикла.
 5. Возвращаем накопленный `new_level`.
 
