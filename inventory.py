@@ -66,36 +66,33 @@ def sold_item():
                   f'(Price: {item["price"][0]} $) '
                   ### Тут нужно добавить название, характеристики и цену предмета. 
                   f'\n\t- Цена предмета 💰: {item["price"][0]} $')
-            try:
-                ask = input('\nВы уверены, что хотите продать этот предмет? '
-                            '\n1. Да'
-                            '\n0. Назад \n>>> ')
-                if ask == '1':
-                    print(f'\nВы продали предмет:'
-                          f'\n\t- {item["item_type"][0].title()}, '
-                          f'{item["grade"][0]}, '
-                          f'+ {item["bonus"][0]} {item["characteristic"][0].title()}, '
-                          f'(Quality: {item["quality"][0]}), '
-                          f'(Price: {item["price"][0]} $) '
-                          ### Тут нужно добавить название, характеристики и цену предмета. 
-                          f'\n\t- Цена предмета 💰: {item["price"][0]} $')
-                    try:  # Если нет цены у предмета, тогда exception. И предмет удаляется без прибыли.
-                        char_characteristic['money'] += round(char_characteristic['inventory'][item_index]['price'][0])
-                    except:
-                        print('У предмета нет цены. Продажа за 0 $.')
-                    del char_characteristic["inventory"][item_index]
-                    inventory_menu()
-                elif ask == '0':
-                    sold_item()
-                else:
-                    sold_item()
-            except:
+            ask = input('\nВы уверены, что хотите продать этот предмет? '
+                        '\n1. Да'
+                        '\n0. Назад \n>>> ')
+            if ask == '1':
+                print(f'\nВы продали предмет:'
+                      f'\n\t- {item["item_type"][0].title()}, '
+                      f'{item["grade"][0]}, '
+                      f'+ {item["bonus"][0]} {item["characteristic"][0].title()}, '
+                      f'(Quality: {item["quality"][0]}), '
+                      f'(Price: {item["price"][0]} $) '
+                      ### Тут нужно добавить название, характеристики и цену предмета.
+                      f'\n\t- Цена предмета 💰: {item["price"][0]} $')
+                try:  # Если нет цены у предмета, тогда exception. И предмет удаляется без прибыли.
+                    char_characteristic['money'] += round(char_characteristic['inventory'][item_index]['price'][0])
+                except (KeyError, IndexError, TypeError):
+                    print('У предмета нет цены. Продажа за 0 $.')
+                del char_characteristic["inventory"][item_index]
+                inventory_menu()
+            elif ask == '0':
+                sold_item()
+            else:
                 sold_item()
         elif item_to_sold == 0:
             inventory_menu()
         else:
             sold_item()
-    except:
+    except ValueError:
         sold_item()
 
 

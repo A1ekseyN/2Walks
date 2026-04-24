@@ -33,27 +33,23 @@ class Work():
                   f'\n\t3. Курьер     - 💰: {Fore.LIGHTYELLOW_EX}10{Style.RESET_ALL} $ (🏃: {self.work_requirements["courier_foot"]["steps"]} + 🔋: 10)'
                   f'\n\t4. Экспедитор - 💰: {Fore.LIGHTYELLOW_EX}50{Style.RESET_ALL} $ (🏃: {self.work_requirements["forwarder"]["steps"]} + 🔋: 50)'
                   '\n\t0. Вернуться назад.')
-            try:
-                working = input('\nВыберите вакансию, или вернитесь обратно:\n>>> ')
-                if working == '1':
-                    # Вакансия - Сторож
-                    self.ask_hours('watchman')
-                elif working == '2':
-                    # Вакансия - Завод
-                    self.ask_hours('factory')
-                elif working == '3':
-                    # Вакансия - Курьер
-                    self.ask_hours('courier_foot')
-                elif working == '4':
-                    # Вакансия - Экспедитор
-                    self.ask_hours('forwarder')
-                elif working == '0':
-                    # Выход в меню.
-                    pass
-                else:
-                    print('\nВы ввели не правильные данные. Попробуйте еще раз.')
-                    self.work_choice()
-            except:
+            working = input('\nВыберите вакансию, или вернитесь обратно:\n>>> ')
+            if working == '1':
+                # Вакансия - Сторож
+                self.ask_hours('watchman')
+            elif working == '2':
+                # Вакансия - Завод
+                self.ask_hours('factory')
+            elif working == '3':
+                # Вакансия - Курьер
+                self.ask_hours('courier_foot')
+            elif working == '4':
+                # Вакансия - Экспедитор
+                self.ask_hours('forwarder')
+            elif working == '0':
+                # Выход в меню.
+                pass
+            else:
                 print('\nВы ввели не правильные данные. Попробуйте еще раз.')
                 self.work_choice()
             return working
@@ -98,7 +94,7 @@ class Work():
             else:
                 print(f'\nНужно ввести число рабочих часов в диапазоне 1 - {max_available_hours}.')
                 self.ask_hours(work)
-        except:
+        except ValueError:
             print('\nВы ввели неправильные данные. Попробуйте ещё раз.')
             self.ask_hours(work)
 
@@ -108,15 +104,12 @@ class Work():
               f'\nМесто работы: {Fore.GREEN}{char_characteristic["work"].title()}{Style.RESET_ALL}, в час - {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"]}{Style.RESET_ALL} $ (💰: + {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"] * char_characteristic["working_hours"]}{Style.RESET_ALL} $).'
               '\n1. Добавить рабочие часы.'
               '\n0. Назад')
-        try:
-            ask = input('\nДобавить рабочие часы или вернуться обратно? \n>>> ')
-            if ask == '1':
-                self.ask_hours(work)
-            elif ask == '0':
-                pass
-            else:
-                self.work_choice()
-        except:
+        ask = input('\nДобавить рабочие часы или вернуться обратно? \n>>> ')
+        if ask == '1':
+            self.ask_hours(work)
+        elif ask == '0':
+            pass
+        else:
             self.work_choice()
 
     def check_requirements(self, work, working_hours):

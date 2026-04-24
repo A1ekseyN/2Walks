@@ -119,12 +119,7 @@ def game():
                       f'\n\tl. ☁ Load from Cloud'
                       f'\n\ts. 💾 Save Game'
                       f'\n\tq/e. 💾 + 🚪 Save & Exit')
-                try:
-                    temp_number = input('Куда вы хотите пойти?:\n>>> ')
-                except:
-                    print('\n\nPlease enter digit or letter.')
-                    continue
-
+                temp_number = input('Куда вы хотите пойти?:\n>>> ')
                 COMMANDS.get(temp_number, unknown_command)()
 
         # Запуск функции, которая относится к локациям
@@ -155,7 +150,10 @@ def game():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.1.0")
+    print(f"Version: 0.1.1a")
     os.system("chcp 65001")         # Включение Unicode для консоли. Все равно это не работает
 
-    game()
+    try:
+        game()
+    except (KeyboardInterrupt, EOFError):
+        print('\n\nВыход без сохранения. Пока!')

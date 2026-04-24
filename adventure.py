@@ -116,22 +116,19 @@ class Adventure():
 
     def adventure_choice(self):
         # Выбор приключения
-        try:
-            ask = input('\nВыберите локацию, в которую хотите отправиться:\n>>> ')
-            if ask in self.adventures:
-                adv = self.adventures[ask]
-                adv_name = adv['name']
-                adv_data = adv['data']
-                adv_req = self.adventure_requirements[ask]
-                adv_steps = adv_data['steps']
-                adv_energy = adv_data['energy']
-                adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'])
-                self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
-            elif ask == '0':
-                pass
-            else:
-                self.adventure_menu()
-        except:
+        ask = input('\nВыберите локацию, в которую хотите отправиться:\n>>> ')
+        if ask in self.adventures:
+            adv = self.adventures[ask]
+            adv_name = adv['name']
+            adv_data = adv['data']
+            adv_req = self.adventure_requirements[ask]
+            adv_steps = adv_data['steps']
+            adv_energy = adv_data['energy']
+            adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'])
+            self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
+        elif ask == '0':
+            pass
+        else:
             self.adventure_menu()
 
     def adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time):

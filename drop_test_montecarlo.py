@@ -164,5 +164,6 @@ def test_item_generation():
 
 
 # Запускаем тесты
-test_item_generation()
-print(f"Luck: {luck_chr}")
+if __name__ == "__main__":
+    test_item_generation()
+    print(f"Luck: {luck_chr}")

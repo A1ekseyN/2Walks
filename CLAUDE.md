@@ -24,11 +24,11 @@ python get_token_fitnes_api.py
 # Manually sync the save to/from Google Sheets
 python google_sheets_db.py
 
-# Drop-rate simulation (NOT a unit test; runs 10k×6 iterations on import)
-python test_drop.py
+# Drop-rate Monte-Carlo simulation (10k×6 iterations)
+python drop_test_montecarlo.py
 ```
 
-There is no test framework, linter, or CI configured. `test_drop.py` is a Monte-Carlo simulator, not a pytest suite — it calls `test_item_generation()` at module load, so merely importing it triggers a long run.
+There is no test framework, linter, or CI configured. `drop_test_montecarlo.py` is a Monte-Carlo drop simulator — run standalone.
 
 ## Architecture
 
@@ -56,7 +56,7 @@ When adding new fields to `char_characteristic`, make sure they survive both CSV
 
 - `locations.py` — dispatch layer between `game.py` and each location module; also maps `char_characteristic['loc']` to an emoji.
 - `gym.py`, `work.py`, `adventure.py`, `shop.py`, `inventory.py`, `equipment.py` — one per location/menu. `work_check_done()` and `skill_training_check_done()` are polled from the main loop to finalize timer-based activities; if you add another timed action, follow the same "check on every tick" pattern.
-- `drop.py` / `drop_simulator.py` — item drop logic for Adventure. Grades are `c/b/a/s/s+`, weighted by `drop_percent_*` constants and a `luck_chr` computed from skill + equipment bonuses at import time.
+- `drop.py` — item drop logic for Adventure. Grades are `c/b/a/s/s+`, weighted by `drop_percent_*` constants and a `luck_chr` computed from skill + equipment bonuses at import time.
 - `level.py` (`CharLevel`), `characteristics.py` (`char_info`, `save_characteristic`), `bonus.py`, `equipment_bonus.py`, `skill_bonus.py` — stat/bonus math.
 - `adventure_data.py` — static data table for adventures.
 - `functions.py` / `functions_02.py` — cross-cutting helpers (`status_bar`, `energy_time_charge`, `location_change_map`, date/time helpers).

@@ -55,48 +55,45 @@ class Equipment():
 
     def equipment_change(self):
         # Меняет одежду на персонаже
-        try:
-            ask = input('\nВыберите слот, в котором хотите заменить одежду или экипировку: \n>>> ')
-            if ask == '1':
-                item_name = 'голова'
-                item_type = 'helmet'
-                item_slot = 'equipment_head'
-                Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
-            elif ask == '2':
-                item_name = 'шея'
-                item_type = 'necklace'
-                item_slot = 'equipment_neck'
-                Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
-            elif ask == '3':
-                item_name = 'торс'
-                item_type = 't-shirt'
-                item_slot = 'equipment_torso'
-                Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
-            elif ask == '4':
-                item_name = 'палец левой руки'
-                item_type = 'ring'
-                item_slot = 'equipment_finger_01'
-                Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
-            elif ask == '5':
-                item_name = 'палец правой руки'
-                item_type = 'ring'
-                item_slot = 'equipment_finger_02'
-                Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
+        ask = input('\nВыберите слот, в котором хотите заменить одежду или экипировку: \n>>> ')
+        if ask == '1':
+            item_name = 'голова'
+            item_type = 'helmet'
+            item_slot = 'equipment_head'
+            Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
+        elif ask == '2':
+            item_name = 'шея'
+            item_type = 'necklace'
+            item_slot = 'equipment_neck'
+            Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
+        elif ask == '3':
+            item_name = 'торс'
+            item_type = 't-shirt'
+            item_slot = 'equipment_torso'
+            Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
+        elif ask == '4':
+            item_name = 'палец левой руки'
+            item_type = 'ring'
+            item_slot = 'equipment_finger_01'
+            Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
+        elif ask == '5':
+            item_name = 'палец правой руки'
+            item_type = 'ring'
+            item_slot = 'equipment_finger_02'
+            Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
 #            elif ask == '6':
 #                item_name = None
 #                item_type = None
 #                item_slot = None
 #                Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
-            elif ask == '6':
-                item_name = 'ступни'
-                item_type = 'shoes'
-                item_slot = 'equipment_foots'
-                Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
-            elif ask == '0':
-                pass
-            else:
-                Equipment.equipment_change(self)
-        except:
+        elif ask == '6':
+            item_name = 'ступни'
+            item_type = 'shoes'
+            item_slot = 'equipment_foots'
+            Equipment.equipment_change_item_in_slot(self, item_name=item_name, item_type=item_type, item_slot=item_slot)
+        elif ask == '0':
+            pass
+        else:
             Equipment.equipment_change(self)
 
     def equipment_change_item_in_slot(self, item_name, item_type, item_slot):
@@ -135,30 +132,26 @@ class Equipment():
             if index in list_cnt:
                 print(f'\nВы выбрали предмет:'
                       f'\n- {char_characteristic["inventory"][index - 1]["item_name"][0].title()} {char_characteristic["inventory"][index - 1]["grade"][0].title()}: + {char_characteristic["inventory"][index - 1]["bonus"][0]} {char_characteristic["inventory"][index - 1]["characteristic"][0].title()} (Quality: {char_characteristic["inventory"][index - 1]["quality"][0]:,.2f}).')
-                try:
-                    ask = input('\nНадеть элемент экипировки на персонажа: \n1. Да\n0. Назад \n>>> ')
-                    if ask == '1':
-                        temp_item = None
-                        if char_characteristic[item_slot] != None:
-                            # Проверка или слот свободный
-                            temp_item = char_characteristic[item_slot]
+                ask = input('\nНадеть элемент экипировки на персонажа: \n1. Да\n0. Назад \n>>> ')
+                if ask == '1':
+                    temp_item = None
+                    if char_characteristic[item_slot] != None:
+                        # Проверка или слот свободный
+                        temp_item = char_characteristic[item_slot]
 
-                        char_characteristic[item_slot] = char_characteristic['inventory'][index - 1]
-                        del char_characteristic['inventory'][index - 1]
+                    char_characteristic[item_slot] = char_characteristic['inventory'][index - 1]
+                    del char_characteristic['inventory'][index - 1]
 
-                        print('\nВы надели предмет на персонажа: ')
-                        print(f'- {char_characteristic[item_slot]["item_name"][0].title()} {char_characteristic[item_slot]["grade"][0].title()}: + {char_characteristic[item_slot]["bonus"][0]} {char_characteristic[item_slot]["characteristic"][0].title()} (Quality: {char_characteristic[item_slot]["quality"][0]:,.2f})')
+                    print('\nВы надели предмет на персонажа: ')
+                    print(f'- {char_characteristic[item_slot]["item_name"][0].title()} {char_characteristic[item_slot]["grade"][0].title()}: + {char_characteristic[item_slot]["bonus"][0]} {char_characteristic[item_slot]["characteristic"][0].title()} (Quality: {char_characteristic[item_slot]["quality"][0]:,.2f})')
 
-                        if temp_item:
-                            char_characteristic['inventory'].append(temp_item)
-                            print('\nВы заменили один предмет экипировки на другой.')
+                    if temp_item:
+                        char_characteristic['inventory'].append(temp_item)
+                        print('\nВы заменили один предмет экипировки на другой.')
 
-                        Equipment.equipment_view(self=None)
-                    else:
-                        Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot)
-                except:
-                    print('Ошибка смены части экипировки.')
-                    Equipment.change_item_in_slot(self, item_name, item_type, item_slot, list_cnt)
+                    Equipment.equipment_view(self=None)
+                else:
+                    Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot)
 
             elif index == 0:
                 Equipment.equipment_view(self=None)
@@ -171,7 +164,7 @@ class Equipment():
             else:
                 print('\nПопробуйте еще раз ввести число: ')
                 Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot)
-        except:
+        except ValueError:
             print('\nПроизошла ошибка при выборе экипировки. Введите число.')
             Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot)
 

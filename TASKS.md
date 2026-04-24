@@ -74,13 +74,106 @@ tables/         — skill_training_table, adventure_data_table
 
 ---
 
-### 1.5. Заменить рекурсивные меню на циклы `[M / S / todo]`
+### 1.5. Заменить рекурсивные меню на циклы `[M / M / todo]`
 
-`Work.work_choice()`, `inventory_menu()`, `get_access_token()` при ошибке вызывают сами себя -> `RecursionError` при долгих циклах ошибок.
+**Переоценка Effort с S на M** — первоначальная оценка опиралась на "везде одинаковый шаблон". Анализ (24.04.2026) показал ~15 реальных мест в 6 файлах, плюс решение по UX и длинные меню (`adventure_menu`, `gym_menu`) делают задачу больше, чем казалось.
 
-**Как:** `while True: ... if valid: break`. Шаблон один и тот же — пройти по всем меню за один раз.
+#### Классификация рекурсивных вызовов
 
-**Места:** `work.py:56,101,119`, `inventory.py:18`, `shop.py` (много), `get_token_fitnes_api.py:77`.
+Анализ после закрытия 2.5 выделил три разные категории:
+
+**Категория A — ретрай при ошибке** (то, что реально решает 1.5):
+пользователь ввёл ерунду → функция меню вызывает саму себя → каждая попытка добавляет стек-фрейм. Теоретически — `RecursionError` после ~1000 невалидных вводов подряд. Практически — маловероятно, так что задача скорее про **идиоматичность и чистоту трейсбэков**, чем про реальный баг.
+
+**Категория B — навигация между меню**: меню → подменю → возврат в родителя через прямой вызов функции. Не ошибка, но тоже строит стек. Убрать без структурной переработки (возврат кодов, стейт-машина) не получится — это уровень **1.1 GameState**. **Отложено до 1.1.**
+
+**Категория C — `get_access_token()`** (`get_token_fitnes_api.py:77`): рекурсия ограничена одной глубиной (удалили токен → повтор → при неудаче `return None`), `RecursionError` невозможен. Плюс вся функция deprecates в **4.16**. **Не трогаем.**
+
+#### Ключевое UX-решение
+
+Наивный `while True: ... continue` на невалиде покажет только `>>> ` без самого меню — регрессия относительно текущего поведения. Правильно: держать print-блок меню **внутри** цикла, чтобы каждый reprompt перерисовывал опции. Для длинных меню (`adventure_menu` ~45 строк, `gym_menu` ~30 строк) — вынести рендеринг в helper-функцию, чтобы while не раздувался.
+
+#### Что НЕ входит в скоуп 1.5
+
+- **Категория B (навигация).** Места: `equipment.py:54,152,157`, `adventure.py:115`, `shop.py:32,35,86,88`, `inventory.py:15,86,92`. Откладываются до 1.1.
+- **`get_token_fitnes_api.py:77`** — категория C, deprecates в 4.16.
+- **Helper-функция `prompt_choice()` / `prompt_int()`.** Её место — в новом UI-модуле после 1.3 (раздел `functions.py`). Сейчас внутренняя кухня — инлайн `while True` в каждом меню.
+
+#### Подзадачи (по файлам, в порядке возрастания сложности)
+
+##### 1.5.1. `work.py` — work_choice, ask_hours `[L / S / todo]`
+
+Ретраи (3 места):
+- `work.py:54` — `work_choice` else → self
+- `work.py:96` — `ask_hours` часы вне 1..max_available_hours → self
+- `work.py:99` — `ask_hours` `except ValueError` → self
+
+Стратегия: `work_choice` обернуть в `while True`, print-блок меню внутрь, каждая валидная ветка — `break`. В `ask_hours` — два retry-места слить в один цикл с `try/except ValueError: continue` внутри.
+
+Учесть: `work.py:113` (`add_working_hours` else → `self.work_choice()`) — это категория B (навигация), не трогаем.
+
+##### 1.5.2. `equipment.py` — equipment_change, change_item_in_slot `[L / S / todo]`
+
+Ретраи (3 места):
+- `equipment.py:97` — `equipment_change` else → self
+- `equipment.py:166` — `change_item_in_slot` else → self (unused index)
+- `equipment.py:169` — `change_item_in_slot` `except ValueError` → self
+
+Стратегия: `equipment_change` — короткое меню на 6 пунктов, обернуть одним `while True`. `change_item_in_slot` — int-input с ValueError; два retry-места слить в один loop.
+
+Учесть: `equipment.py:152,157` (после действия `Equipment.equipment_view(self=None)`) — категория B, не трогаем.
+
+##### 1.5.3. `inventory.py` — inventory_menu, sold_item `[L / S / todo]`
+
+Ретраи (5 мест):
+- `inventory.py:19` — `inventory_menu` else → self
+- `inventory.py:88, 90, 94` — `sold_item` ветки "0"/else/за границей индекса → self
+- `inventory.py:96` — `sold_item` `except ValueError` → self
+
+Стратегия: `inventory_menu` — простой while. `sold_item` сложнее — два уровня input'а (выбор предмета + подтверждение продажи). Возможно стоит выделить подтверждение в отдельную функцию `_confirm_sale(item)`, чтобы не вкладывать циклы.
+
+Учесть: `inventory.py:15,86,92` — переходы между `inventory_menu` ↔ `sold_item` — категория B, не трогаем.
+
+##### 1.5.4. `shop.py` — shop_menu + подменю `[L / S / todo]`
+
+Ретраи:
+- `shop.py:43` — `shop_menu` else → self
+- плюс ~6 аналогичных мест в `shop_menu_food_and_water`, `clothes_head`, `clothes_jacket`, `clothes_pants`, `clothes_gloves`, `clothes_shoes`, `shop_menu_clothes` — каждая функция на else или после неудачной покупки вызывает себя.
+
+Стратегия: основной `shop_menu` + `shop_menu_food_and_water` в while. Clothes-функции — заглушки, минимальная правка в том же стиле (пока Shop не переписан в 4.7, но при рерайте это перезапишется).
+
+Учесть: `shop.py:32,35,86,88` — вызовы `Shop.shop_menu(self)` после действия — категория B, не трогаем.
+
+##### 1.5.5. `adventure.py` — adventure_menu + adventure_choice + adventure_choice_confirmation `[M / S / todo]`
+
+Ретраи (2 места):
+- `adventure.py:132` — `adventure_choice` else → `adventure_menu()`
+- `adventure.py:151` — `adventure_choice_confirmation` else → self
+
+Особенность: `adventure_menu` — 45 строк рендеринга, `adventure_choice` — маленький диспетчер. Сейчас на невалиде `adventure_choice` → `adventure_menu` → `adventure_choice` — это **ping-pong рекурсия через 2 функции**.
+
+Два варианта реализации:
+- **Вариант 1 (слияние):** объединить `adventure_menu` + `adventure_choice` в одну функцию с `while True` внутри. Просто, но функция становится большой.
+- **Вариант 2 (helper):** вынести рендеринг в `_render_adventure_menu()`, `adventure_choice` превращается в `while True: _render_adventure_menu(); ask = input(); dispatch`. Сложнее правка, но чище.
+
+Решение принимается при реализации. Склоняюсь к **варианту 2**.
+
+Учесть: `adventure.py:147,149` (после `check_requirements` / `adventure_choice_confirmation` → `adventure_menu`) — категория B, не трогаем.
+
+##### 1.5.6. `gym.py` — gym_menu `[M / S / todo]`
+
+Ретраи (4 места):
+- `gym.py:142, 144, 146, 149` — различные else/except в `gym_menu` → self
+
+Особенность: `gym_menu` ~60 строк, включая рендеринг таблицы скиллов + диспетчер + запуск тренировки. Нужен helper для рендеринга, иначе `while True` станет огромным.
+
+Попутно: в 147 строке есть `except Exception as error:` — широкий перехват, который стоит сузить (формально это скоуп 2.5, но пропущен, т.к. 2.5 искала только голые `except:`, а здесь `Exception`). Можно закрыть этим же коммитом — отдельной правкой не стоит.
+
+Учесть: есть ещё `gym.py:251` (`Skill_Training.check_requirements` → `gym_menu()` при нехватке ресурсов) — это категория B, не трогаем.
+
+---
+
+**Порядок выполнения:** 1.5.1 → 1.5.2 → 1.5.3 → 1.5.4 → 1.5.5 → 1.5.6. Каждая подзадача — самостоятельное изменение, свой мини-смоук-тест (меню открыть, ввести ерунду, Ctrl+C). Коммитить можно либо после каждой, либо пакетом по 2-3.
 
 ---
 
@@ -193,13 +286,19 @@ class Item:
 
 ---
 
-### 2.5. Голые `except:` глотают `KeyboardInterrupt` и ошибки программиста `[M / S / todo]`
+### 2.5. Голые `except:` глотают `KeyboardInterrupt` и ошибки программиста `[M / S / done]`
 
-20 мест. Ctrl+C не выходит из подменю Work/Shop. Программистские ошибки типов молча проглатываются.
+**Сделано (24.04.2026):** закрыты 19 из 20 мест (20-е — `functions.py:282` — оставлено для задачи 5.3, т.к. вся функция `steps_today_update_manual_nocodeapi_old()` помечена к удалению).
 
-**Фикс:** везде заменить на `except (ValueError, TypeError):` для обработки ввода. Где вообще не должно быть исключений — убрать try.
+Разбивка по паттернам:
+- **14 мест** с `input()` + только строковым сравнением — `try/except` удалён целиком. `input()` на валидной строке не падает, а `else:`-ветка уже обрабатывает невалидный ввод. Файлы: `work.py:56,119`, `equipment.py:99,159`, `adventure.py:134`, `shop.py` (7 мест: `shop_menu`, `shop_menu_food_and_water`, `clothes_head`, `clothes_jacket`, `clothes_pants`, `clothes_gloves`, `clothes_shoes`, `shop_menu_clothes`), `inventory.py:92`.
+- **3 места** с `int(input(...))` — сужено до `except ValueError:`. Файлы: `work.py:101`, `equipment.py:174`, `inventory.py:98`.
+- **1 место** с доступом к полю словаря — сужено до `except (KeyError, IndexError, TypeError):`. `inventory.py:84`.
+- **1 место** в `game.py:124` (главное меню) — `try/except` удалён; `COMMANDS.get(..., unknown_command)` уже обрабатывает любую строку.
 
-**Места:** см. `grep "except:"` — 20 строк.
+**Бонус:** в `game.py:157-161` добавлена обёртка `try/except (KeyboardInterrupt, EOFError):` вокруг `game()` на верхнем уровне — `Ctrl+C`/`Ctrl+D` теперь выходят с сообщением "Выход без сохранения. Пока!" без трейсбэка. Версия на экране обновлена с `0.1.0` до `0.1.1a`.
+
+**Побочный эффект:** рекурсия в меню никуда не делась (задача 1.5 её решит). Но Ctrl+C больше не уходит в бесконечный цикл перезапроса.
 
 ---
 
@@ -212,6 +311,12 @@ class Item:
 ### 2.7. Расчёт уровня использует строгое `>` вместо `>=` `[L / S / done]`
 
 **Сделано:** `level.py:54` — `>` заменён на `>=`. Теперь ровно 10 000 потраченных шагов даёт уровень 1, 20 000 — уровень 2 и т.д. Попутно синхронизирована `docs/levels.md` (кодовый блок и формулировка "не меньше" вместо "строго больше").
+
+---
+
+### 2.8. `walk_20k` всегда дропает `None` `[H / S / done]`
+
+**Сделано (24.04.2026):** в `drop.py:76-92` добавлена ветка `elif hard == 'walk_20k':` по аналогии с walk_15k/walk_25k. Пул дропа — `a-grade / s-grade / s+grade` (соответствует описанию меню в `adventure.py:100`). Структура rolls идентична соседним веткам: `luck_chr`-модифицированный global gate → три grade-roll'а → возврат минимального, прошедшего свой порог. Ручное тестирование перенесено на момент после 3.2.1, т.к. механика дропа всё равно подвергается рефакторингу.
 
 ---
 
@@ -232,11 +337,66 @@ class Item:
 
 ---
 
-### 3.2. Починить `test_drop.py` `[M / S / todo]`
+### 3.2. Починить `test_drop.py` + унифицировать симулятор с реальным `Drop_Item` (зонтичная) `[M / M / todo]`
 
-Сейчас `test_item_generation()` вызывается в module top-level (`drop.py:167` и `test_drop.py`). Импорт = 60 000 итераций.
+Первоначальная оценка "обернуть в `__main__`-guard, 10 минут" оказалась неполной. Анализ (24.04.2026) показал: симулятор — **старый fork** `drop.py` (другие проценты, другой набор типов предметов, другая структура rolls). Измерения им бесполезны для актуального баланса.
 
-**Фикс:** обернуть в `if __name__ == "__main__":`. Переименовать в `drop_simulator_run.py`, чтобы не путать с будущими pytest-тестами.
+TASKS.md также писал про "`drop.py:167`" — **неточность**: функции `test_item_generation()` в `drop.py` нет, она только в `test_drop.py`.
+
+Плюс параллельная проблема — **`drop_simulator.py`** (691 строка, не упоминалась в TASKS.md): тоже вызывает `random_thee_items_characteristics_item_stat()` на module-level (1 000 000 итераций). Никем не импортируется, по коду старая копия drop-логики без S/S+ грейдов — кандидат на удаление.
+
+Плюс фундаментальная архитектурная проблема: `drop.py:14` вычисляет `luck_chr` при импорте → прокачка удачи в сессии не применяется до рестарта (перекрывается с задачами **2.3** и **1.2**) + невозможно параметризовать luck в симуляторе.
+
+Разбивка на подзадачи ниже.
+
+#### 3.2. Безопасность импортов + удаление dead-кода `[M / S / done]`
+
+**Сделано (24.04.2026):**
+- `test_drop.py` переименован в `drop_test_montecarlo.py` через `git mv` (история сохранена). Новое имя не попадает под pytest'овский паттерн `test_*.py` / `*_test.py`.
+- Module-level вызовы в файле (`test_item_generation()` + `print(f"Luck: {luck_chr}")`, строки 167-168) обёрнуты в `if __name__ == "__main__":` — импорт файла больше не триггерит 60 000 итераций.
+- `drop_simulator.py` удалён (691 строка старой копии drop-логики без S/S+ грейдов, никем не импортировался).
+- `CLAUDE.md` обновлён: команда запуска симулятора, описание, module map (убрано упоминание `drop_simulator.py`).
+
+Эффект: импорты безопасны, кодобаза чище на ~860 строк. Внутренняя копия `Drop_Item` в симуляторе пока сохраняется — это чинится в 3.2.2 после рефакторинга drop.py (3.2.1).
+
+#### 3.2.1. `luck` как параметр `Drop_Item` (refactor drop.py) `[M / S / todo]`
+
+Убрать module-level `luck_chr` в `drop.py:14`. Перевести в параметр:
+
+```python
+class Drop_Item:
+    def __init__(self, luck=0):
+        self.luck = luck
+    
+    def one_item_random_grade(self, hard):
+        # ... randint(1, 100 - self.luck) везде вместо 100 - luck_chr
+```
+
+Обновить вызовы в `adventure.py:40+` — 7 мест с `Drop_Item.item_collect(self=None, hard=...)` заменить на `Drop_Item(luck=current_luck()).item_collect(hard=...)`. Функцию `current_luck()` завести в `drop.py` или пробросить из `bonus.py`:
+
+```python
+def current_luck():
+    return char_characteristic['luck_skill'] + equipment_luck_bonus() + char_characteristic['lvl_up_skill_luck']
+```
+
+**Эффект:**
+- Прокачка Luck в Gym применяется **сразу** на следующем дропе, без рестарта — закрывает часть задачи **2.3** (Adventure не видит прокачку).
+- Убирается один module-level side-effect — засчитывается в задачу **1.2**.
+- Разблокирует 3.2.2 (симулятор на реальном `Drop_Item`) и 4.19 (pity system).
+
+Ручная проверка: прокачать Luck через Gym, сходить в walk_easy, убедиться что новый Luck виден (через debug_mode в `drop.py` или руками в консоли).
+
+#### 3.2.2. Симулятор использует реальный `Drop_Item` `[L / S / todo (blocked by 3.2.1)]`
+
+После 3.2.1 переписать `drop_test_montecarlo.py`:
+- Импортировать `Drop_Item` из `drop.py` вместо собственной копии
+- Удалить внутреннюю копию класса (~50 строк)
+- Прогон итерирует `for luck in [0, 5, 10, 20, 30]: for walk in [walk_easy, ..., walk_30k]: Drop_Item(luck=luck).item_collect(walk)` × 10 000 итераций
+- Вывод — таблица `luck × walk × grade` с процентами
+
+**Эффект:** симулятор меряет **реальный** баланс игры. Данные пригодны для настройки `drop_percent_*` констант.
+
+**Примечание:** `drop_test_montecarlo.py` не должен писать в `char_characteristic['inventory']` при прогоне (сейчас `item_collect()` делает `append`). Скорее всего придётся либо сбрасывать инвентарь между прогонами, либо в 3.2.1 развести логику "вычислить дроп" и "записать в инвентарь" в разные методы — отдельное micro-решение при реализации.
 
 ---
 
@@ -413,6 +573,35 @@ class Item:
 - `credentials/` — не бандлить.
 
 Сборка: `pyinstaller --onefile --name=2Walks-Lite game.py` с `config.py`-флагом `OFFLINE_MODE=True`.
+
+---
+
+### 4.19. Pity system для дропа `[M / M / todo (blocked by 3.2.1)]`
+
+Механика "подкручивания" шанса дропа после серии неудач. Известна как *pity system* / *bad luck protection* / *mercy mechanic* (термин из Genshin Impact и подобных).
+
+**Идея:** если игрок несколько раз подряд прошёл walk_hard и ничего не выпало — на следующий раз шанс дропа вырастает. При успешном дропе счётчик сбрасывается.
+
+**Design (согласовано 24.04.2026):**
+- Счётчики **per-walk**: `pity_walk_easy_counter`, `pity_walk_normal_counter`, `pity_walk_hard_counter`, `pity_walk_15k_counter`, `pity_walk_20k_counter`, `pity_walk_25k_counter`, `pity_walk_30k_counter` в `char_characteristic` — отдельный счётчик на каждое приключение.
+- При `item_collect()`:
+  - Если дроп `None` → `pity_<walk>_counter += 1`
+  - Если дроп не `None` → `pity_<walk>_counter = 0`
+- Формула подкрутки: два уровня (обсудить при реализации)
+  - **Soft pity** — начиная с N₀ каждый промах добавляет `+X%` к шансу
+  - **Hard pity** — на N_max промахах дроп гарантирован
+  - Числа N₀, N_max, X определяются дизайном; для начала можно взять консервативные значения (например, N₀=5, N_max=15, X=5%) и откалибровать через симулятор 3.2.2.
+
+**Реализация:**
+- `drop.py`: `Drop_Item.__init__(self, luck=0, pity=0)`. В `one_item_random_grade()` учитывать `self.pity` при вычислении порога (например, `threshold = drop_percent_gl + soft_pity_bonus(self.pity)`).
+- `adventure.py`: передавать актуальный `pity_<walk>_counter` из `char_characteristic` при создании `Drop_Item`. После вызова `item_collect` — инкремент/reset.
+- `characteristics.py`: добавить 7 новых полей в дефолтный словарь `char_characteristic` + в load/save-таблицы.
+- `google_sheets_db.py` + CSV + JSON — типичная ловушка с сохранением новых полей в трёх форматах (см. предупреждение в CLAUDE.md). **Отложено до момента реализации pity** — когда доберёмся, разбираемся с save-слоями тогда.
+- Симулятор 3.2.2: цикл с разными значениями pity, таблица "прирост шанса от pity".
+
+**Почему blocked by 3.2.1:** pity требует передачи параметра в `Drop_Item.__init__`. В 3.2.1 мы как раз добавляем туда параметр `luck` — удобно сразу спроектировать сигнатуру с учётом будущего `pity`. Без 3.2.1 pity пришлось бы хачить через module-level переменные.
+
+**Вне приоритета сейчас.** Сначала стабилизируем drop + luck (2.8 → 3.2 → 3.2.1 → 3.2.2). Pity — улучшение поверх рабочей основы, отдельной сессией.
 
 ---
 

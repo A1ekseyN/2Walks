@@ -27,7 +27,7 @@ python game.py
 
 Порядок выполнения опирается на то, что Python исполняет код модулей при первом импорте. Важно помнить: **значительная часть "инициализации игры" — это побочные эффекты импорта `characteristics.py`**, а не вызов функции `game()`.
 
-1. `game.py:158` выводит `Version: 0.1.0` и переключает codepage.
+1. `game.py:158` выводит `Version: 0.1.1a` и переключает codepage.
 2. Вызывается `game()` (`game.py:19`).
 3. Первое, что делает `game()` — импортирует из `characteristics` всё через `from characteristics import *` (`game.py:9`). На этом импорте происходит:
    - `characteristics.py:101` — `load_data_from_google_sheet_or_csv()` пытается скачать сейв с Google Sheets (`google_sheets_db.py:51`), при неудаче читает `characteristic.csv`.
@@ -257,8 +257,9 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 - `s` — сохранить в CSV + Sheets.
 - `l` — загрузить из Sheets. Обновляет `char_characteristic` через `.update()` — все модули, импортировавшие его, видят новые данные сразу, без рестарта.
 - `q` — то же, что `s`, плюс `sys.exit()`.
+- `Ctrl+C` / `Ctrl+D` — выход **без сохранения**. На верхнем уровне `game.py:161-164` обёрнут в `try/except (KeyboardInterrupt, EOFError):`, который печатает "Выход без сохранения. Пока!" и завершает процесс. Прогресс, не сохранённый через `s`/`q`, теряется — это сознательное поведение.
 
-Реализация всех трёх — небольшие helper-функции внутри `location_selection()` (`game.py:42-54`).
+Реализация всех трёх игровых команд (`s`, `l`, `q`) — небольшие helper-функции внутри `location_selection()` (`game.py:42-54`).
 
 ---
 
