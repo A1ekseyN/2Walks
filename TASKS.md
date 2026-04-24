@@ -448,23 +448,9 @@ class Item:
 
 ---
 
-### 5.5. Удалить Kivy/Android наработки `[L / S / todo]`
+### 5.5. Удалить Kivy/Android наработки `[L / S / done]`
 
-Проект ушёл в сторону консольной версии на Mac + iOS Shortcut. GUI и Android-сборка больше не поддерживаются, но код продолжает лежать и создавать шум.
-
-**Удалить:**
-- `buildozer.spec` — конфиг Android-сборки.
-- `main_kivy_console.py` — обёртка CLI в Kivy-окно, для Mac `.app` (4.17) не нужна.
-- `main_kivy_gui.py` — Kivy GUI.
-- `screens/` — Kivy-экраны (home, gym, work, adventure, inventory, shop, character_info).
-- `widgets/` — `CharacterInfoWidget` и `__init__.py`.
-
-**Оставить:**
-- `icons/` — иконки. Прямого применения сейчас нет; теоретически могут пригодиться для PyInstaller (4.17), но не факт. Стоимость хранения нулевая, поэтому пусть лежат.
-
-**Безопасность:** ничего из консольного пути (`game.py` и его импорты) не зависит от удаляемых файлов — проверено. Git сохраняет историю, при необходимости восстановление через `git log --all --diff-filter=D` + `git checkout`.
-
-**Делать не раньше**, чем договоримся о направлении окончательно. Сейчас задача зафиксирована как решение, исполнение — отдельным шагом.
+**Сделано (24.04.2026):** удалены `buildozer.spec`, `main_kivy_gui.py`, `main_kivy_console.py`, папки `screens/` и `widgets/` — всего ~1040 строк. Обновлены разделы `CLAUDE.md` (Project context, Entry points, Common commands, Kivy GUI specifics, Android packaging) и шапка `docs/game_console.md`. `icons/` оставлены для задачи 4.17 (PyInstaller). Консольный путь (`game.py`) не затронут — `py_compile` всех оставшихся модулей проходит. Git сохраняет историю удалённых файлов, при необходимости восстановление через `git log --all --diff-filter=D` + `git checkout`.
 
 ---
 

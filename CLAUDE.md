@@ -4,23 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project context
 
-2Walks is a Kivy-based step-counter RPG written in Python. Real-world steps (pulled from Google Fit) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets both desktop and Android (via Buildozer).
+2Walks is a console-only step-counter RPG written in Python. Real-world steps (pulled from Google Fit) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it.
 
 ## Entry points
 
-Three runnable roots, all using the same core game modules:
+A single runnable root:
 
-- `game.py` — pure CLI REPL (`location_selection()` loop). Also re-exported as a function `game()` imported elsewhere.
-- `main_kivy_console.py` — Kivy window that hosts the CLI `game()` on a background thread and pipes stdout/stdin to on-screen widgets.
-- `main_kivy_gui.py` — native Kivy UI with a `ScreenManager`. Each location is a `Screen` subclass in `screens/` (`home`, `gym`, `shop`, `work`, `adventure`, `inventory`, `character_info`).
+- `game.py` — pure CLI REPL (`location_selection()` loop). Also re-exported as a function `game()` for programmatic use.
 
 ## Common commands
 
 ```bash
-# Desktop: pick the entry point you want
-python main_kivy_gui.py       # GUI
-python main_kivy_console.py   # Kivy-wrapped CLI
-python game.py                # plain CLI
+# Run the game
+python game.py
 
 # Re-auth Google Fit (regenerates token.json via OAuth browser flow)
 python get_token_fitnes_api.py
@@ -30,9 +26,6 @@ python google_sheets_db.py
 
 # Drop-rate simulation (NOT a unit test; runs 10k×6 iterations on import)
 python test_drop.py
-
-# Android build (requires Buildozer toolchain)
-buildozer android debug
 ```
 
 There is no test framework, linter, or CI configured. `test_drop.py` is a Monte-Carlo simulator, not a pytest suite — it calls `test_item_generation()` at module load, so merely importing it triggers a long run.
@@ -59,15 +52,9 @@ When adding new fields to `char_characteristic`, make sure they survive both CSV
 
 `api.steps_today_update()` is the only source of fresh step counts. It compares `save.txt` (last-enter date) with today; only on a date change does it hit the Fitness REST endpoint. OAuth lives in `get_token_fitnes_api.py` (`token.json` cached; re-auth on 401 by deleting the file and recursing). Requires `fitness_api_credential.json` (OAuth client secrets) next to the code. Both `token.json` and `fitness_api_credential.json` are gitignored.
 
-### Kivy GUI specifics (`main_kivy_gui.py` + `screens/`)
-
-- `MainScreen.__init__` wires buttons; `save_characteristics` calls both CSV and Sheets writers. `update_steps_api` triggers `steps_today_update_manual()` from `functions.py`.
-- `MainScreen.on_enter` re-runs `energy_time_charge()` so energy regen applies when returning to the menu. Any new screen that mutates `char_characteristic` should rely on `on_enter`/`on_leave` rather than background timers.
-- `widgets/character_info_widget.py` is the shared HUD refreshed by `update_character_info`.
-
 ### Gameplay module map
 
-- `locations.py` — dispatch layer between `game.py`/GUI and each location module; also maps `char_characteristic['loc']` to an emoji.
+- `locations.py` — dispatch layer between `game.py` and each location module; also maps `char_characteristic['loc']` to an emoji.
 - `gym.py`, `work.py`, `adventure.py`, `shop.py`, `inventory.py`, `equipment.py` — one per location/menu. `work_check_done()` and `skill_training_check_done()` are polled from the main loop to finalize timer-based activities; if you add another timed action, follow the same "check on every tick" pattern.
 - `drop.py` / `drop_simulator.py` — item drop logic for Adventure. Grades are `c/b/a/s/s+`, weighted by `drop_percent_*` constants and a `luck_chr` computed from skill + equipment bonuses at import time.
 - `level.py` (`CharLevel`), `characteristics.py` (`char_info`, `save_characteristic`), `bonus.py`, `equipment_bonus.py`, `skill_bonus.py` — stat/bonus math.
@@ -78,7 +65,3 @@ When adding new fields to `char_characteristic`, make sure they survive both CSV
 ### Credentials and ignored files
 
 `.gitignore` excludes `token.json`, `fitness_api_credential.json`/`.txt`, and the `credentials/` directory (which must contain `2walks_service_account.json` for Sheets to work). When running locally for the first time, expect Sheets calls to fail until that file is provided; loaders fall back to CSV automatically (`characteristics.py:92`).
-
-### Android packaging
-
-`buildozer.spec` pins `python3,kivy,colorama,gspread,oauth2client,json,csv` and Android API 31 (min 21), arm64-v8a + armeabi-v7a. The `requirements` line lists stdlib names (`json`, `csv`) — harmless but a known Buildozer quirk; don't "fix" it without testing a full build.

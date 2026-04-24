@@ -1,3 +1,7 @@
+Version: 0.1.1 (24.04.2026):
+- Removed Kivy GUI and Android build artifacts: main_kivy_gui.py, main_kivy_console.py, screens/, widgets/, buildozer.spec.
+- Updated CLAUDE.md and docs/game_console.md to reflect console-only focus.
+
 Version: 0.1.0a (22.04.2026):
 - Added the ability to manually enter completed steps using the “+” symbol in the console.
 - BugFix. Level calculation. Changed threshold check from `>` to `>=`. Exactly N spent steps now grants level N (previously required N+1)
