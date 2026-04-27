@@ -1,9 +1,7 @@
-import requests
 import json
 from colorama import Fore, Style
 from datetime import datetime, timedelta
 
-from api import steps_today_update, load_token_from_file
 from adventure import Adventure
 from bonus import equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
 from characteristics import char_characteristic
@@ -12,7 +10,6 @@ from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def, speed_skill_equipment_and_level_bonus
 from equipment_bonus import equipment_stamina_bonus, equipment_energy_max_bonus, equipment_speed_skill_bonus, equipment_luck_bonus
 from level import CharLevel
-from get_token_fitnes_api import get_access_token
 
 
 def energy_time_charge():
@@ -98,139 +95,35 @@ def status_bar():
 
 def save_game_date_last_enter():
     global char_characteristic
-    # Функция для сохранения и проверки игровой даты.
-    # Используется для обновления энергии и шагов на протяжении дня.
-    # Если вход был выполнен не сегодня, то происходит обновление кол-ва шагов, через API.
-    # Если последний вход был сегодня, то ничего не происходит.
+    # Проверка смены игрового дня. На новый день — сброс счётчиков и перенос
+    # steps_today в steps_yesterday. В обоих случаях — пересчёт steps_can_use.
 
-    # Текущая дата
     now_date = datetime.now().date()
-
-    # Считываем дату последнего входа
-    with open('save.txt', 'r') as save_file:
-        last_enter_date = save_file.read()
-
-    # Проверяем дату последнего входа через ключ 'date_last_enter'
     last_enter_date_char = char_characteristic.get('date_last_enter', None)
 
-    # Новый день
+    # Новый день — сбрасываем дневные счётчики
     if str(now_date) != str(last_enter_date_char):
         print(f"\nNew Day: {now_date}. Обновляем шаги и бонусы.")
 
-        # Обновляем дату последнего входа
         with open('save.txt', 'w') as save_file:
             save_file.write(str(now_date))
 
-        # Обновление числа шагов, пройденных за вчера.
-        # Если более 10к, то дается бонус.
+        # Перенос шагов в steps_yesterday + обновление daily_bonus.
         today_steps_to_yesterday_steps()
 
-        # Обновление данных о кол-ве шагов за день.
-        steps_today_update()
-
-        # Обновляем количество потраченных шагов за сегодня
+        # Сброс шагов на новый день. Игрок вводит фактическое значение через команду `+`.
+        char_characteristic['steps_today'] = 0
         char_characteristic['steps_today_used'] = 0
-
-        # Обновляем дату последнего входа в ключе 'date_last_enter'
         char_characteristic['date_last_enter'] = str(now_date)
 
-    # Текущий день
-    elif str(now_date) == str(last_enter_date_char):
-        # Текущая дата, и дата последнего входа в игру совпадает.
-        # Похоже, что это место, гда высчитывается общее количество шагов, которое может потратить игрок
-        # Но, это нужно проверить
-        char_characteristic['steps_can_use'] = char_characteristic['steps_today'] - char_characteristic['steps_today_used']
-        char_characteristic['steps_can_use'] += stamina_skill_bonus_def()                   # Бонус от навыка
-        char_characteristic['steps_can_use'] += equipment_bonus_stamina_steps()             # Бонус от экипировки
-        char_characteristic['steps_can_use'] += daily_steps_bonus()                         # Бонус за пройденные шаги, более 10к+ в день.
-        char_characteristic['steps_can_use'] += level_steps_bonus()                         # Бонус за прокаченный уровень
-    else:
-        print('Error (save_game_date_last_enter).')
+    # Пересчёт steps_can_use — выполняется в обеих ветках (новый день / тот же день),
+    # чтобы статус-бар не показывал stale значение из сейва после смены даты.
+    char_characteristic['steps_can_use'] = char_characteristic['steps_today'] - char_characteristic['steps_today_used']
+    char_characteristic['steps_can_use'] += stamina_skill_bonus_def()
+    char_characteristic['steps_can_use'] += equipment_bonus_stamina_steps()
+    char_characteristic['steps_can_use'] += daily_steps_bonus()
+    char_characteristic['steps_can_use'] += level_steps_bonus()
     return char_characteristic['steps_can_use']
-
-
-def steps_today_update_manual():
-    """Получает данные о количестве шагов за сегодня через Fitness API (Google Fit)."""
-    global steps_today_api
-    global steps_today
-    global char_characteristic
-
-    # Получение токена через Fitness API
-    token = None
-    try:
-        token = load_token_from_file()  # Попытка загрузить токен из файла
-    except AttributeError:
-        print("Токен отсутствует или недействителен. Попробуем обновить его.")
-        token = get_access_token()
-
-    if not token:
-        print("Не удалось получить токен для Fitness API.")
-        steps_today = 401  # Ошибка авторизации
-        char_characteristic['steps_today'] = 401
-        return None
-
-    # URL для запроса Fitness API
-    url = "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate"
-
-    # Временной диапазон (с полуночи текущего дня до текущего времени)
-    now = datetime.now()
-    start_time = int(datetime(now.year, now.month, now.day).timestamp() * 1e9)  # Полночь текущего дня в наносекундах
-    end_time = int(now.timestamp() * 1e9)  # Текущее время в наносекундах
-
-    body = {
-        "aggregateBy": [{
-            "dataTypeName": "com.google.step_count.delta",
-            "dataSourceId": "derived:com.google.step_count.delta:com.google.android.gms:estimated_steps"
-        }],
-        "bucketByTime": {"durationMillis": 86400000},  # 1 день
-        "startTimeMillis": start_time // 1e6,  # Преобразуем в миллисекунды
-        "endTimeMillis": end_time // 1e6  # Преобразуем в миллисекунды
-    }
-
-    headers = {
-        "Authorization": f"Bearer {token}",  # Используем токен
-        "Content-Type": "application/json"
-    }
-
-    print('\nFitness API запрос на Steps Update.')
-
-    try:
-        response = requests.post(url, headers=headers, json=body)
-
-        if response.status_code == 401:  # Ошибка авторизации, возможно, токен истек
-            print("Токен истек. Обновляем токен и повторяем запрос...")
-            token = get_access_token()
-            if not token:
-                print("Не удалось обновить токен.")
-                steps_today = 401  # Ошибка авторизации
-                char_characteristic['steps_today'] = 401
-                return None
-            headers["Authorization"] = f"Bearer {token}"
-            response = requests.post(url, headers=headers, json=body)  # Повторяем запрос
-
-        if response.status_code == 200:
-            try:
-                data = response.json()
-                # Извлекаем количество шагов
-                steps = data['bucket'][0]['dataset'][0]['point'][0]['value'][0]['intVal']
-                steps_today = steps  # Обновляем глобальную переменную
-                char_characteristic['steps_today'] = steps  # Сохраняем в структуру
-                print(f"Steps Updated: {steps}")
-                return steps
-            except (IndexError, KeyError):
-                print("Нет данных за сегодняшний день.")
-                steps_today = 0  # Если нет данных, сохраняем 0
-                char_characteristic['steps_today'] = 0
-                return steps_today
-        else:
-            print("Ошибка:", response.json())
-            steps_today = 404  # Обновляем переменную при ошибке соединения
-            return None
-    except Exception as e:
-        print('\n--- Ошибка API соединения. Обновление данных о кол-ве шагов не произошло ---\n')
-        steps_today = 404  # Если ошибка подключения к интернету
-        char_characteristic['steps_today'] = 404
-        return None
 
 
 def steps_today_manual_entry():
@@ -258,32 +151,6 @@ def steps_today_manual_entry():
         print(f'Текущее значение ({old:,}) больше или равно введённому ({entered:,}). Оставлено как было.')
     else:
         print(f'Обновлено: {old:,} -> {new:,}.')
-
-
-def steps_today_update_manual_nocodeapi_old():
-    # Функция для ручного обновления кол-ва шагов через NoCodeAPI
-    global steps_today_api
-    global steps_today
-    global char_characteristic      # Нужно проверить или тут нужна эта переменная
-
-    print('\nAPI запрос на обновление данных о кол-ве шагов.')
-
-    try:
-        url = "https://v1.nocodeapi.com/alexeyn/fit/kxgLPAuehlTGiEaC/aggregatesDatasets?dataTypeName=steps_count&timePeriod=today"
-        params = {}
-        r = requests.get(url=url, params=params)
-        result_steps_today = r.json()
-        steps_today = result_steps_today['steps_count'][0]['value']
-        print('--- Запрос NoCodeApi успешный. ---\n')
-        char_characteristic['steps_today'] = result_steps_today['steps_count'][0]['value']
-        if debug_mode:
-            print(f'Steps Update: {char_characteristic["steps_today"]}.')
-        return char_characteristic['steps_today']
-    except:
-        print('\n--- Ошибка API соеднинения. Обновление данных о кол-ве шагов не произошло ---\n')
-        # Скорее всего, Что переменная steps_today не нужна. И достаточно только оведомления о ошибке.
-        steps_today = 404  # Если ошибка подключения к интернету, тогда указано число 404 для тестов.
-        return steps_today
 
 
 def char_info():
@@ -393,7 +260,3 @@ def format_steps(steps):
         return f"{steps // 1_000}k"
     else:
         return f"{steps / 1_000_000:.1f}kk"
-
-
-#if __name__ == "__main__":
-#    print(steps_today_update_manual())

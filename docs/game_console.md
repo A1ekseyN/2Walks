@@ -15,24 +15,23 @@ python game.py
 
 ### Требования окружения
 
-- Python 3.x с установленными зависимостями из `requirements.txt` (`colorama`, `requests`, `gspread`, `oauth2client`, `google-auth`, `google-auth-oauthlib`).
+- Python 3.x с установленными зависимостями из `requirements.txt` (`colorama`, `gspread`, `oauth2client`).
 - Терминал с UTF-8 (для эмодзи и русского текста). В `game.py:159` под Windows вызывается `os.system("chcp 65001")`.
-- Опционально для облачного сохранения и обновления шагов:
-  - `credentials/2walks_service_account.json` — сервис-аккаунт для Google Sheets;
-  - `fitness_api_credential.json` + `token.json` — OAuth-клиент Google Fit (генерируется командой `python get_token_fitnes_api.py`).
+- Опционально для облачного сохранения:
+  - `credentials/2walks_service_account.json` — сервис-аккаунт для Google Sheets.
 
-Без этих файлов игра всё равно запустится: Google Sheets упадёт в фолбэк на CSV (`characteristic.csv`), а Fitness API вернёт код 401/404, но основной цикл продолжит работать.
+Без этого файла игра всё равно запустится: Google Sheets упадёт в фолбэк на CSV (`characteristic.csv`), основной цикл продолжит работать.
 
 ### Что происходит в момент запуска (до появления меню)
 
 Порядок выполнения опирается на то, что Python исполняет код модулей при первом импорте. Важно помнить: **значительная часть "инициализации игры" — это побочные эффекты импорта `characteristics.py`**, а не вызов функции `game()`.
 
-1. `game.py:158` выводит `Version: 0.1.1a` и переключает codepage.
+1. `game.py:158` выводит `Version: 0.1.2` и переключает codepage.
 2. Вызывается `game()` (`game.py:19`).
 3. Первое, что делает `game()` — импортирует из `characteristics` всё через `from characteristics import *` (`game.py:9`). На этом импорте происходит:
    - `characteristics.py:101` — `load_data_from_google_sheet_or_csv()` пытается скачать сейв с Google Sheets (`google_sheets_db.py:51`), при неудаче читает `characteristic.csv`.
    - `characteristics.py:107` — строится основной словарь `char_characteristic` из загруженных полей и текущего `timestamp()`.
-   - При построении словаря вычисляется `steps_today()` (`characteristics.py:110`), который в свою очередь вызывает `api.steps_today_update()` (`api.py:9`). Эта функция сверяет `save.txt` с сегодняшней датой и, если день сменился, делает HTTP-запрос к Fitness API. Поэтому **первый импорт `characteristics` может быть медленным и требовать интернет**.
+   - `steps_today` берётся из загруженного сейва (через `steps_today()` в `characteristics.py:12`). Сетевые запросы для шагов отсутствуют — поле обновляется только командой `+` или сбрасывается в 0 при смене даты.
    - `characteristics.py:204-206` дописывают к `energy_max` бонусы от экипировки, навыков и уровня.
 4. Создаётся объект `Adventure(adventure_data_table)` (`game.py:24`) — нужен для меню приключений и предвычисленных бонусов.
 5. Определяется внутренняя функция `location_selection()` (`game.py:26`). Главный цикл игры — именно она, не `game()`.
@@ -88,7 +87,6 @@ python game.py
 | `3` | 🛒 Магазин (в тестовом режиме) — `shop_location()` → `Shop.shop_menu()` |
 | `4` | 🏭 Работа — `work_location()` → `Work(char_characteristic).work_choice()` |
 | `5` | 🗺️ Приключение — `adventure_location(adventure_instance)` → `adventure_menu()` |
-| `0` | Обновить количество шагов через Fitness API (`steps_today_update_manual()`) |
 | `+` | Ручной ввод количества шагов (`steps_today_manual_entry()`) — перезаписывает `steps_today` максимумом из текущего и введённого |
 | `m` / `ь` | Раздел "Меню" (заглушка) |
 | `i` / `ш` | `inventory_menu()` — просмотр/продажа инвентаря |
@@ -210,24 +208,22 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ## 5. Шаги — откуда берутся и как тратятся
 
-### 5.1 Источник: Google Fit
+### 5.1 Источник: ручной ввод (команда `+`)
 
-`api.steps_today_update()` (`api.py:9`) запрашивает Fitness REST API (`com.google.step_count.delta`) за окно "полночь → сейчас". Делает запрос **только** если дата в `save.txt` отличается от сегодняшней (то есть один раз в день автоматически). На 401 пытается обновить токен через `get_access_token()` (`get_token_fitnes_api.py:50`). При ошибке возвращает `401` или `404` как заглушки.
+Единственный способ ввести количество пройденных шагов — команда `+` в главном меню. Вызывает `steps_today_manual_entry()` (`functions.py`): спрашивает число, валидирует, и записывает `max(текущее, введённое)` в `char_characteristic['steps_today']`. Использование `max(...)` — защита от случайного ввода меньшего значения (Mi Fitness может отстать; ручные показания с браслета обычно свежее).
 
-### 5.2 Ручное обновление (`0` в меню)
+Исторически существовал автообновлятор через Google Fit REST API (`api.py`, `get_token_fitnes_api.py`); удалён в задаче **4.16** (2026-04-27). Будущий конвейер iPhone → Google Sheets через iOS Shortcut запланирован в задачах **4.13–4.15**.
 
-`steps_today_update_manual()` (`functions.py:137`) игнорирует дату и обновляет `char_characteristic['steps_today']` прямо сейчас. Используется для "только что прошёл 500 шагов, хочу потратить".
+### 5.2 Агрегат `steps_can_use`
 
-### 5.3 Агрегат `steps_can_use`
+`save_game_date_last_enter()` (`functions.py:96`) на каждом тике:
 
-`save_game_date_last_enter()` (`functions.py:84`) каждый день:
+1. **На новый день** (`now_date != date_last_enter`): пишет дату в `save.txt`, переносит `steps_today → steps_yesterday`, увеличивает `steps_daily_bonus` если `steps_yesterday >= 10k` (иначе обнуляет), сбрасывает `steps_today_used = 0`, сбрасывает `steps_today = 0` (игрок вводит фактическое значение через `+`), обновляет `date_last_enter`.
+2. **Всегда** (в обеих ветках) пересчитывает `steps_can_use = steps_today - steps_today_used + stamina_skill_bonus + equipment_bonus_stamina_steps + daily_steps_bonus + level_steps_bonus`. Это нужно, чтобы первый кадр статус-бара после смены даты не показывал stale-значение из сейва (баг 2.9, закрыт 2026-04-27).
 
-- Если **новый день** (`now_date != date_last_enter`): записывает `save.txt`, переносит `steps_today → steps_yesterday`, увеличивает `steps_daily_bonus` если `steps_yesterday >= 10k` (иначе обнуляет), сбрасывает `steps_today_used = 0`, обновляет `steps_today` через API.
-- Если **тот же день**: пересчитывает `steps_can_use = steps_today - steps_today_used + stamina_skill_bonus + equipment_bonus_stamina_steps + daily_steps_bonus + level_steps_bonus`.
+Функция вызывается неявно через `steps()` (`functions.py`), когда `status_bar()` и локации спрашивают "сколько шагов осталось".
 
-Функция вызывается неявно через `steps()` (`functions.py:285`), когда `status_bar()` и локации спрашивают "сколько шагов осталось".
-
-### 5.4 Как локации их списывают
+### 5.3 Как локации их списывают
 
 Локации (Gym, Work, Adventure) увеличивают `char_characteristic['steps_today_used']` на стоимость активности. Это неявно уменьшает `steps_can_use` на следующем пересчёте. Одновременно `steps_total_used` копится для расчёта уровня.
 
@@ -240,7 +236,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 ### 6.1 Локально (CSV + JSON)
 
 - `characteristic.csv` — плоский CSV, пишется `save_characteristic()` (`characteristics.py:458`), читается `load_characteristic()` (`characteristics.py:22`). Вложенные словари/списки сериализуются через `repr()` и читаются обратно через `ast.literal_eval`. Поля `skill_training_time_end`, `working_end`, `adventure_end_timestamp` специально парсятся как `datetime` в формате `%Y-%m-%d %H:%M:%S.%f`.
-- `characteristic.txt` — JSON-зеркало, используется `api.py` для кэша `steps_today` и `google_sheets_db.py` для выгрузки в облако.
+- `characteristic.txt` — JSON-зеркало, используется `google_sheets_db.py` для выгрузки в облако.
 - `save.txt` — дата последнего входа в игру (одна строка).
 
 ### 6.2 Google Sheets
@@ -285,7 +281,6 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 - Инвентарь и экипировка: `inventory.py`, `equipment.py`, `equipment_bonus.py`.
 - Уровень и очки: `level.py`.
 - Сохранение/загрузка: `characteristics.py:22`, `characteristics.py:458`, `google_sheets_db.py`.
-- Fitness API: `api.py`, `get_token_fitnes_api.py`.
 - Общие бонусы/формулы: `bonus.py`, `skill_bonus.py`.
 - Настройки: `settings.py` (`debug_mode = True` добавляет много диагностики в `status_bar`, `energy_time_charge` и т.д.).
 

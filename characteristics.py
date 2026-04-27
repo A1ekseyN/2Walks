@@ -4,19 +4,13 @@ import csv
 import json
 import ast
 
-from api import steps_today_update
 from settings import debug_mode
 from google_sheets_db import load_char_characteristic_from_google_sheet
 
 
-# Шаги за сегодня
-# Изначально это переменная, сделал ее функцией.
-# Пытаюсь починить обновление кол-ва шагов за вчера. Чтобы в новый день шаги, не обновлялись раньше записи переменной steps_yesterday.
-# Если этот метод не заработает, то можно будет откатиться.
+# Шаги за сегодня — читаются из сейва. Источник обновления — ручной ввод (команда `+`).
 def steps_today():
-    # Функция для определения даты. И загрузки кол-ва шагов из txt файла, или из Google Sheets
-    steps_today = steps_today_update()
-    return steps_today
+    return loaded_data_char_characteristic.get('steps_today', 0)
 
 
 def load_characteristic():

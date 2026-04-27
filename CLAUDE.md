@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project context
 
-2Walks is a console-only step-counter RPG written in Python. Real-world steps (pulled from Google Fit) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it.
+2Walks is a console-only step-counter RPG written in Python. Real-world steps (entered manually via the `+` command) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it. A Google Fit auto-sync existed historically but was removed on 2026-04-27 (task 4.16); a future iOS Shortcut → Google Sheets pipeline is planned (tasks 4.13–4.15).
 
 ## Entry points
 
@@ -17,9 +17,6 @@ A single runnable root:
 ```bash
 # Run the game
 python game.py
-
-# Re-auth Google Fit (regenerates token.json via OAuth browser flow)
-python get_token_fitnes_api.py
 
 # Manually sync the save to/from Google Sheets
 python google_sheets_db.py
@@ -43,14 +40,14 @@ A consequence: `characteristics.py` loads the save at **import time** by calling
 Saves are written to **all three** on save; loads prefer Google Sheets with CSV fallback:
 
 1. `characteristic.csv` — flat CSV via `load_characteristic()` / `save_characteristic()` in `characteristics.py`. Uses `ast.literal_eval` to round-trip nested dicts/lists; specific keys (`skill_training_time_end`, `working_end`, `adventure_end_timestamp`) are parsed back to `datetime` with format `%Y-%m-%d %H:%M:%S.%f`.
-2. `characteristic.txt` — JSON mirror (also used by `api.py` to cache `steps_today`).
+2. `characteristic.txt` — JSON mirror.
 3. Google Sheets — `google_sheets_db.py` uses gspread + a service-account key at `credentials/2walks_service_account.json`. Spreadsheet ID and sheet name are hardcoded in the function defaults.
 
 When adding new fields to `char_characteristic`, make sure they survive both CSV and Sheets round-trips (the datetime special-case list is the common trap).
 
-### Step-count integration (Google Fit)
+### Step-count input
 
-`api.steps_today_update()` is the only source of fresh step counts. It compares `save.txt` (last-enter date) with today; only on a date change does it hit the Fitness REST endpoint. OAuth lives in `get_token_fitnes_api.py` (`token.json` cached; re-auth on 401 by deleting the file and recursing). Requires `fitness_api_credential.json` (OAuth client secrets) next to the code. Both `token.json` and `fitness_api_credential.json` are gitignored.
+`steps_today` is set by manual entry only — the `+` command in the main menu invokes `steps_today_manual_entry()` (`functions.py`), which reads a number from the player and stores `max(current, entered)` in `char_characteristic['steps_today']`. On date change (`save_game_date_last_enter()` in `functions.py`), `steps_today` is reset to `0` so the new day starts fresh; the player re-enters the bracelet reading via `+`. `save.txt` holds the last-enter date used for the day-rollover check.
 
 ### Gameplay module map
 
@@ -64,4 +61,4 @@ When adding new fields to `char_characteristic`, make sure they survive both CSV
 
 ### Credentials and ignored files
 
-`.gitignore` excludes `token.json`, `fitness_api_credential.json`/`.txt`, and the `credentials/` directory (which must contain `2walks_service_account.json` for Sheets to work). When running locally for the first time, expect Sheets calls to fail until that file is provided; loaders fall back to CSV automatically (`characteristics.py:92`).
+`.gitignore` excludes the `credentials/` directory (which must contain `2walks_service_account.json` for Sheets to work). When running locally for the first time, expect Sheets calls to fail until that file is provided; loaders fall back to CSV automatically (`characteristics.py:92`).

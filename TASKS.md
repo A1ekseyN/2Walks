@@ -34,7 +34,7 @@
 ### 1.2. Убрать побочные эффекты из module-level кода `[H / M / todo]`
 
 **Почему:**
-- `import characteristics` -> HTTP в Google Sheets + возможный запрос к Fitness API. Импорт не должен ходить в сеть.
+- `import characteristics` -> HTTP в Google Sheets. Импорт не должен ходить в сеть.
 - `drop.py:12` фиксирует `luck_chr` при импорте -> прокачка удачи не влияет на дроп.
 - `gym.py:12-46` строит f-строки `lvl_up_*` при импорте -> меню Gym показывает устаревшие цены.
 
@@ -87,7 +87,7 @@ tables/         — skill_training_table, adventure_data_table
 
 **Категория B — навигация между меню**: меню → подменю → возврат в родителя через прямой вызов функции. Не ошибка, но тоже строит стек. Убрать без структурной переработки (возврат кодов, стейт-машина) не получится — это уровень **1.1 GameState**. **Отложено до 1.1.**
 
-**Категория C — `get_access_token()`** (`get_token_fitnes_api.py:77`): рекурсия ограничена одной глубиной (удалили токен → повтор → при неудаче `return None`), `RecursionError` невозможен. Плюс вся функция deprecates в **4.16**. **Не трогаем.**
+**Категория C — `get_access_token()`** в `get_token_fitnes_api.py`: была рекурсия ограничена одной глубиной. Файл целиком удалён в задаче **4.16** (2026-04-27) — пункт более не актуален.
 
 #### Ключевое UX-решение
 
@@ -96,7 +96,7 @@ tables/         — skill_training_table, adventure_data_table
 #### Что НЕ входит в скоуп 1.5
 
 - **Категория B (навигация).** Места: `equipment.py:54,152,157`, `adventure.py:115`, `shop.py:32,35,86,88`, `inventory.py:15,86,92`. Откладываются до 1.1.
-- **`get_token_fitnes_api.py:77`** — категория C, deprecates в 4.16.
+- **`get_token_fitnes_api.py`** — файл удалён в 4.16 (2026-04-27), пункт не актуален.
 - **Helper-функция `prompt_choice()` / `prompt_int()`.** Её место — в новом UI-модуле после 1.3 (раздел `functions.py`). Сейчас внутренняя кухня — инлайн `while True` в каждом меню.
 
 #### Подзадачи (по файлам, в порядке возрастания сложности)
@@ -216,7 +216,7 @@ class Item:
 
 ### 2.1. "Новый день — можно использовать вчерашние шаги, если не сохранить" `[H / S / todo]`
 
-**Диагноз:** `save.txt` пишется в `save_game_date_last_enter()` (`functions.py:106`), и он же читается в `api.steps_today_update()` (`api.py:16`). Две функции владеют одним файлом -> гонка.
+**Диагноз (исторический):** `save.txt` пишется в `save_game_date_last_enter()` (`functions.py:106`), и он же читался в `api.steps_today_update()` (модуль `api.py` удалён в 4.16). После удаления Fitness API гонка через `save.txt` ушла, но логика "новый день / тот же день" всё ещё опирается на сравнение даты в файле — потенциальные edge-cases при ручном вводе остались.
 
 **Фикс:** флаг "сегодняшние шаги уже забраны" хранить в `GameState`, а не в текстовом файле. `save.txt` убрать.
 
@@ -317,6 +317,24 @@ class Item:
 ### 2.8. `walk_20k` всегда дропает `None` `[H / S / done]`
 
 **Сделано (24.04.2026):** в `drop.py:76-92` добавлена ветка `elif hard == 'walk_20k':` по аналогии с walk_15k/walk_25k. Пул дропа — `a-grade / s-grade / s+grade` (соответствует описанию меню в `adventure.py:100`). Структура rolls идентична соседним веткам: `luck_chr`-модифицированный global gate → три grade-roll'а → возврат минимального, прошедшего свой порог. Ручное тестирование перенесено на момент после 3.2.1, т.к. механика дропа всё равно подвергается рефакторингу.
+
+---
+
+### 2.9. `steps_can_use` показывает вчерашнее значение в первый момент нового дня `[M / S / done]`
+
+**Найдено 2026-04-27** при первом запуске игры после удаления Fitness API (задача 4.16). Symptom: на новый день, до первого ввода шагов через `+`, в `status_bar` отображалось `Steps 🏃: 0 / 11,476` — где 11,476 это **вчерашний** `steps_can_use`, не имеющий отношения к сегодняшним фактическим шагам.
+
+**Диагноз:** `save_game_date_last_enter()` в `functions.py:96+` имел две ветки:
+- "новый день": сбрасывал `steps_today=0`, `steps_today_used=0`, обновлял `date_last_enter` и `steps_yesterday`. **Не пересчитывал `steps_can_use`** — он оставался равен значению, загруженному из сейва (вчерашнему).
+- "тот же день": пересчитывал `steps_can_use = steps_today - steps_today_used + bonuses`.
+
+После сброса `steps_today=0` следующий тик уже попадал в ветку "тот же день" и пересчитывал корректно. Но **первый кадр** статус-бара после смены дня показывал stale-значение.
+
+Это был **pre-existing bug**: при наличии Fitness API он маскировался тем, что `steps_today_update()` после сброса всё равно подтягивал актуальные шаги от API → `steps_can_use` хоть и не пересчитывался, но `steps_today` был ближе к правде. После 4.16 (только ручной ввод) баг стал виден явно: `steps_today` всегда 0 на старте дня, а stale `steps_can_use` бросался в глаза.
+
+**Сделано (2026-04-27):** в `functions.py:save_game_date_last_enter()` расчёт `steps_can_use` вынесен за пределы `if/elif` — теперь выполняется один раз в конце функции, для обеих веток. Убрана мёртвая `else: print('Error...')` (любая строка либо равна, либо не равна — третьего не дано). Заодно убраны устаревшие комментарии про "API" в шапке функции.
+
+**Данные не были повреждены:** `steps_today`, `steps_yesterday`, `steps_today_used` обновлялись корректно — проблема была только в кэше `steps_can_use`. Реальных шагов баг не съедал.
 
 ---
 
@@ -537,13 +555,27 @@ def current_luck():
 
 ---
 
-### 4.16. Замена чтения Fitness API на чтение из `steps_log` `[H / S / todo / blocked by 4.14, 4.15]`
+### 4.16. Удалить Fitness API `[H / S / done]`
 
-Сейчас `api.steps_today_update()` (`api.py:9`) раз в день ходит в Google Fit REST API. После того как `steps_log` работает:
+**Сделано (2026-04-27).** Изначально задача была "deprecate после недели работы нового pipeline". Решено вырезать сейчас, поскольку Fitness API фактически не работал у пользователя (нет валидных credentials, при старте выводил шумные сообщения "Файл token.json не найден"), а ручной ввод (`+`, задача 4.1) уже работает.
 
-1. Убрать вызов Fitness API из нормального flow игры.
-2. `steps_today()` в `characteristics.py:16` читает максимум из `steps_log`.
-3. Весь код в `api.py` и `get_token_fitnes_api.py` пометить как `deprecated`, оставить временно для истории. Удалить после недели стабильной работы нового pipeline.
+**Удалено:**
+- `api.py` (122 строки) — модуль Fitness API.
+- `get_token_fitnes_api.py` (92 строки) — OAuth-flow для Google Fit.
+- Функции `steps_today_update_manual()` (~80 строк) и `steps_today_update_manual_nocodeapi_old()` (~25 строк) из `functions.py`.
+- Закомментированный `#print(steps_today_update_manual())` (`functions.py:399`).
+- Импорты `from api import ...` и `from get_token_fitnes_api import ...` в `characteristics.py`, `functions.py`.
+- Пункт меню `0` "Обновить кол-во шагов через API" в `game.py` (диспатч + текст).
+- Зависимости из `requirements.txt`: `requests`, `google-auth`, `google-auth-oauthlib` (gspread не зависит от google-auth, использует oauth2client).
+- Строки `.gitignore`: `token.json`, `fitness_api_credential.txt/.json`, `/fitness_api_credential_.txt`.
+
+**Изменено:**
+- `characteristics.py:steps_today()` — теперь возвращает `loaded_data_char_characteristic.get('steps_today', 0)` вместо вызова `api.steps_today_update()`. Сетевых запросов при импорте больше нет.
+- `functions.py:save_game_date_last_enter()` — на смену даты теперь сбрасывает `char_characteristic['steps_today'] = 0` (раньше делал HTTP-запрос). Игрок вводит фактическое значение через `+`.
+- `CLAUDE.md` — секции "Step-count integration (Google Fit)" заменена на "Step-count input"; убраны упоминания `api.py`, `get_token_fitnes_api.py`, `token.json`, `fitness_api_credential.json`; `requirements.txt` команды без `get_token_fitnes_api.py`.
+- `docs/game_console.md` — раздел 5 переписан (одна секция 5.1 "Источник: ручной ввод" вместо двух Google Fit / manual); таблица команд главного меню без пункта `0`; раздел 1.2 без OAuth-credentials; раздел 6.1 без упоминания `api.py`; раздел 8 без строки про Fitness API.
+
+**Будущее:** конвейер iPhone → Google Sheets через iOS Shortcut запланирован в задачах **4.13** + **4.14** + **4.15**. После их реализации `steps_today()` сможет читать из `steps_log` (отдельного листа Sheets); потребуется переписать функцию ещё раз.
 
 ---
 
@@ -569,7 +601,6 @@ def current_luck():
 
 **Что вырезается:**
 - `google_sheets_db.py` — убрать или заменить на no-op.
-- `api.py`, `get_token_fitnes_api.py` — удалить.
 - `credentials/` — не бандлить.
 
 Сборка: `pyinstaller --onefile --name=2Walks-Lite game.py` с `config.py`-флагом `OFFLINE_MODE=True`.
@@ -619,7 +650,7 @@ def current_luck():
 
 Имя `GAME_STATE_SHEET_NAME` (вместо `SHEET_NAME`) выбрано с заделом на задачу 4.14, где появится `STEPS_LOG_SHEET_NAME`. В файле оставлена закомментированная строка-напоминание.
 
-**Вне скоупа (отложено):** пути `token.json` / `fitness_api_credential.json` (`get_token_fitnes_api.py`) — оставлены как есть, потому что Fitness API деприкейтится в 4.16. Пути локальных файлов (`characteristic.csv`, `characteristic.txt`, `save.txt`) — если понадобится, отдельная задача в будущем.
+**Вне скоупа (отложено):** пути локальных файлов (`characteristic.csv`, `characteristic.txt`, `save.txt`) — если понадобится, отдельная задача в будущем. Fitness API path-константы перестали быть актуальны после 4.16 (модули удалены).
 
 ---
 
@@ -650,7 +681,7 @@ def current_luck():
 Порядок работ:
 1. **4.1** — ручной ввод шагов (1 час, независимый, разблокирует всё).
 2. Дешёвые баги: **2.2** (округление энергии), **2.5** (голые `except:`), **2.7** (`>=` в уровнях). Суммарно ~2-3 часа.
-3. **4.14** + **4.13** + **4.15** + **4.16** — конвейер шагов через Apps Script и iOS Shortcut. 4-8 часов.
+3. **4.14** + **4.13** + **4.15** — конвейер шагов через Apps Script и iOS Shortcut. 4-8 часов. (4.16 закрыта 2026-04-27 — Fitness API удалён.)
 4. **4.17** — PyInstaller-сборка `.app` для Mac. 2-3 часа.
 
 Долгосрочно, если решишь развивать дальше: **1.1 (GameState)** — корневой рефакторинг, разблокирующий тесты, мультисейв и большинство остальных задач. Три бага из `bugs.txt` умирают сами после него.

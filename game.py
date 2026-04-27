@@ -5,7 +5,7 @@ import sys
 import time
 from colorama import init
 
-from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_update_manual, steps_today_manual_entry, timestamp_now, energy_timestamp, energy_time_charge, status_bar
+from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_manual_entry, timestamp_now, energy_timestamp, energy_time_charge, status_bar
 from characteristics import *
 from equipment import Equipment
 from locations import *
@@ -70,7 +70,6 @@ def game():
                 '7': lambda: enter_location('auto_dialer', auto_dialer_location),
                 '8': lambda: enter_location('bank', bank_location),
                 # Шаги
-                '0': steps_today_update_manual,
                 '+': steps_today_manual_entry,
                 # Меню персонажа
                 'm': lambda: print('\nРаздел "Меню" - (Пока не работает).'),
@@ -109,7 +108,6 @@ def game():
 #                      f'\n\t6. 🚗 Гараж (Не работает)'
 #                      f'\n\t7. 🚗 Авто-дилер (Не работает)'
 #                      f'\n\t8. 🏛 Банк (Не работает)'
-                      f'\n\t0. 🔄 Обновить кол-во шагов (API)'
                       f'\n\t+. Ввести шаги вручную')
                 print(f'\tm. Меню // '
                       f'i. 🎒 Инвентарь // '
@@ -150,7 +148,7 @@ def game():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.1.1a")
+    print(f"Version: 0.1.2")
     os.system("chcp 65001")         # Включение Unicode для консоли. Все равно это не работает
 
     try:
