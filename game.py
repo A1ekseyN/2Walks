@@ -5,7 +5,7 @@ import sys
 import time
 from colorama import init
 
-from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_manual_entry, timestamp_now, energy_timestamp, energy_time_charge, status_bar
+from functions import save_game_date_last_enter, char_info, location_change_map, steps, steps_today_manual_entry, steps_today_set, timestamp_now, energy_timestamp, energy_time_charge, status_bar
 from characteristics import *
 from equipment import Equipment
 from locations import *
@@ -118,7 +118,20 @@ def game():
                       f'\n\ts. 💾 Save Game'
                       f'\n\tq/e. 💾 + 🚪 Save & Exit')
                 temp_number = input('Куда вы хотите пойти?:\n>>> ')
-                COMMANDS.get(temp_number, unknown_command)()
+
+                # Inline-команда: "+1232" или "+ 1312" применяет шаги сразу.
+                # Просто "+" (или "+ ") — старый интерактивный путь через подменю.
+                if temp_number.startswith('+') and temp_number != '+':
+                    rest = temp_number[1:].strip()
+                    if not rest:
+                        steps_today_manual_entry()
+                    else:
+                        try:
+                            steps_today_set(int(rest))
+                        except ValueError:
+                            print('Неверный формат. Ожидается "+N", где N — целое число.')
+                else:
+                    COMMANDS.get(temp_number, unknown_command)()
 
         # Запуск функции, которая относится к локациям
         if char_characteristic['loc'] == 'home':
@@ -148,7 +161,7 @@ def game():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.1.2")
+    print(f"Version: 0.1.2a")
     os.system("chcp 65001")         # Включение Unicode для консоли. Все равно это не работает
 
     try:

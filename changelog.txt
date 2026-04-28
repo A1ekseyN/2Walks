@@ -1,3 +1,7 @@
+Version: 0.1.2a (28.04.2026):
+- BugFix. The bug that caused the number of steps taken today to reset when the day changed has been fixed. Steps: 0/0.
+- Feature. Inline step entry: type `+1232` or `+ 1312` directly in the main menu to apply steps without going through the submenu. Plain `+` still opens the interactive prompt.
+
 Version: 0.1.2 (27.04.2026):
 - Removed Fitness API. Steps are now entered manually via `+` only; reset to 0 on day change.
 - BugFix. steps_can_use больше не показывает вчерашнее значение в первый момент нового дня.

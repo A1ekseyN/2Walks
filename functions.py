@@ -53,6 +53,8 @@ def energy_time_charge():
 
 def status_bar():
     # Отображение переменных: шагов, энергии, денег.
+    save_game_date_last_enter()  # детект смены дня + пересчёт steps_can_use до любых чтений (см. 2.12)
+
     char_level_view = CharLevel(char_characteristic)  # Инициализация уровня персонажа, прогресса, и lvl up
 
     total_bonus = total_bonus_steps()
@@ -126,18 +128,12 @@ def save_game_date_last_enter():
     return char_characteristic['steps_can_use']
 
 
-def steps_today_manual_entry():
-    """Ручной ввод количества шагов. Перезаписывает steps_today максимумом
-    из текущего значения и введённого. Mi Fitness -> Apple Health
+def steps_today_set(entered):
+    """Применяет max(текущий, введённый) к steps_today. Общая логика для
+    интерактивного ввода и inline-команды `+N`. Mi Fitness -> Apple Health
     синхронизируется с задержкой, поэтому показания на браслете часто свежее
-    того, что доехало автоматически."""
+    того, что доехало автоматически — поэтому max(), а не replace."""
     global char_characteristic
-
-    try:
-        entered = int(input('Введите текущее количество шагов с браслета:\n>>> '))
-    except ValueError:
-        print('Нужно целое число. Ввод отменён.')
-        return
 
     if entered < 0:
         print('Отрицательное число. Ввод отменён.')
@@ -151,6 +147,16 @@ def steps_today_manual_entry():
         print(f'Текущее значение ({old:,}) больше или равно введённому ({entered:,}). Оставлено как было.')
     else:
         print(f'Обновлено: {old:,} -> {new:,}.')
+
+
+def steps_today_manual_entry():
+    """Интерактивный ручной ввод количества шагов через подменю."""
+    try:
+        entered = int(input('Введите текущее количество шагов с браслета:\n>>> '))
+    except ValueError:
+        print('Нужно целое число. Ввод отменён.')
+        return
+    steps_today_set(entered)
 
 
 def char_info():

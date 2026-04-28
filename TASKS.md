@@ -399,6 +399,26 @@ days_form = pluralize_ru(days, ('день', 'дня', 'дней'))
 
 ---
 
+### 2.12. `status_bar()` показывает stale max_steps / total_bonus при смене дня `[M / S / done]`
+
+**Найдено 2026-04-28.** Symptom: в первый запуск нового дня `status_bar` выводит некогерентный микс:
+
+```
+Steps 🏃: 0 / 2,296 (Bonus: Stamina + 0 / Equipment + 0 / Daily 0 / Level: 0. [🏃: 828, 56.40 %])
+```
+
+— `steps() = 0` (правильно после reset), но `max_steps = 2,296` и `total_bonus = 828` посчитаны с вчерашним `steps_today`.
+
+**Диагноз:** `status_bar()` (`functions.py:54`) сначала пре-вычислял `total_bonus = total_bonus_steps()` и `max_steps = steps_today + total_bonus` на старом state, а потом в f-string первым слотом вызывал `steps()`, внутри которого `save_game_date_last_enter()` детектил новый день и сбрасывал `steps_today=0`. Из-за порядка evaluation Python (left-to-right в f-string), снапшоты `total_bonus` / `max_steps` остаются "до-reset", а индивидуальные `stamina_skill_bonus_def()`, `equipment_bonus_stamina_steps()` и т.д. вызываются после reset → возвращают 0. Результат — несогласованный вывод: max_steps из вчерашнего мира, бонусы по-нулям.
+
+**Фикс 2.9** (steps_can_use в обеих ветках) этот случай не закрывал, потому что проблема не в логике `save_game_date_last_enter()`, а в том, что **`status_bar()` читает state до её вызова**.
+
+**Сделано (2026-04-28):** в начало `status_bar()` добавлен явный вызов `save_game_date_last_enter()`. Теперь все последующие чтения (`total_bonus_steps()`, `steps_today`, individual bonus functions, `steps()`) работают с уже актуализированным состоянием. Вывод когерентен: `Steps 🏃: 0 / 0` после смены дня, до ввода `+`.
+
+Корневая причина — module-level side effects + неявная зависимость функций от мутирующего глобального состояния. Полное решение придёт с задачами **1.1** (GameState) и **1.2** (убрать побочные эффекты импорта). Точечный фикс — defensive ordering.
+
+---
+
 ## 3. Тесты
 
 ### 3.1. Настроить pytest + первые тесты `[H / M / todo]`
@@ -1520,6 +1540,29 @@ def current_luck():
 **Effort: L+** — это roadmap на месяцы.
 
 **Зависимость:** **blocked by 1.1** (GameState — нужна для отслеживания story progress / current chapter / expedition state). Связана с 4.42 (Locations), 4.40 (Equipment), 4.37 (Pets — собака как компаньон).
+
+---
+
+### 4.47. Inline ввод шагов: `+1232` / `+ 1312` сразу из главного меню `[L / S / done]`
+
+QoL-улучшение: чтобы ввести шаги, не нужно делать два шага (`+` → подменю → число). Можно сразу написать команду с числом: `+1232` или `+ 1312` — шаги применяются мгновенно.
+
+**Сделано (2026-04-28):**
+- Новый helper `steps_today_set(entered: int)` в `functions.py` — инкапсулирует общую логику `max(old, entered) → steps_today` + проверку отрицательного. Старый `steps_today_manual_entry()` рефакторен под него.
+- В `game.py:location_selection()` — диспатчер расширен: при `temp_number.startswith('+') and temp_number != '+'` парсится `int(temp_number[1:].strip())` и вызывается `steps_today_set()`. Простой `+` (включая `"+ "` с одним пробелом) идёт по старому пути через `steps_today_manual_entry()`.
+
+**Edge cases:**
+| Ввод | Результат |
+|---|---|
+| `+1232` | sets steps_today |
+| `+ 1312` | strip → sets |
+| `+   500` | strip всех пробелов |
+| `+` | старое подменю (interactive) |
+| `+ ` | как `+` |
+| `+abc` / `+1.5` | "Неверный формат..." |
+| `+-100` | парсится `-100` → отказ из-за отрицательного |
+| `+0` | существующее поведение `max(old, 0)` |
+| `++100` | `int("+100") = 100` ✓ |
 
 ---
 
