@@ -12,7 +12,7 @@
 
 ## 1. Архитектура и рефакторинг
 
-### 1.1. Обернуть `char_characteristic` в класс `GameState` `[H / L / todo]`
+### 1.1. Обернуть `char_characteristic` в класс `GameState` `[H / L / in-progress (Phase 1 in progress)]`
 
 Корневая задача, разблокирует почти все остальные.
 
@@ -20,14 +20,63 @@
 - Глобальный мутабельный dict делает невозможными тесты, несколько сейвов, undo-логику.
 - Баг "Adventure не видит прокачку" (`bugs.txt`) — прямое следствие.
 - Команда `l` (load from cloud) в `game.py:113` создаёт локальную копию, а не обновляет глобал — скрытый баг.
+- **Soft-blocker для 4.48 (Web Interface)** — без отделения логики от I/O FastAPI handler не может вызывать те же функции, что CLI.
 
-**Как подступиться:**
-1. Создать `game/state.py` с классом `GameState`, полями через dataclass.
-2. Метод `GameState.load()` / `.save()` вместо модульных функций.
-3. Постепенно мигрировать модули — новые принимают `state: GameState`, старые `from characteristics import char_characteristic` оставляем временно как совместимость.
-4. В `game()` создать один экземпляр и пробросить.
+**Зафиксированные технические решения (29.04.2026):**
+- **dataclass** (stdlib), не Pydantic. Конвертация в Pydantic — отдельной задачей позже для FastAPI.
+- **Nested структура** — связанные поля сгруппированы в подклассы: `StepsState`, `CharLevel`, `GymSkills`, `TrainingSession`, `WorkSession`, `AdventureSession`, `Equipment`.
+- **Переименование полей** — кривые имена (`lvl_up_skill_stamina`, `working_end`, `adventure_walk_15k_counter`) делаются осмысленными в коде. На границе load/save — explicit mapping в legacy save format.
+- **Items как dict пока** — задача 1.6 (Items as dataclass) делается отдельно после 1.1.
+- **Backward compat через proxy** во время миграции — `char_characteristic` остаётся работать через `__getitem__` proxy, удаляется в Phase 5.
+- **CSV save format не меняется** — `to_dict()` возвращает тот же flat dict с теми же ключами. Старые сейвы продолжают работать.
+- **Manual smoke testing** — после полной миграции (конец Phase 5), не после каждого модуля.
+- **Тесты по мере реализации** — pytest-тесты добавляются в каждой фазе.
+- **Версия после полной миграции — 0.2.0** (мажорная — большое архитектурное изменение).
+- **Helper функции** для не-тривиальных мутаций — в `actions.py` (создаётся в Phase 4).
+- **Имя файла** — `state.py` в корне (не `game/state.py`).
 
-**Связанные файлы:** `characteristics.py:107`, все 13 мест с `global char_characteristic`.
+**План по фазам:**
+
+#### Phase 1 — Foundation `[in-progress, 29.04.2026]`
+- Создать `state.py` с dataclass'ами (GameState + 7 nested subclasses).
+- `from_dict(d)` — конструктор из legacy flat-формата (с маппингом старых ключей в nested-структуру).
+- `to_dict()` — обратная сериализация (preserves CSV save format).
+- `default_new_game()` — factory для нового персонажа.
+- Helper `_deser_datetime()` — толерантный к str/datetime/None.
+- `tests/test_state.py` с round-trip тестами.
+- Установить pytest, добавить в `requirements.txt`.
+- Существующий код **не трогаем** — параллельная структура.
+
+#### Phase 2 — Persistence Layer
+- `characteristics.py:load_data_from_google_sheet_or_csv()` → возвращает `GameState`.
+- `characteristics.py:save_characteristic()` → принимает `GameState` (через `to_dict`).
+- `google_sheets_db.py` — работает с `GameState`.
+- `state.py:CharCharacteristicProxy` — `__getitem__` / `__setitem__` для backward compat.
+- `characteristics.py:char_characteristic = CharCharacteristicProxy(state)` — все модули видят proxy.
+
+#### Phase 3 — Read Migration
+Модули с read-only обращениями: `bonus.py`, `skill_bonus.py`, `equipment_bonus.py`, `level.py`, `functions.py:status_bar` и helpers.
+Сигнатуры функций меняются на `f(state: GameState)`.
+
+#### Phase 4 — Write Migration
+Модули с мутациями (от простого к сложному): `functions.py` → `inventory.py`/`equipment.py` → `gym.py`/`work.py`/`adventure.py` → `shop.py` → `game.py`.
+Создаётся `actions.py` для не-тривиальных мутаций (`try_spend`, `start_work`, `start_training`, `start_adventure`).
+
+#### Phase 5 — Cleanup
+- Удалить `CharCharacteristicProxy`.
+- Удалить все `from characteristics import char_characteristic`.
+- Удалить все `global char_characteristic`.
+- Версия в `game.py` → `0.2.0`.
+- Manual smoke test.
+
+#### Phase 6 — Documentation
+- Обновить `CLAUDE.md` (раздел про state).
+- Обновить `docs/game_console.md`.
+- Пометить 1.1 как done. Разблокированные задачи (2.3, 4.9, 4.33, 4.48 etc.) — обновить статус.
+
+**Связанные файлы:** `characteristics.py:101-176`, все ~13 мест с `global char_characteristic`, все импорты `from characteristics import char_characteristic`.
+
+**Разблокирует:** 2.2.3, 2.3, 3.1, 4.9, 4.33, 4.46, 4.48 (полный web).
 
 ---
 

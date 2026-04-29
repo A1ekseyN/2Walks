@@ -1,3 +1,4 @@
 tasks.txt
 
 /credentials/
+tests/__pycache__/
