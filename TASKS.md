@@ -605,6 +605,8 @@ def current_luck():
 
 Уже есть интеграция с Sheets. Добавить отдельный лист `daily_stats`, куда пишется snapshot раз в день (шаги, энергия, уровень, деньги). В самой таблице — график средствами Sheets. Ноль нового UI-кода.
 
+**⚠️ Частично замещается by 4.48.1 (2026-04-29):** web Dashboard (4.48.1) даст похожий UX в браузере. 4.10 остаётся как опциональный low-priority backup-визуализатор средствами самих Sheets.
+
 ---
 
 ### 4.11. Negative events / "налог на бездействие" `[L / S / todo]`
@@ -634,6 +636,8 @@ def current_luck():
    - Плюс иконка на Home Screen для ручного запуска (когда хочешь подтвердить свежие шаги немедленно).
 
 **Блокируется 4.14** — endpoint должен писать в отдельный лист `steps_log`, а не в `game_state`.
+
+**⚠️ Deprecated by 4.48.2 (2026-04-29):** после реализации FastAPI backend (4.48) iOS Shortcut будет POST'ить шаги напрямую в свой `/api/steps`, минуя Apps Script. Apps Script остаётся как **fallback** — если решим не реализовывать, или если 4.48 откладывается.
 
 ---
 
@@ -1563,6 +1567,154 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
 | `+-100` | парсится `-100` → отказ из-за отрицательного |
 | `+0` | существующее поведение `max(old, 0)` |
 | `++100` | `int("+100") = 100` ✓ |
+
+---
+
+### 4.48. Web Interface + FastAPI backend (зонтичная) `[H / L+ / todo]`
+
+**Цель:** добавить веб-интерфейс игры как параллельный путь играть. Открываешь на iPhone после прогулки — управляешь через браузер. CLI остаётся **primary** (содержит больше функциональности), web нарастает incrementally.
+
+**Принципы:**
+- CLI первичный, web — дополнение. CLI всегда поддерживается.
+- Sheets как **single source of truth** (вариант A, без БД).
+- "Last writer wins" — игрок не использует CLI и web одновременно.
+- Mobile-first UI (после прогулки открываешь с iPhone).
+- В MVP — **без авторизации** (публичный URL по IP:PORT). Auth — отдельная задача 4.55.
+
+**Зафиксированные технические решения (29.04.2026):**
+- Backend: **FastAPI** (Python).
+- Frontend: HTML + **HTMX** + ванильный JS, минимум зависимостей. Стилизация через Pico.css или Tailwind CDN (mobile-first).
+- Templates: Jinja2 (стандарт FastAPI).
+- Real-time: **polling каждые 15 секунд** + локальный countdown timer на frontend (плавное убывание между обновлениями).
+- Source code reuse с CLI: через **1.1 GameState** — выделение pure mutation functions (`start_work`, `start_training`, `start_adventure`, `set_steps_today`) из CLI меню. Они не печатают в stdout и не вызывают `input()`, поэтому пригодны и для CLI-обёрток, и для FastAPI handler'ов.
+- Backup: только Google Sheets (без отдельного JSON-экспорта на VPS).
+- Версионирование: **единая** для CLI+web (например, `0.2.0` на major bump после web release).
+- Доступ: **IP:PORT** в первой версии. Доменное имя — позже, по необходимости.
+- Конфигурация: добавляется в `config.py` через переменные окружения:
+  ```python
+  import os
+  WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
+  WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
+  ```
+  - На ноуте при разработке — дефолт `127.0.0.1:8000` (только локально).
+  - На VPS — `WEB_HOST=0.0.0.0` через systemd `Environment=` (слушает на публичном IP).
+  - Так же можно унести SPREADSHEET_ID и прочее в env, чтобы laptop и VPS не конфликтовали.
+
+**Зависимости:**
+- **1.1 GameState (минимальная версия)** — обязательна ДО action endpoints (4.48.3-4.48.6, 4.48.8). Минимальный 1.1: extract pure mutation functions без print/input. Полный 1.1 (полноценный класс) — отдельная сессия позже.
+- **4.14 Sheets split** — желательно ДО 4.48 для разделения `game_state` и `steps_log` в источнике.
+
+**Замены / устаревания:**
+- **4.13 (Apps Script + iOS Shortcut)** — **deprecated by 4.48.2**. После работоспособности `/api/steps` — заменяет Apps Script, iOS Shortcut шлёт прямо в FastAPI.
+- **4.10 (Dashboard в Sheets)** — частично замещается 4.48.1.
+
+#### 4.48.0. Setup: FastAPI + deploy на VPS `[H / M / todo (blocked by 1.1)]`
+
+- FastAPI скелет с роутингом, Jinja2 templates, HTMX для динамики.
+- Интеграция с gspread (тот же service account, что у game.py).
+- Конфиг через `config.py` + env vars (см. выше).
+- Deploy:
+  - VPS — один из существующих серверов пользователя (выбирается на момент реализации).
+  - `systemd` service для автозапуска `uvicorn`.
+  - Reverse proxy (nginx / caddy) — опционально на старте, можно сразу на uvicorn:port.
+  - Доступ через `http://VPS_IP:PORT` (без домена / без TLS в первой версии).
+- На ноуте: запуск `uvicorn main:app --host 127.0.0.1 --port 8000 --reload` для локального тестирования. Sheets ссылка та же (single source of truth работает на dev и prod).
+
+#### 4.48.1. Dashboard (read-only HTML) `[H / M / todo (blocked by 4.48.0)]`
+
+- Главная страница со status_bar (steps, energy, money, level), inventory, equipment, текущая активность (work/training/adventure timer).
+- HTMX-обновление каждые 15 секунд.
+- Frontend countdown timer на JS — между обновлениями плавное убывание времени.
+- Mobile-first layout — крупные кнопки, минимум скролла, чёткая иерархия.
+- Только чтение, без action-эндпоинтов.
+
+#### 4.48.2. POST /api/steps `[H / S / todo (blocked by 4.48.0)]`
+
+- Эндпоинт принимает `{steps: int, ts?: ISO-8601}`.
+- Применяет `max(old, new)` к `steps_today`, пишет в Sheets.
+- ⚡ **ЗАМЕНЯЕТ 4.13** — iOS Shortcut шлёт прямо сюда вместо Apps Script.
+- В MVP без auth (публичный POST). После 4.55 — добавить shared-secret или session.
+
+#### 4.48.3. Web: Adventure `[H / M / todo (blocked by 1.1, 4.48.1)]`
+
+- `GET /adventure` — список доступных прогулок + прогресс разблокировки (синергия с 4.34).
+- `POST /api/adventure/start` — старт прогулки + списание ресурсов.
+- Локальный countdown до завершения, прогресс-бар.
+- Auto-finalize при истечении таймера (детектится в polling, дроп показывается).
+
+#### 4.48.4. Web: Gym `[H / M / todo (blocked by 1.1, 4.48.1)]`
+
+- `GET /gym` — таблица скиллов с ценами/требованиями.
+- `POST /api/gym/train` — старт обучения.
+- Локальный countdown до завершения тренировки.
+
+#### 4.48.5. Web: Work `[H / M / todo (blocked by 1.1, 4.48.1)]`
+
+- `GET /work` — выбор вакансии и часов.
+- `POST /api/work/start` — старт смены.
+- Прогресс смены, добавление часов через `POST /api/work/add_hours`.
+
+#### 4.48.6. Web: Inventory + Equipment `[M / M / todo (blocked by 1.1, 4.48.1)]`
+
+- Просмотр инвентаря, продажа (`POST /api/inventory/sell`).
+- Equipment слоты, надевание/снятие (`POST /api/equipment/wear`, `/unwear`).
+
+#### 4.48.7. Web: Shop `[M / M / todo (blocked by 4.7, 4.48.0)]`
+
+- После доделывания Shop в CLI (4.7).
+- Food / Clothes / Equipment / Sell — те же категории, что и в CLI.
+
+#### 4.48.8. Web: Level + skill point allocation `[M / S / todo (blocked by 1.1, 4.48.1)]`
+
+- Меню распределения `char_level_up_skills`.
+
+---
+
+### 4.53. Multi-user support `[H / L+ / todo (отложено)]`
+
+User accounts, регистрация, логин. Per-user state в Sheets (отдельные листы или columns) или миграция на БД (SQLite/Postgres).
+
+**Что нужно:**
+- Auth: JWT или session cookies.
+- Регистрация / логин.
+- Per-user изоляция данных.
+- Возможно — лидерборды (если несколько игроков).
+
+**Заблокировано:**
+- 1.1 (GameState — должен поддерживать множественные инстансы).
+- 4.48.x базовые (single-user web должен работать первым).
+
+**Дата:** не раньше, чем web для single-user будет стабилен (4.48.0-4.48.5 done). Большая фича, отдельная сессия / месяцы работы.
+
+---
+
+### 4.54. Sync resolution: CLI ↔ Web `[M / M / todo]`
+
+Решение конфликтов между CLI и web при одновременной игре.
+
+**Текущая стратегия (в 4.48):** "last writer wins" + предположение, что игрок не использует одновременно. Достаточно для single-user, single-session.
+
+**Если станет проблемой:**
+- Lock-механизм (cell в Sheets с `session_active_since` / `session_token`).
+- Auto-save в CLI на каждом действии (а не только на `s`/`q`) — снизит окно расхождения.
+- Detection в обеих средах с warning игроку: "Web session active 2 min ago — данные могут быть stale".
+
+**Effort:** M, в зависимости от глубины (lock vs warning).
+
+**Дата:** только если возникнут реальные конфликты при использовании.
+
+---
+
+### 4.55. Auth для web `[M / S / todo (blocked by 4.48.1)]`
+
+В MVP (4.48.x) URL публичный по IP:PORT. Auth добавляется отдельно — после стабилизации web.
+
+**Варианты:**
+- **HTTP Basic** — логин/пароль через браузерный диалог. Простой, без logout UX.
+- **Session cookie + login form** — стандартная UX, чуть больше кода.
+- **JWT** — обязательно для multi-user (4.53).
+
+Для single-user (после 4.48 MVP) — **HTTP Basic** достаточен. Учётка хранится в env vars (`WEB_USER`, `WEB_PASS_HASH`).
 
 ---
 

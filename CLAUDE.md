@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project context
 
-2Walks is a console-only step-counter RPG written in Python. Real-world steps (entered manually via the `+` command) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it. A Google Fit auto-sync existed historically but was removed on 2026-04-27 (task 4.16); a future iOS Shortcut → Google Sheets pipeline is planned (tasks 4.13–4.15).
+2Walks is a step-counter RPG written in Python. Real-world steps (entered manually via the `+` command) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it. A Google Fit auto-sync existed historically but was removed on 2026-04-27 (task 4.16); a future iOS Shortcut → Google Sheets pipeline is planned (tasks 4.13–4.15).
+
+**Primary interface:** CLI (`game.py`). **Secondary (planned):** Web interface via FastAPI backend on a VPS (task 4.48 — incremental rollout). CLI remains the primary path; web is supplementary and grows feature-by-feature. Single source of truth for both — Google Sheets.
 
 ## Entry points
 
