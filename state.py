@@ -327,3 +327,190 @@ class GameState:
             'adventure_walk_25k_counter': self.adventure.counters.get('walk_25k', 0),
             'adventure_walk_30k_counter': self.adventure.counters.get('walk_30k', 0),
         }
+
+
+# ----------------------------------------------------------------------------
+# CharCharacteristicProxy — backward-compat proxy для legacy кода.
+#
+# Во время миграции (Phase 2-4 задачи 1.1) старые модули продолжают делать
+# `from characteristics import char_characteristic` и обращаться к нему как
+# к dict (`char_characteristic['energy']`). Прокси преобразует такие обращения
+# в чтение/запись соответствующих nested-полей `GameState`.
+#
+# Удаляется в Phase 5, когда все модули мигрированы на прямой доступ к state.
+# ----------------------------------------------------------------------------
+
+
+# Маппинг legacy flat-ключей → путь в nested GameState.
+# Каждый путь — кортеж имён атрибутов от корня state до листа.
+_KEY_MAP: dict[str, tuple[str, ...]] = {
+    # Time / day
+    'date_last_enter': ('date_last_enter',),
+    'timestamp_last_enter': ('timestamp_last_enter',),
+
+    # Steps
+    'steps_today': ('steps', 'today'),
+    'steps_today_used': ('steps', 'used'),
+    'steps_yesterday': ('steps', 'yesterday'),
+    'steps_total_used': ('steps', 'total_used'),
+    'steps_can_use': ('steps', 'can_use'),
+    'steps_daily_bonus': ('steps', 'daily_bonus'),
+
+    # Char level
+    'char_level': ('char_level', 'level'),
+    'char_level_up_skills': ('char_level', 'up_skills'),
+    'lvl_up_skill_stamina': ('char_level', 'skill_stamina'),
+    'lvl_up_skill_energy_max': ('char_level', 'skill_energy_max'),
+    'lvl_up_skill_speed': ('char_level', 'skill_speed'),
+    'lvl_up_skill_luck': ('char_level', 'skill_luck'),
+
+    # Resources
+    'loc': ('loc',),
+    'energy': ('energy',),
+    'energy_max': ('energy_max',),
+    'energy_time_stamp': ('energy_time_stamp',),
+    'money': ('money',),
+
+    # Training session
+    'skill_training': ('training', 'active'),
+    'skill_training_name': ('training', 'skill_name'),
+    'skill_training_timestamp': ('training', 'timestamp'),
+    'skill_training_time_end': ('training', 'time_end'),
+
+    # Gym skills
+    'stamina': ('gym', 'stamina'),
+    'energy_max_skill': ('gym', 'energy_max_skill'),
+    'speed_skill': ('gym', 'speed_skill'),
+    'luck_skill': ('gym', 'luck_skill'),
+    'neatness_in_using_things': ('gym', 'neatness_in_using_things'),
+    'mechanics': ('gym', 'mechanics'),
+    'it_technologies': ('gym', 'it_technologies'),
+    'move_optimization_adventure': ('gym', 'move_optimization_adventure'),
+    'move_optimization_gym': ('gym', 'move_optimization_gym'),
+    'move_optimization_work': ('gym', 'move_optimization_work'),
+
+    # Work session
+    'work': ('work', 'work_type'),
+    'work_salary': ('work', 'salary'),
+    'working': ('work', 'active'),
+    'working_hours': ('work', 'hours'),
+    'working_start': ('work', 'start'),
+    'working_end': ('work', 'end'),
+
+    # Inventory
+    'inventory': ('inventory',),
+
+    # Equipment
+    'equipment_head': ('equipment', 'head'),
+    'equipment_neck': ('equipment', 'neck'),
+    'equipment_torso': ('equipment', 'torso'),
+    'equipment_finger_01': ('equipment', 'finger_01'),
+    'equipment_finger_02': ('equipment', 'finger_02'),
+    'equipment_legs': ('equipment', 'legs'),
+    'equipment_foots': ('equipment', 'foots'),
+
+    # Adventure session
+    'adventure': ('adventure', 'active'),
+    'adventure_name': ('adventure', 'name'),
+    'adventure_start_timestamp': ('adventure', 'start_ts'),
+    'adventure_end_timestamp': ('adventure', 'end_ts'),
+}
+
+# Adventure counters живут в dict внутри AdventureSession — отдельный mapping
+# через 'counters' атрибут + ключ counters dict.
+_ADVENTURE_COUNTER_KEYS: dict[str, str] = {
+    'adventure_walk_easy_counter': 'walk_easy',
+    'adventure_walk_normal_counter': 'walk_normal',
+    'adventure_walk_hard_counter': 'walk_hard',
+    'adventure_walk_15k_counter': 'walk_15k',
+    'adventure_walk_20k_counter': 'walk_20k',
+    'adventure_walk_25k_counter': 'walk_25k',
+    'adventure_walk_30k_counter': 'walk_30k',
+}
+
+
+class CharCharacteristicProxy:
+    """Прокси-обёртка над `GameState`, имитирующая старый dict.
+
+    Поддерживает chunk legacy-операций: `proxy[key]`, `proxy[key] = value`,
+    `key in proxy`, `proxy.get(key, default)`, `proxy.update(d)`, `proxy.keys()`.
+
+    Внутри обращения транслируются в чтение/запись nested-полей через `_KEY_MAP`.
+    """
+
+    def __init__(self, state: GameState):
+        self._state = state
+
+    # ----- Read access -----
+
+    def __getitem__(self, key):
+        if key in _KEY_MAP:
+            path = _KEY_MAP[key]
+            obj = self._state
+            for attr in path:
+                obj = getattr(obj, attr)
+            return obj
+        if key in _ADVENTURE_COUNTER_KEYS:
+            counter_key = _ADVENTURE_COUNTER_KEYS[key]
+            return self._state.adventure.counters.get(counter_key, 0)
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key) -> bool:
+        return key in _KEY_MAP or key in _ADVENTURE_COUNTER_KEYS
+
+    def keys(self):
+        return list(_KEY_MAP.keys()) + list(_ADVENTURE_COUNTER_KEYS.keys())
+
+    def items(self):
+        for k in self.keys():
+            yield k, self[k]
+
+    def values(self):
+        for k in self.keys():
+            yield self[k]
+
+    # ----- Write access -----
+
+    def __setitem__(self, key, value):
+        if key in _KEY_MAP:
+            path = _KEY_MAP[key]
+            # path всегда имеет хотя бы 1 элемент
+            obj = self._state
+            for attr in path[:-1]:
+                obj = getattr(obj, attr)
+            setattr(obj, path[-1], value)
+            return
+        if key in _ADVENTURE_COUNTER_KEYS:
+            counter_key = _ADVENTURE_COUNTER_KEYS[key]
+            self._state.adventure.counters[counter_key] = value
+            return
+        raise KeyError(key)
+
+    def update(self, other):
+        """Поддерживает proxy.update({'energy': 30, 'money': 100})
+        и proxy.update(other_proxy) — для команды `l` (Load from Cloud)."""
+        if hasattr(other, 'items'):
+            for k, v in other.items():
+                self[k] = v
+        else:
+            for k, v in other:
+                self[k] = v
+
+    def setdefault(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            self[key] = default
+            return default
+
+    # ----- Internal access -----
+
+    def _get_state(self) -> GameState:
+        """Доступ к underlying GameState (для внутренних модулей во время миграции)."""
+        return self._state

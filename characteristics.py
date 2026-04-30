@@ -6,6 +6,7 @@ import ast
 
 from settings import debug_mode
 from google_sheets_db import load_char_characteristic_from_google_sheet
+from state import GameState, CharCharacteristicProxy
 
 
 # Шаги за сегодня — читаются из сейва. Источник обновления — ручной ввод (команда `+`).
@@ -91,101 +92,39 @@ def load_data_from_google_sheet_or_csv():
         return loaded_data_char_characteristic
 
 
-# Загружаем данные из Google Sheets
+# Загружаем данные из Google Sheets / CSV (legacy flat-dict).
 loaded_data_char_characteristic = load_data_from_google_sheet_or_csv()
 #print(f"loaded_data_char_characteristic: {loaded_data_char_characteristic}")
 
 
-# TODO: 'date_last_enter' - Добавить дату последнего входа в игру.
-#  На данный момент это значение сохраняется в файл save.txt
-char_characteristic = {
-    'date_last_enter': loaded_data_char_characteristic['date_last_enter'],              # Добавить дату последнего входа в игру. Default: None
-    'timestamp_last_enter': datetime.now().timestamp(),    # TimeStamp для расчёта игрового времени
-    'steps_today' : steps_today(),                                                      # Default: 0
-    'steps_can_use': 0,                                                                 # Default: 0
-    'steps_today_used': date_check_steps_today_used(),                                  # Default: 0
-    'steps_yesterday': loaded_data_char_characteristic['steps_yesterday'],                        # Default: 0
-    'steps_daily_bonus': loaded_data_char_characteristic['steps_daily_bonus'],    ### Daily Bonus                # Default: 0            # Бонус за прохождение каждый день более 10к шагов. (Yesterday)
-    'steps_total_used': loaded_data_char_characteristic['steps_total_used'],
+# Phase 2 задачи 1.1: переход с module-level dict на GameState + backward-compat proxy.
+# Все легаси-модули продолжают делать `from characteristics import char_characteristic`
+# и обращаться к нему как к dict — proxy транслирует это в nested-поля GameState.
+# proxy будет удалён в Phase 5 после полной миграции.
+game_state = GameState.from_dict(loaded_data_char_characteristic)
 
-    # Level персонажа, прокаченные skills от lvl up
-    'char_level': loaded_data_char_characteristic['char_level'],
-    'char_level_up_skills': loaded_data_char_characteristic['char_level_up_skills'],
-    'lvl_up_skill_stamina': loaded_data_char_characteristic['lvl_up_skill_stamina'],
-    'lvl_up_skill_energy_max': loaded_data_char_characteristic['lvl_up_skill_energy_max'],
-    'lvl_up_skill_speed': loaded_data_char_characteristic['lvl_up_skill_speed'],
-    'lvl_up_skill_luck': loaded_data_char_characteristic['lvl_up_skill_luck'],
+# Поведение, сохранённое от legacy-кода:
+# - timestamp_last_enter всегда обновляется до текущего момента при загрузке.
+# - loc всегда сбрасывается в 'home' (загруженное значение игнорируется).
+# - steps_today_used пересчитывается через date_check_steps_today_used() (зависит от save.txt).
+# - energy_max начинается с 50, потом добавляются бонусы (см. ниже).
+game_state.timestamp_last_enter = datetime.now().timestamp()
+game_state.loc = 'home'
+game_state.steps.used = date_check_steps_today_used()
+game_state.energy_max = 50  # сброс перед добавлением бонусов
 
-    'loc' : 'home',      #load_characteristic()['loc'],                                               # Default: 'home'
-    'energy' : loaded_data_char_characteristic['energy'],                                         # Default: 50
-    'energy_max' : 50,                                                                  # Default: 50
-    'energy_time_stamp': loaded_data_char_characteristic['energy_time_stamp'],                    # Default: timestamp() (Возможно)
-    'money': loaded_data_char_characteristic['money'],                                            # Default: 50 $
-
-    'skill_training': loaded_data_char_characteristic['skill_training'],                          # Default: False
-    'skill_training_name': loaded_data_char_characteristic['skill_training_name'],                # Default: None
-    'skill_training_timestamp': loaded_data_char_characteristic['skill_training_timestamp'],      # Default: None
-    'skill_training_time_end': loaded_data_char_characteristic['skill_training_time_end'],        # Default: None
-
-    'stamina': loaded_data_char_characteristic['stamina'],  # Выносливость: + 1 % к общему кол-ву пройденых шагов                                                     # Default: 0
-    'energy_max_skill': loaded_data_char_characteristic['energy_max_skill'], # Навык для прокачки макс. энергии. (Нужен еще одна переменная, для прокачки.            # Default: 0
-    'speed_skill': loaded_data_char_characteristic['speed_skill'],           # Скорость: + 1% к скорости действий игрока на 1 %.                                      # Default: 0
-    'luck_skill': loaded_data_char_characteristic['luck_skill'],            # Удача: + 1% к удаче в игре. Влияет на шанс выпадения лута, на качество самого лута.     # Default: 0
-    'neatness_in_using_things': loaded_data_char_characteristic['neatness_in_using_things'],              # Навык аккуратного использования вещей. Уменьшает износ вещей на 1 %.
-    'mechanics': 0,
-    'it_technologies' : 0,
-
-    # Навыки оптимизаций движения персонажа, в разных активностях
-    'move_optimization_adventure': loaded_data_char_characteristic['move_optimization_adventure'],      # Default: 0
-    'move_optimization_gym': loaded_data_char_characteristic['move_optimization_gym'],                  # Default: 0
-    'move_optimization_work': loaded_data_char_characteristic['move_optimization_work'],                # Default: 0
-
-    'work': loaded_data_char_characteristic['work'],   # Название работы          # Default: None
-    'work_salary': loaded_data_char_characteristic['work_salary'],                # Default: 0
-    'working': loaded_data_char_characteristic['working'],                        # Default: False
-    'working_hours': loaded_data_char_characteristic['working_hours'],            # Default: 0
-    'working_start': loaded_data_char_characteristic['working_start'],
-    'working_end': loaded_data_char_characteristic['working_end'],
-
-    # Инвентарь / Inventory
-    'inventory': loaded_data_char_characteristic['inventory'],                                                    # Default: []
-
-    # Equipment / Экипировка
-    'equipment_head': loaded_data_char_characteristic['equipment_head'],                              # Default: None
-    'equipment_neck': loaded_data_char_characteristic['equipment_neck'],                              # Default: None
-    'equipment_torso': loaded_data_char_characteristic['equipment_torso'],                            # Default: None
-    'equipment_finger_01': loaded_data_char_characteristic['equipment_finger_01'],                    # Default: None
-    'equipment_finger_02': loaded_data_char_characteristic['equipment_finger_02'],                    # Default: None
-    'equipment_legs': loaded_data_char_characteristic['equipment_legs'],                              # Default: None
-    'equipment_foots': loaded_data_char_characteristic['equipment_foots'],                            # Default: None
-
-    # Adventure / Приключения
-    'adventure': loaded_data_char_characteristic['adventure'],
-    'adventure_name': loaded_data_char_characteristic['adventure_name'],
-    'adventure_start_timestamp': loaded_data_char_characteristic['adventure_start_timestamp'],
-    'adventure_end_timestamp': loaded_data_char_characteristic['adventure_end_timestamp'],
-
-    # Adventure Counters
-    'adventure_walk_easy_counter': loaded_data_char_characteristic['adventure_walk_easy_counter'],                  # Default: 0
-    'adventure_walk_normal_counter': loaded_data_char_characteristic['adventure_walk_normal_counter'],              # Default: 0
-    'adventure_walk_hard_counter': loaded_data_char_characteristic['adventure_walk_hard_counter'],                  # Default: 0
-    'adventure_walk_15k_counter': loaded_data_char_characteristic['adventure_walk_15k_counter'],                    # Default: 0
-    'adventure_walk_20k_counter': loaded_data_char_characteristic['adventure_walk_20k_counter'],                    # Default: 0
-    'adventure_walk_25k_counter': loaded_data_char_characteristic['adventure_walk_25k_counter'],                    # Default: 0
-    'adventure_walk_30k_counter': loaded_data_char_characteristic['adventure_walk_30k_counter'],                    # Default: 0
-}
-
-
-# Список Слотов куда можно вставить item экипировки.
-equipment_list = [char_characteristic['equipment_head'], char_characteristic['equipment_neck'],
-                  char_characteristic['equipment_torso'], char_characteristic['equipment_finger_01'],
-                  char_characteristic['equipment_finger_02'], char_characteristic['equipment_legs'],
-                  char_characteristic['equipment_foots']]
+# Список слотов экипировки (для расчёта бонуса energy_max ниже).
+equipment_list = [
+    game_state.equipment.head, game_state.equipment.neck,
+    game_state.equipment.torso, game_state.equipment.finger_01,
+    game_state.equipment.finger_02, game_state.equipment.legs,
+    game_state.equipment.foots,
+]
 
 
 def equipment_energy_max_bonus_for_char_characteristics():
-    # Бонус Energy Max. Функция для вычисления бонуса экипировки
-    # Архитектурно неверно реализованное решение. Пока не знаю как его переделать.
+    # Бонус Energy Max. Функция для вычисления бонуса экипировки.
+    # Архитектурно неверно реализованное решение — рефакторинг отложен (см. equipment_bonus.py).
     bonus = 0
     for item in equipment_list:
         if item is not None:
@@ -194,10 +133,16 @@ def equipment_energy_max_bonus_for_char_characteristics():
     return bonus
 
 
-# Просчёт Energy Max в зависимости от навыков, скиллов, уровня
-char_characteristic['energy_max'] += char_characteristic['energy_max_skill'] + equipment_energy_max_bonus_for_char_characteristics()
-char_characteristic['energy_max'] += char_characteristic['steps_daily_bonus']
-char_characteristic['energy_max'] += char_characteristic['lvl_up_skill_energy_max']
+# Просчёт Energy Max в зависимости от навыков, скиллов, уровня.
+game_state.energy_max += (
+    game_state.gym.energy_max_skill
+    + equipment_energy_max_bonus_for_char_characteristics()
+    + game_state.steps.daily_bonus
+    + game_state.char_level.skill_energy_max
+)
+
+# Backward-compat: legacy-модули обращаются к char_characteristic как к dict.
+char_characteristic = CharCharacteristicProxy(game_state)
 
 
 skill_training_table = {
@@ -450,21 +395,24 @@ def json_serial(obj):
 
 
 def save_characteristic():
-    """Записывает характеристики в файл в формате JSON."""
+    """Записывает характеристики в файл в формате JSON и CSV."""
+    # Phase 2 задачи 1.1: source of truth — game_state, не proxy.
+    # to_dict() даёт legacy flat-формат, совместимый с прежней структурой CSV/JSON.
+    state_dict = game_state.to_dict()
     if debug_mode:
-        print(f'Сохраняем данные: {char_characteristic}')
+        print(f'Сохраняем данные: {state_dict}')
     try:
         with open('characteristic.txt', 'w', encoding='utf-8') as f:
-            json.dump(char_characteristic, f, ensure_ascii=False, indent=4, default=json_serial)
+            json.dump(state_dict, f, ensure_ascii=False, indent=4, default=json_serial)
     except Exception as e:
         print(f"Ошибка записи в characteristic.txt: {e}")
-    # Сохранение в CSV без изменений...
+    # Сохранение в CSV без изменений структуры, но с источником state_dict.
     try:
         with open('characteristic.csv', 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=char_characteristic.keys())
+            writer = csv.DictWriter(csvfile, fieldnames=state_dict.keys())
             writer.writeheader()
             processed_char = {k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
-                              for k, v in char_characteristic.items()}
+                              for k, v in state_dict.items()}
             writer.writerow(processed_char)
     except PermissionError:
         print("\nОшибка записи в файл 'characteristic.csv'. "

@@ -26,7 +26,7 @@ python game.py
 
 Порядок выполнения опирается на то, что Python исполняет код модулей при первом импорте. Важно помнить: **значительная часть "инициализации игры" — это побочные эффекты импорта `characteristics.py`**, а не вызов функции `game()`.
 
-1. `game.py:158` выводит `Version: 0.1.2a` и переключает codepage.
+1. `game.py:158` выводит `Version: 0.2.0a` и переключает codepage.
 2. Вызывается `game()` (`game.py:19`).
 3. Первое, что делает `game()` — импортирует из `characteristics` всё через `from characteristics import *` (`game.py:9`). На этом импорте происходит:
    - `characteristics.py:101` — `load_data_from_google_sheet_or_csv()` пытается скачать сейв с Google Sheets (`google_sheets_db.py:51`), при неудаче читает `characteristic.csv`.

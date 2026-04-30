@@ -1,3 +1,6 @@
+Version: 0.2.0a (30.04.2026):
+- Refactor. GameState rollout Phase 2 of 6: persistence layer migrated. characteristics.py constructs GameState from loaded save and exposes it via CharCharacteristicProxy as char_characteristic. save_characteristic() writes via game_state.to_dict() (CSV/JSON formats unchanged). 25 new proxy tests; legacy modules untouched.
+
 Version: 0.2.0 (29.04.2026):
 - Refactor. GameState foundation (Phase 1 of 6). state.py + pytest setup. No game code changes.
 
