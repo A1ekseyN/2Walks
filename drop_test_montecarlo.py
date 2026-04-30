@@ -1,8 +1,18 @@
-from random import randint
-from characteristics import char_characteristic
-from equipment_bonus import equipment_luck_bonus
+"""Monte-Carlo симулятор drop-механики (10 000 итераций × 6 сложностей).
 
-# Настройки вероятностей выпадения
+Phase 4 задачи 1.1 (commit 4): использует GameState. Standalone скрипт —
+запускается как `python drop_test_montecarlo.py`.
+
+NB: внутренние формулы — упрощённый fork drop.py для измерения распределения
+по grade'ам (см. TASKS.md 3.2.1 для контекста). Не использовать для логики игры.
+"""
+
+from random import randint
+
+from equipment_bonus import equipment_luck_bonus
+from state import GameState
+
+
 drop_percent_gl = 80
 drop_percent_item_c = 75
 drop_percent_item_b = 60
@@ -10,33 +20,44 @@ drop_percent_item_a = 45
 drop_percent_item_s = 30
 drop_percent_item_s_ = 20  # s_ = s+ Grade
 
-# Рассчитываем luck_chr
-luck_chr = char_characteristic['luck_skill'] + equipment_luck_bonus() + char_characteristic['lvl_up_skill_luck']
+
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    return state
 
 
-class Drop_Item():
-    def one_item_random_grade(self, hard):
-        i = randint(1, 100 - luck_chr)
+def current_luck(state: GameState = None) -> int:
+    state = _resolve_state(state)
+    return state.gym.luck_skill + equipment_luck_bonus(state) + state.char_level.skill_luck
+
+
+class Drop_Item:
+    def one_item_random_grade(self, hard, state: GameState = None):
+        state = _resolve_state(state)
+        luck = current_luck(state)
+        i = randint(1, 100 - luck)
         if i > drop_percent_gl:
             return None
 
         if hard == 'walk_easy':
-            c = randint(1, 100 - luck_chr)
+            c = randint(1, 100 - luck)
             if c <= drop_percent_item_c:
                 return 'c-grade'
 
         elif hard == 'walk_normal':
-            c = randint(1, 100 - luck_chr)
-            b = randint(1, 100 - luck_chr)
+            c = randint(1, 100 - luck)
+            b = randint(1, 100 - luck)
             if c < b and c <= drop_percent_item_c:
                 return 'c-grade'
             elif b < c and b <= drop_percent_item_b:
                 return 'b-grade'
 
         elif hard == 'walk_hard':
-            c = randint(1, 100 - luck_chr)
-            b = randint(1, 100 - luck_chr)
-            a = randint(1, 100 - luck_chr)
+            c = randint(1, 100 - luck)
+            b = randint(1, 100 - luck)
+            a = randint(1, 100 - luck)
             if c < b and c < a and c <= drop_percent_item_c:
                 return 'c-grade'
             elif b < c and b < a and b <= drop_percent_item_b:
@@ -45,9 +66,9 @@ class Drop_Item():
                 return 'a-grade'
 
         elif hard == 'walk_15k':
-            b = randint(1, 100 - luck_chr)
-            a = randint(1, 100 - luck_chr)
-            s = randint(1, 100 - luck_chr)
+            b = randint(1, 100 - luck)
+            a = randint(1, 100 - luck)
+            s = randint(1, 100 - luck)
             if b < a and b < s and b <= drop_percent_item_b:
                 return 'b-grade'
             elif a < b and a < s and a <= drop_percent_item_a:
@@ -56,99 +77,87 @@ class Drop_Item():
                 return 's-grade'
 
         elif hard == 'walk_25k':
-            s = randint(1, 100 - luck_chr)
-            s_ = randint(1, 100 - luck_chr)
+            s = randint(1, 100 - luck)
+            s_ = randint(1, 100 - luck)
             if s < s_ and s <= drop_percent_item_s:
                 return 's-grade'
             elif s_ < s and s_ <= drop_percent_item_s_:
                 return 's+grade'
 
         elif hard == 'walk_30k':
-            s_ = randint(1, 100 - luck_chr)
+            s_ = randint(1, 100 - luck)
             if s_ <= drop_percent_item_s_:
                 return 's+grade'
-
         return None
 
     def item_bonus_value(self, grade):
         return {
-            'c-grade': 1,
-            'b-grade': 2,
-            'a-grade': 3,
-            's-grade': 4,
-            's+grade': 5
+            'c-grade': 1, 'b-grade': 2, 'a-grade': 3, 's-grade': 4, 's+grade': 5,
         }.get(grade, 0)
 
-    def item_type(self):
-        ring = randint(1, 100 + luck_chr)
-        necklace = randint(1, 100 + luck_chr)
+    def item_type(self, state: GameState = None):
+        state = _resolve_state(state)
+        luck = current_luck(state)
+        ring = randint(1, 100 + luck)
+        necklace = randint(1, 100 + luck)
         return 'ring' if ring > necklace else 'necklace'
 
-    def characteristic_type(self):
-        stamina = randint(1, 100 + luck_chr)
-        energy_max = randint(1, 100 + luck_chr)
-        speed_skill = randint(1, 100 + luck_chr)
-        luck = randint(1, 100 + luck_chr)
-
+    def characteristic_type(self, state: GameState = None):
+        state = _resolve_state(state)
+        luck = current_luck(state)
         return max(
-            ('stamina', stamina),
-            ('energy_max', energy_max),
-            ('speed_skill', speed_skill),
-            ('luck', luck),
-            key=lambda x: x[1]
+            ('stamina', randint(1, 100 + luck)),
+            ('energy_max', randint(1, 100 + luck)),
+            ('speed_skill', randint(1, 100 + luck)),
+            ('luck', randint(1, 100 + luck)),
+            key=lambda x: x[1],
         )[0]
 
-    def item_quality(self):
-        return randint(20 + luck_chr, 100)
+    def item_quality(self, state: GameState = None):
+        state = _resolve_state(state)
+        return randint(20 + current_luck(state), 100)
 
     def item_price(self, grade, quality):
-        price_multipliers = {
-            'c-grade': 0.5,
-            'b-grade': 1,
-            'a-grade': 1.5,
-            's-grade': 2,
-            's+grade': 2.5
-        }
-        return round(quality * price_multipliers.get(grade, 0))
+        return round(quality * {
+            'c-grade': 0.5, 'b-grade': 1, 'a-grade': 1.5, 's-grade': 2, 's+grade': 2.5,
+        }.get(grade, 0))
 
-    def item_collect(self, hard):
+    def item_collect(self, hard, state: GameState = None):
+        state = _resolve_state(state)
         item = {
-            'item_name': '',
-            'item_type': '',
-            'grade': '',
-            'characteristic': '',
-            'bonus': 0,
-            'quality': 0,
-            'price': 0
+            'item_name': '', 'item_type': '', 'grade': '',
+            'characteristic': '', 'bonus': 0, 'quality': 0, 'price': 0,
         }
 
-        item['item_type'] = self.item_type()
+        item['item_type'] = self.item_type(state)
         item['item_name'] = item['item_type']
-        item['grade'] = self.one_item_random_grade(hard)
+        item['grade'] = self.one_item_random_grade(hard, state)
         if not item['grade']:
             print('--- Ничего не выпало ---\n')
             return None
 
-        item['characteristic'] = self.characteristic_type()
+        item['characteristic'] = self.characteristic_type(state)
         item['bonus'] = self.item_bonus_value(item['grade'])
-        item['quality'] = self.item_quality()
+        item['quality'] = self.item_quality(state)
         item['price'] = self.item_price(item['grade'], item['quality'])
 
         print(f'\nВыпал предмет: '
-              f'\n- {item["grade"]}: {item["item_type"].title()} + {item["bonus"]} {item["characteristic"].title()} (Качество: {item["quality"]}) (Цена: {item["price"]} $). \n')
-        char_characteristic['inventory'].append(item)
+              f'\n- {item["grade"]}: {item["item_type"].title()} + {item["bonus"]} {item["characteristic"].title()} '
+              f'(Качество: {item["quality"]}) (Цена: {item["price"]} $). \n')
+        state.inventory.append(item)
         return item
 
 
-# Тестовая функция для генерации предметов
-def test_item_generation():
+def test_item_generation(state: GameState = None):
+    state = _resolve_state(state)
     difficulties = ['walk_easy', 'walk_normal', 'walk_hard', 'walk_15k', 'walk_25k', 'walk_30k']
-    results = {difficulty: {'total': 0, 'c-grade': 0, 'b-grade': 0, 'a-grade': 0, 's-grade': 0, 's+grade': 0, 'none': 0}
-               for difficulty in difficulties}
+    results = {d: {'total': 0, 'c-grade': 0, 'b-grade': 0, 'a-grade': 0,
+                   's-grade': 0, 's+grade': 0, 'none': 0}
+               for d in difficulties}
 
     for difficulty in difficulties:
         for _ in range(10000):
-            item = Drop_Item().item_collect(difficulty)
+            item = Drop_Item().item_collect(difficulty, state)
             results[difficulty]['total'] += 1
             if item:
                 results[difficulty][item['grade']] += 1
@@ -163,7 +172,7 @@ def test_item_generation():
                 print(f'  {grade}: {count} ({percentage:.2f}%)')
 
 
-# Запускаем тесты
 if __name__ == "__main__":
     test_item_generation()
-    print(f"Luck: {luck_chr}")
+    from characteristics import game_state
+    print(f"Luck: {current_luck(game_state)}")

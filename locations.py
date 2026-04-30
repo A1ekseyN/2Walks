@@ -1,83 +1,77 @@
+"""Locations — диспатчер между game.py и каждой локацией.
+
+Phase 4 задачи 1.1 (commit 4): icon_loc / *_location принимают
+`state: GameState` (default `state=None` → characteristics.game_state).
+"""
+
 from gym import gym_menu
 from work import Work
-#from work import work_choice
-from adventure import Adventure
-from adventure_data import adventure_data_table
-from characteristics import char_characteristic
 from shop import Shop
+from state import GameState
 
 
-def icon_loc():
-    # Отображение иконки локации
-    if char_characteristic['loc'] == 'home':
-        return '🏠'
-    elif char_characteristic['loc'] == 'gym':
-        return '🏋️'
-    elif char_characteristic['loc'] == 'shop':
-        return '🛒'
-    elif char_characteristic['loc'] == 'work':
-        return '🏭'
-    elif char_characteristic['loc'] == 'adventure':
-        return '🗺️'
-    elif char_characteristic['loc'] == 'garage':
-        return '🚗'
-    elif char_characteristic['loc'] == 'auto_dialer':
-        pass
-    elif char_characteristic['loc'] == 'bank':
-        return '🏛'
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    return state
 
 
-def home_location():
-    # Локация - Дом.
+_LOC_ICONS = {
+    'home': '🏠',
+    'gym': '🏋️',
+    'shop': '🛒',
+    'work': '🏭',
+    'adventure': '🗺️',
+    'garage': '🚗',
+    'auto_dialer': None,
+    'bank': '🏛',
+}
+
+
+def icon_loc(state: GameState = None):
+    state = _resolve_state(state)
+    return _LOC_ICONS.get(state.loc)
+
+
+def home_location(state: GameState = None):
     print('\n--- 🏠 Home Location 🏠 ---')
     print('В данный момент вы находитесь Дома.')
     print('Содержимое локации находится в разработке.')
 
 
-def gym_location():
-    # Локация - Спортзал.
-    # На тренировку тратяться шаги + энергия + $.
-    gym_menu()
+def gym_location(state: GameState = None):
+    state = _resolve_state(state)
+    gym_menu(state)
 
 
-def shop_location():
-    # Локация - Магазин.
-    Shop.shop_menu(self=None)
-#    print('\n--- 🛒 Shop Location 🛒 ---')
-#    print('В данный момент вы находитесь в Магазине.')
-#    print('Содержимое локации находится в разработке.')
+def shop_location(state: GameState = None):
+    state = _resolve_state(state)
+    Shop.shop_menu(self=None, state=state)
 
 
-def work_location():
-    # Локация - Работа.
-#    print(f"char: {char_characteristic}")
-    Work(char_characteristic).work_choice()
-
+def work_location(state: GameState = None):
+    state = _resolve_state(state)
+    Work(state).work_choice()
 
 
 def adventure_location(adventure_instance):
-    # Локация - Приключения.
-#    print('\n--- 🗺️ Adventure Location 🗺 ---')
-#    Adventure(adventure_data_table).adventure_menu()
     adventure_instance.adventure_menu()
 
 
-def garage_location():
-    # Локация - Гараж.
+def garage_location(state: GameState = None):
     print('\n--- 🚗 Garage Location 🚗 ---')
     print('В данный момент вы находитесь в Гараже.')
     print('Содержимое локации находится в разработке.')
 
 
-def auto_dialer_location():
-    # Локация - Авто-дилер.
+def auto_dialer_location(state: GameState = None):
     print('\n--- Auto Dialer Location ---')
     print('В данный момент вы находитесь у Авто-Дилера.')
     print('Содержимое локации находится в разработке.')
 
 
-def bank_location():
-    # Локация - Банк.
+def bank_location(state: GameState = None):
     print('\n--- 🏛 Bank Location 🏛 ---')
     print('В данный момент вы находитесь в Банке.')
     print('Содержимое локации находится в разработке.')

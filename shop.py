@@ -1,21 +1,56 @@
+"""Shop — магазин: еда/напитки + одежда (тестовый режим).
+
+Phase 4 задачи 1.1 (commit 4): методы принимают `state: GameState` (default
+`state=None` → characteristics.game_state). Чистая логика покупки выделена
+в `_buy_item` для тестируемости — UI-методы Shop.shop_menu* остаются с input/print.
+"""
+
 from colorama import Fore, Style
 
-from characteristics import char_characteristic
+from state import GameState
 
 
-class Shop():
-    # Класс для магазина
-    def shop_menu(self):
-        money = f'Money 💰: {Fore.LIGHTYELLOW_EX}{char_characteristic["money"]}{Style.RESET_ALL} $.'
-        item = {
-            'item_name': [],
-            'item_type': [],
-            'grade': [],
-            'characteristic': [],
-            'bonus': [],
-            'quality': [],
-            'price': [],
-        }
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    return state
+
+
+def _money_line(state: GameState) -> str:
+    return f'Money 💰: {Fore.LIGHTYELLOW_EX}{state.money}{Style.RESET_ALL} $.'
+
+
+def _empty_item():
+    return {
+        'item_name': [], 'item_type': [], 'grade': [],
+        'characteristic': [], 'bonus': [], 'quality': [], 'price': [],
+    }
+
+
+# ----- Чистая логика покупки -----
+
+def _buy_item(state: GameState, item: dict, cost: int) -> bool:
+    """Атомарная покупка: списывает money и кладёт item в inventory.
+
+    Возвращает True при успехе, False — если денег не хватает (state не меняется).
+    """
+    if state.money < cost:
+        return False
+    state.money -= cost
+    state.inventory.append(item)
+    return True
+
+
+# ----- UI -----
+
+class Shop:
+    """Магазин — UI-обёртка вокруг покупок."""
+
+    def shop_menu(self, state: GameState = None):
+        state = _resolve_state(state)
+        money = _money_line(state)
+        item = _empty_item()
 
         print('\n--- 🛒 Магазин --- 🛒'
               '\nВ этой локации, Вы можете приобрести разное оборудование, и расходные материалы.'
@@ -23,27 +58,21 @@ class Shop():
         print('\nВы можете приобрести: '
               '\n\t1. Еда, вода, расходные материалы'
               '\n\t2. Одежда (Тестовый режим)'
-#              '\n\t3. Экипировка (Не работает)'
-#              '\n\t9. Продать товар (Не работает)'
               '\n\t0. Назад')
         ask = input('\nВыберите раздел меню: \n>>> ')
         if ask == '1':
-            Shop.shop_menu_food_and_water(self, item=item, money=money)
-            Shop.shop_menu(self)
+            Shop.shop_menu_food_and_water(self, item=item, money=money, state=state)
+            Shop.shop_menu(self, state=state)
         elif ask == '2':
-            Shop.shop_menu_clothes(self, item=item, money=money)
-            Shop.shop_menu(self)
-        elif ask == '3':
-            pass
-        elif ask == '9':
-            pass
-        elif ask == '0':
+            Shop.shop_menu_clothes(self, item=item, money=money, state=state)
+            Shop.shop_menu(self, state=state)
+        elif ask in ('3', '9', '0'):
             pass
         else:
-            Shop.shop_menu(self)
+            Shop.shop_menu(self, state=state)
 
-    def shop_menu_food_and_water(self, item, money):
-        # Раздел для покупки Еды, воды, расходных материалов.
+    def shop_menu_food_and_water(self, item, money, state: GameState = None):
+        state = _resolve_state(state)
         print('\nВы можете купить еду и другие расходные материалы.'
               f'\n{money}'
               '\n\t1. 🍔 Чизбургер (🔋: + 5) - 2 $.'
@@ -51,46 +80,40 @@ class Shop():
               '\n\t0. Назад')
         ask = input('\nВыберите вариант, который хотите приобрести: \n>>> ')
         if ask == '1':
-            # Покупка Cheeseburger
-            if char_characteristic['money'] >= 2:
-                item['item_name'].append('cheeseburger')
-                item['item_type'].append('food')
-#                   item['grade'].append('C-Grade')
-                item['characteristic'].append('energy')
-                item['bonus'].append(5)
-#                    item['quality'].append(100)
-                item['price'].append(2)
-                char_characteristic['inventory'].append(item)
-                char_characteristic['money'] -= 2
+            cb = _empty_item()
+            cb['item_name'].append('cheeseburger')
+            cb['item_type'].append('food')
+            cb['characteristic'].append('energy')
+            cb['bonus'].append(5)
+            cb['price'].append(2)
+            if _buy_item(state, cb, 2):
                 print('\nВы приобрели 🍔 Чизбургер - за 2 $.')
-            elif char_characteristic['money'] < 2:
+            else:
                 print('\nУ Вас не достаточно денег для покупки.')
-                Shop.shop_menu_food_and_water(self, item, money)
+                Shop.shop_menu_food_and_water(self, item, money, state)
 
         elif ask == '2':
-            # Покупка Coffee
-            if char_characteristic['money'] >= 10:
-                item['item_name'].append('coffee')
-                item['item_type'].append('drink')
-                item['characteristic'].append('energy')
-                item['bonus'].append(25)
-                item['price'].append(10)
-                char_characteristic['inventory'].append(item)
-                char_characteristic['money'] -= 10
+            coffee = _empty_item()
+            coffee['item_name'].append('coffee')
+            coffee['item_type'].append('drink')
+            coffee['characteristic'].append('energy')
+            coffee['bonus'].append(25)
+            coffee['price'].append(10)
+            if _buy_item(state, coffee, 10):
                 print('\nВы приобрели ☕ Coffee - за 10 $.')
-            elif char_characteristic['money'] < 10:
+            else:
                 print('\nУ Вас не достаточно денег для покупки.')
-                Shop.shop_menu_food_and_water(self, item, money)
+                Shop.shop_menu_food_and_water(self, item, money, state)
 
         elif ask == '0':
-            Shop.shop_menu(self)
+            Shop.shop_menu(self, state=state)
         else:
-            Shop.shop_menu(self)
+            Shop.shop_menu(self, state=state)
 
+    def shop_menu_clothes(self, item, money, state: GameState = None):
+        state = _resolve_state(state)
 
-    def shop_menu_clothes(self, item, money):
-        # Раздел для покупки Одежды.
-        def clothes_head(self, money):
+        def clothes_head(money):
             print('\nВ этом меню можно приобрести головной убор: '
                   f'\n{money}'
                   '\n\t1. ---'
@@ -98,18 +121,14 @@ class Shop():
                   '\n\t3. ---'
                   '\n\t0. Назад')
             ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask == '1':
-                print('\n--- Тестовая - шапка')
-            elif ask == '2':
-                print('\n--- Тестовая - шапка')
-            elif ask == '3':
+            if ask in ('1', '2', '3'):
                 print('\n--- Тестовая - шапка')
             elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money)
+                Shop.shop_menu_clothes(self, item, money, state)
             else:
-                clothes_head(self, money)
+                clothes_head(money)
 
-        def clothes_jacket(self, money):
+        def clothes_jacket(money):
             print('\nВ этом меню можно приобрести куртку: '
                   f'\n{money}'
                   '\n\t1. ---'
@@ -117,18 +136,14 @@ class Shop():
                   '\n\t3. ---'
                   '\n\t0. Назад')
             ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask == '1':
-                print('\n--- Тестовая покупка - куртка')
-            elif ask == '2':
-                print('\n--- Тестовая покупка - куртка')
-            elif ask == '3':
+            if ask in ('1', '2', '3'):
                 print('\n--- Тестовая покупка - куртка')
             elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money)
+                Shop.shop_menu_clothes(self, item, money, state)
             else:
-                clothes_jacket(self, money)
+                clothes_jacket(money)
 
-        def clothes_pants(self, money):
+        def clothes_pants(money):
             print('\nВ этом меню можно приобрести штаны: '
                   f'\n{money}'
                   '\n\t1. ---'
@@ -136,18 +151,14 @@ class Shop():
                   '\n\t3. ---'
                   '\n\t0. Назад')
             ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask == '1':
-                print('\n--- Тестовая - штаны')
-            elif ask == '2':
-                print('\n--- Тестовая - штаны')
-            elif ask == '3':
+            if ask in ('1', '2', '3'):
                 print('\n--- Тестовая - штаны')
             elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money)
+                Shop.shop_menu_clothes(self, item, money, state)
             else:
-                clothes_pants(self, money)
+                clothes_pants(money)
 
-        def clothes_gloves(self, money):
+        def clothes_gloves(money):
             print('\nВ этом меню можно приобрести перчатки: '
                   f'\n{money}'
                   '\n\t1. ---'
@@ -155,18 +166,14 @@ class Shop():
                   '\n\t3. ---'
                   '\n\t0. Назад')
             ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask == '1':
-                print('\n--- Тестовая покупка - перчатки')
-            elif ask == '2':
-                print('\n--- Тестовая покупка - перчатки')
-            elif ask == '3':
+            if ask in ('1', '2', '3'):
                 print('\n--- Тестовая покупка - перчатки')
             elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money)
+                Shop.shop_menu_clothes(self, item, money, state)
             else:
-                clothes_gloves(self, money)
+                clothes_gloves(money)
 
-        def clothes_shoes(self, item, money):
+        def clothes_shoes(money):
             print('\nВ этом меню можно приобрести обувь: '
                   f'\n{money}'
                   f'\n\t1. Кеды - C-Grade (+ 1 % шагов) (Цена: 25 $)'
@@ -174,88 +181,59 @@ class Shop():
                   f'\n\t3. Кеды - A-Grade (+ 3 % шагов) (Цена: 100 $)'
                   f'\n\t0. Назад')
             ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask == '1':
-                if char_characteristic['money'] >= 25:
-                    item['item_name'].append('Кеды')
-                    item['item_type'].append('shoes')
-                    item['grade'].append('c-grade')
-                    item['characteristic'].append('stamina')
-                    item['bonus'].append(1)
-                    item['quality'].append(100)
-                    item['price'].append(25)
-                    char_characteristic['inventory'].append(item)
-                    char_characteristic['money'] -= 25
-                    print('\nВы приобрели: Кеды - C-Grade (+ 1 % шагов) за - 25 $.')
+            shoe_specs = {
+                '1': ('c-grade', 1, 25),
+                '2': ('b-grade', 2, 50),
+                '3': ('a-grade', 3, 100),
+            }
+            if ask in shoe_specs:
+                grade, bonus, price = shoe_specs[ask]
+                shoe = _empty_item()
+                shoe['item_name'].append('Кеды')
+                shoe['item_type'].append('shoes')
+                shoe['grade'].append(grade)
+                shoe['characteristic'].append('stamina')
+                shoe['bonus'].append(bonus)
+                shoe['quality'].append(100)
+                shoe['price'].append(price)
+                if _buy_item(state, shoe, price):
+                    print(f'\nВы приобрели: Кеды - {grade.upper()} (+ {bonus} % шагов) за - {price} $.')
                 else:
-                    print(f'\nУ вас не достаточно денег. Не хватает 💰: {25 - char_characteristic["money"]} $.')
-            elif ask == '2':
-                if char_characteristic['money'] >= 50:
-                    item['item_name'].append('Кеды')
-                    item['item_type'].append('shoes')
-                    item['grade'].append('b-grade')
-                    item['characteristic'].append('stamina')
-                    item['bonus'].append(2)
-                    item['quality'].append(100)
-                    item['price'].append(50)
-                    char_characteristic['inventory'].append(item)
-                    char_characteristic['money'] -= 50
-                    print('\nВы приобрели: Кеды - B-Grade (+ 2 % шагов) за - 50 $.')
-                else:
-                    print(f'\nУ вас не достаточно денег. Не хватает 💰: {50 - char_characteristic["money"]} $.')
-            elif ask == '3':
-                if char_characteristic['money'] >= 100:
-                    item['item_name'].append('Кеды')
-                    item['item_type'].append('shoes')
-                    item['grade'].append('a-grade')
-                    item['characteristic'].append('stamina')
-                    item['bonus'].append(3)
-                    item['quality'].append(100)
-                    item['price'].append(100)
-                    char_characteristic['inventory'].append(item)
-                    char_characteristic['money'] -= 100
-                    print('\nВы приобрели: Кеды - A-Grade (+ 3 % шагов) за - 100 $.')
-                else:
-                    print(f'\nУ вас не достаточно денег. Не хватает 💰: {100 - char_characteristic["money"]} $.')
+                    print(f'\nУ вас не достаточно денег. Не хватает 💰: {price - state.money} $.')
             elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money)
+                Shop.shop_menu_clothes(self, item, money, state)
             else:
-                Shop.shop_menu_clothes(self, item, money)
+                Shop.shop_menu_clothes(self, item, money, state)
 
         print('\nВ можете купить одежду для персонажа.'
-            f'\n{money}'
-            '\n\t1. Шапка'
-            '\n\t2. Куртка'
-            '\n\t3. Штаны'
-            '\n\t4. Перчатки'
-            '\n\t5. Обувь'
-            '\n\t0. Назад')
+              f'\n{money}'
+              '\n\t1. Шапка'
+              '\n\t2. Куртка'
+              '\n\t3. Штаны'
+              '\n\t4. Перчатки'
+              '\n\t5. Обувь'
+              '\n\t0. Назад')
         ask = input('\nВыберите раздел товара, который хотите приобрести: \n>>> ')
         if ask == '1':
-            clothes_head(self, money)
+            clothes_head(money)
         elif ask == '2':
-            clothes_jacket(self, money)
+            clothes_jacket(money)
         elif ask == '3':
-            clothes_pants(self, money)
+            clothes_pants(money)
         elif ask == '4':
-            clothes_gloves(self, money)
+            clothes_gloves(money)
         elif ask == '5':
-            clothes_shoes(self, item, money)
-            Shop.shop_menu_clothes(self, item, money)
+            clothes_shoes(money)
+            Shop.shop_menu_clothes(self, item, money, state)
         elif ask == '0':
             pass
-#                Shop.shop_menu(self)
-#                Shop.shop_menu_clothes(self, item, money)
         else:
-            Shop.shop_menu_clothes(self, item, money)
-#            Shop.shop_menu_clothes(self, item, money)
-
+            Shop.shop_menu_clothes(self, item, money, state)
 
     def shop_menu_equipment(self):
         # Раздел для покупки экипировки.
         pass
 
     def shop_menu_sell_items(self):
-        # Раздел для продажи купленных товаров
+        # Раздел для продажи купленных товаров.
         pass
-
-#Shop.shop_menu(self=None)
