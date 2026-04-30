@@ -115,7 +115,7 @@ def status_bar(state: GameState = None):
         print(f'\t🏭 Место работы: {state.work.work_type.title()} (💰: + {Fore.LIGHTYELLOW_EX}{state.work.salary * state.work.hours}{Style.RESET_ALL} $).'
               f'\n\t🕑 Конец смены через: {Fore.LIGHTBLUE_EX}{work_end_time}{Style.RESET_ALL}.')
     if state.adventure.active:
-        Adventure.adventure_check_done(self=None)
+        Adventure.adventure_check_done(self=None, state=state)
 
 
 def save_game_date_last_enter(state: GameState = None):

@@ -1,121 +1,142 @@
+"""Adventure — приключения, проверка таймера, дроп предметов.
+
+Phase 4 задачи 1.1: всё через `state: GameState` (default `state=None` →
+characteristics.game_state).
+"""
+
+from datetime import datetime
+from colorama import Fore, Style
+
 from adventure_data import adventure_data_table
-from characteristics import char_characteristic
 from colors import steps_color, energy_color
-from datetime import datetime, timedelta
 from drop import Drop_Item
 from functions_02 import time
 from skill_bonus import speed_skill_equipment_and_level_bonus
-from colorama import Fore, Style
 from settings import debug_mode
 from bonus import apply_move_optimization_adventure
 from inventory import Wear_Equipped_Items
+from actions import try_spend, start_adventure as actions_start_adventure
+from state import GameState
 
 
-class Adventure():
-    # Класс для Adventure (Приключений).
-    def __init__(self, adventure_data_table):
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    return state
+
+
+# Маппинг adventure_name → ключ adventure.counters в state.
+_ADV_COUNTER_KEYS = {
+    'walk_easy': 'walk_easy',
+    'walk_normal': 'walk_normal',
+    'walk_hard': 'walk_hard',
+    'walk_15k': 'walk_15k',
+    'walk_20k': 'walk_20k',
+    'walk_25k': 'walk_25k',
+    'walk_30k': 'walk_30k',
+}
+
+
+class Adventure:
+    """Приключения: меню, выбор, старт, финализация."""
+
+    def __init__(self, adventure_data_table, state: GameState = None):
+        # state в __init__ опционален — на момент инициализации (game.py) state
+        # ещё может быть незавершённо собран. Методы внутри resolve'ят сами.
+        self._state = _resolve_state(state)
+        self.adventure_data_table = adventure_data_table
         self.adventures = {
-            '1': {'name': 'walk_easy', 'data': apply_move_optimization_adventure(adventure_data_table['walk_easy'])},
-            '2': {'name': 'walk_normal', 'data': apply_move_optimization_adventure(adventure_data_table['walk_normal'])},
-            '3': {'name': 'walk_hard', 'data': apply_move_optimization_adventure(adventure_data_table['walk_hard'])},
-            '4': {'name': 'walk_15k', 'data': apply_move_optimization_adventure(adventure_data_table['walk_15k'])},
-            '5': {'name': 'walk_20k', 'data': apply_move_optimization_adventure(adventure_data_table['walk_20k'])},
-            '6': {'name': 'walk_25k', 'data': apply_move_optimization_adventure(adventure_data_table['walk_25k'])},
-            '7': {'name': 'walk_30k', 'data': apply_move_optimization_adventure(adventure_data_table['walk_30k'])},
+            '1': {'name': 'walk_easy', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_easy']), self._state)},
+            '2': {'name': 'walk_normal', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_normal']), self._state)},
+            '3': {'name': 'walk_hard', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_hard']), self._state)},
+            '4': {'name': 'walk_15k', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_15k']), self._state)},
+            '5': {'name': 'walk_20k', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_20k']), self._state)},
+            '6': {'name': 'walk_25k', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_25k']), self._state)},
+            '7': {'name': 'walk_30k', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_30k']), self._state)},
         }
         self.adventure_requirements = {}
-        for key, adventure in self.adventures.items():
-            self.adventure_requirements[key] = f'🏃: {steps_color(adventure["data"]["steps"])} шагов, ' \
-                                               f'🔋: {energy_color(adventure["data"]["energy"])} энергии, ' \
-                                               f'🕑: {time(speed_skill_equipment_and_level_bonus(adventure["data"]["time"]))}'
+        for key, adv in self.adventures.items():
+            self.adventure_requirements[key] = (
+                f'🏃: {steps_color(adv["data"]["steps"])} шагов, '
+                f'🔋: {energy_color(adv["data"]["energy"])} энергии, '
+                f'🕑: {time(speed_skill_equipment_and_level_bonus(adv["data"]["time"], self._state))}'
+            )
 
-    def adventure_check_done(self):
-        # Проверка или начатое Приключение - закончилось.
-        if char_characteristic['adventure'] == True:
-            if char_characteristic['adventure_end_timestamp'] <= datetime.now().timestamp():
-                print('\n🗺 Приключение пройдено. 🗺')
+    def adventure_check_done(self, state: GameState = None):
+        """Финализатор приключения по таймеру: дроп + инкремент счётчика + clear.
 
-                # Drop function
-                if char_characteristic['adventure_name'] == 'walk_easy':
-                    Drop_Item.item_collect(self=None, hard='walk_easy')
-                    char_characteristic['adventure_walk_easy_counter'] += 1
-                elif char_characteristic['adventure_name'] == 'walk_normal':
-                    Drop_Item.item_collect(self=None, hard='walk_normal')
-                    char_characteristic['adventure_walk_normal_counter'] += 1
-                elif char_characteristic['adventure_name'] == 'walk_hard':
-                    Drop_Item.item_collect(self=None, hard='walk_hard')
-                    char_characteristic['adventure_walk_hard_counter'] += 1
-                elif char_characteristic['adventure_name'] == 'walk_15k':
-                    Drop_Item.item_collect(self=None, hard='walk_15k')
-                    char_characteristic['adventure_walk_15k_counter'] += 1
-                elif char_characteristic['adventure_name'] == 'walk_20k':
-                    Drop_Item.item_collect(self=None, hard='walk_20k')
-                    char_characteristic['adventure_walk_20k_counter'] += 1
-                elif char_characteristic['adventure_name'] == 'walk_25k':
-                    Drop_Item.item_collect(self=None, hard='walk_25k')
-                    char_characteristic['adventure_walk_25k_counter'] += 1
-                elif char_characteristic['adventure_name'] == 'walk_30k':
-                    Drop_Item.item_collect(self=None, hard='walk_30k')
-                    char_characteristic['adventure_walk_30k_counter'] += 1
+        Поддерживает legacy-вызов `Adventure.adventure_check_done(self=None)` —
+        тогда state берётся через resolve (game_state). Иначе из self._state.
+        """
+        if state is None and self is not None:
+            state = self._state
+        state = _resolve_state(state)
+        if not state.adventure.active:
+            return
 
-                char_characteristic['adventure'] = False
-                char_characteristic['adventure_name'] = None
-                char_characteristic['adventure_end_timestamp'] = None
+        if state.adventure.end_ts <= datetime.now().timestamp():
+            print('\n🗺 Приключение пройдено. 🗺')
+            adv_name = state.adventure.name
+            if adv_name in _ADV_COUNTER_KEYS:
+                Drop_Item.item_collect(self=None, hard=adv_name)
+                counter_key = _ADV_COUNTER_KEYS[adv_name]
+                state.adventure.counters[counter_key] = state.adventure.counters.get(counter_key, 0) + 1
 
-            elif char_characteristic['adventure_end_timestamp'] > datetime.now().timestamp():
-                adv_end = datetime.fromtimestamp(char_characteristic["adventure_end_timestamp"]) - datetime.fromtimestamp(datetime.now().timestamp())
-                adv_end = str(adv_end).split('.')[0]
-                print(f'\t🗺️ Персонаж находится в Приключении: {char_characteristic["adventure_name"].title()}.')
-                print(f'\t🕑 Персонаж вернется через: {Fore.LIGHTBLUE_EX}{adv_end}{Style.RESET_ALL}')
+            state.adventure.active = False
+            state.adventure.name = None
+            state.adventure.end_ts = None
+        elif state.adventure.end_ts > datetime.now().timestamp():
+            adv_end = datetime.fromtimestamp(state.adventure.end_ts) - datetime.fromtimestamp(datetime.now().timestamp())
+            adv_end = str(adv_end).split('.')[0]
+            print(f'\t🗺️ Персонаж находится в Приключении: {state.adventure.name.title()}.')
+            print(f'\t🕑 Персонаж вернется через: {Fore.LIGHTBLUE_EX}{adv_end}{Style.RESET_ALL}')
 
     def adventure_menu(self):
-        # Меню раздела приключение.
+        state = self._state
         print('\n ️🗺 ️--- Меню Приключения --- 🗺️')
-        print(f"Steps 🏃: {char_characteristic['steps_can_use']}, "
-              f"Energy 🔋: {char_characteristic['energy']}, "
-              f"Money 💰: {char_characteristic['money']} $,")
+        print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money} $,")
         print('Вы можете отправить персонажа в приключение.'
               '\nВ приключении, персонаж может получить полезные предметы.')
 
         print('\nДоступные приключения: ')
-        # Для каждого пункта используем базовый ключ из adventure_data_table
+        counters = state.adventure.counters
         print(f'\t1. Прогулка вокруг озера: {self.get_adventure_requirement("walk_easy")} - (Награда: C-Grade (Ring, Necklace))')
 
-        if char_characteristic['adventure_walk_easy_counter'] >= 3:
+        if counters.get('walk_easy', 0) >= 3:
             print(f'\t2. Прогулка по району:    {self.get_adventure_requirement("walk_normal")} - (Награда: C-Grade, B-Grade (Ring, Necklace))')
         else:
-            print(f'\t- Пройдите "Прогулку вокруг озера" ещё: {3 - char_characteristic["adventure_walk_easy_counter"]} раз.')
+            print(f'\t- Пройдите "Прогулку вокруг озера" ещё: {3 - counters.get("walk_easy", 0)} раз.')
 
-        if char_characteristic['adventure_walk_normal_counter'] >= 3:
+        if counters.get('walk_normal', 0) >= 3:
             print(f'\t3. Прогулка в лес:        {self.get_adventure_requirement("walk_hard")} - (Награда: C-Grade, B-Grade, A-Grade (Ring, Necklace))')
         else:
-            print(f'\t- Пройдите "Прогулку по району" ещё: {3 - char_characteristic["adventure_walk_normal_counter"]} раз.')
+            print(f'\t- Пройдите "Прогулку по району" ещё: {3 - counters.get("walk_normal", 0)} раз.')
 
-        if char_characteristic.get('adventure_walk_hard_counter', 0) >= 3:
+        if counters.get('walk_hard', 0) >= 3:
             print(f'\t4. Прогулка 15к шагов:    {self.get_adventure_requirement("walk_15k")} - (Награда: B-Grade, A-Grade, S-Grade)')
         else:
-            print(f'\t- Пройдите "Прогулку в лес" ещё: {3 - char_characteristic.get("adventure_walk_hard_counter", 0)} раз.')
+            print(f'\t- Пройдите "Прогулку в лес" ещё: {3 - counters.get("walk_hard", 0)} раз.')
 
-        if char_characteristic['adventure_walk_15k_counter'] >= 3:
+        if counters.get('walk_15k', 0) >= 3:
             print(f'\t5. Прогулка 20к шагов:    {self.get_adventure_requirement("walk_20k")} - (Награда: A-Grade, S-Grade, S+Grade (Ring, Necklace))')
         else:
-            print(f'\t- Пройдите прогулку на 15к ещё: {3 - char_characteristic["adventure_walk_15k_counter"]} раз.')
+            print(f'\t- Пройдите прогулку на 15к ещё: {3 - counters.get("walk_15k", 0)} раз.')
 
-        if char_characteristic['adventure_walk_20k_counter'] >= 3:
+        if counters.get('walk_20k', 0) >= 3:
             print(f'\t6. Прогулка 25к шагов:    {self.get_adventure_requirement("walk_25k")} - (Награда: S-Grade, S+Grade (Ring, Necklace))')
         else:
-            print(f'\t- Пройдите прогулку на 20к ещё: {3 - char_characteristic["adventure_walk_20k_counter"]} раз.')
+            print(f'\t- Пройдите прогулку на 20к ещё: {3 - counters.get("walk_20k", 0)} раз.')
 
-        if char_characteristic['adventure_walk_25k_counter'] >= 3:
+        if counters.get('walk_25k', 0) >= 3:
             print(f'\t7. Прогулка 30к шагов:    {self.get_adventure_requirement("walk_30k")} - (Награда: S+Grade (Ring, Necklace))')
         else:
-            print(f'\t- Пройдите прогулку на 25к ещё: {3 - char_characteristic["adventure_walk_25k_counter"]} раз.')
+            print(f'\t- Пройдите прогулку на 25к ещё: {3 - counters.get("walk_25k", 0)} раз.')
 
         print('\t0. Выход')
         self.adventure_choice()
 
     def adventure_choice(self):
-        # Выбор приключения
         ask = input('\nВыберите локацию, в которую хотите отправиться:\n>>> ')
         if ask in self.adventures:
             adv = self.adventures[ask]
@@ -124,7 +145,7 @@ class Adventure():
             adv_req = self.adventure_requirements[ask]
             adv_steps = adv_data['steps']
             adv_energy = adv_data['energy']
-            adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'])
+            adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'], self._state)
             self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
         elif ask == '0':
             pass
@@ -132,7 +153,6 @@ class Adventure():
             self.adventure_menu()
 
     def adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time):
-        # Подтверждение выбора Приключения. + Описание Приключения и возможный дроп с него.
         print(f'\nВы выбрали приключение: {adv_name}.'
               f'\nДля прохождения приключения необходимо: {adv_req}'
               '\n\t1. Пройти Приключение.'
@@ -140,10 +160,7 @@ class Adventure():
         try:
             ask = input('\n>>> ')
             if ask == '1':
-                # Проверка требований для приключения.
-                if self.check_requirements(adv_name, adv_steps, adv_energy, adv_time):
-                    pass
-                else:
+                if not self.check_requirements(adv_name, adv_steps, adv_energy, adv_time):
                     self.adventure_menu()
             elif ask == '0':
                 self.adventure_menu()
@@ -151,54 +168,50 @@ class Adventure():
                 self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
         except Exception as error:
             print(f'Ошибка подтверждения выбора Приключения: {error}')
-#            self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
 
     def check_requirements(self, adv_name, adv_steps, adv_energy, adv_time):
-        # Проверка требований для Приключения.
-        if char_characteristic['steps_can_use'] >= adv_steps and char_characteristic['energy'] >= adv_energy:
-            print('\nПроверка требований успешна.')
-            self.start_adventure(adv_name, adv_steps, adv_energy, adv_time)
-
-            # Износ Экипировки
-            steps = adv_steps
-            equipped_items_manager = Wear_Equipped_Items()
-            equipped_items_manager.decrease_durability(steps)
-
-            return True
-        else:
-            if char_characteristic['steps_can_use'] < adv_steps:
+        state = self._state
+        if not try_spend(state, steps=adv_steps, energy=adv_energy):
+            if state.steps.can_use < adv_steps:
                 print('\n- Не достаточно: 🏃 шагов.')
-            if char_characteristic['energy'] < adv_energy:
+            if state.energy < adv_energy:
                 print('- Не достаточно: 🔋 энергии.')
-#            self.adventure_menu()
             return False
 
-    def start_adventure(self, adv_name, adv_steps, adv_energy, adv_time):
-        # Начало приключения.
-        print(f'\nНачало приключения: {adv_name}')
-        char_characteristic['adventure'] = True
-        char_characteristic['adventure_name'] = adv_name
-        char_characteristic['adventure_start_timestamp'] = int(datetime.now().timestamp())
-        char_characteristic['adventure_end_timestamp'] = int(datetime.now().timestamp()) + (adv_time * 60)
-        char_characteristic['steps_today_used'] += adv_steps
-        char_characteristic['steps_total_used'] += adv_steps
-        char_characteristic['energy'] -= adv_energy
+        print('\nПроверка требований успешна.')
+        self._enter_adventure(adv_name, adv_steps, adv_energy, adv_time)
+        Wear_Equipped_Items(state).decrease_durability(adv_steps)
+        return True
 
-        print(f'Steps_used_today 🏃: {char_characteristic["steps_today_used"]}')
+    def _enter_adventure(self, adv_name, adv_steps, adv_energy, adv_time):
+        """Старт приключения после try_spend (списание уже произошло)."""
+        state = self._state
+        print(f'\nНачало приключения: {adv_name}')
+        now_ts = int(datetime.now().timestamp())
+        actions_start_adventure(
+            state,
+            name=adv_name,
+            start_ts=now_ts,
+            end_ts=now_ts + (adv_time * 60),
+        )
+
+        print(f'Steps_used_today 🏃: {state.steps.used}')
         print(f'Energy used 🔋: {adv_energy}')
         if debug_mode:
-            print(f'Energy Left: {char_characteristic["energy"]}')
+            print(f'Energy Left: {state.energy}')
             print(f'Время_now: {datetime.now().timestamp()}')
-            print(f'Время прохождения Приключения: {char_characteristic["adventure_end_timestamp"] - datetime.now().timestamp()}')
-        return char_characteristic
+            print(f'Время прохождения Приключения: {state.adventure.end_ts - datetime.now().timestamp()}')
+        return state
+
+    # Сохраняем legacy-имя для совместимости с возможными внешними вызовами.
+    def start_adventure(self, adv_name, adv_steps, adv_energy, adv_time):
+        return self._enter_adventure(adv_name, adv_steps, adv_energy, adv_time)
 
     def get_adventure_requirement(self, adventure_key):
-        base_data = adventure_data_table[adventure_key]
-        base_steps = base_data['steps']
-        base_energy = base_data['energy']
-        base_time = base_data['time']
-        final_time = speed_skill_equipment_and_level_bonus(base_time)
-        requirement_str = (f'🏃: {steps_color(base_steps)} шагов, '
-                           f'🔋: {energy_color(base_energy)} энергии, '
-                           f'🕑: {time(final_time)}')
-        return requirement_str
+        base = self.adventure_data_table[adventure_key]
+        final_time = speed_skill_equipment_and_level_bonus(base['time'], self._state)
+        return (
+            f'🏃: {steps_color(base["steps"])} шагов, '
+            f'🔋: {energy_color(base["energy"])} энергии, '
+            f'🕑: {time(final_time)}'
+        )

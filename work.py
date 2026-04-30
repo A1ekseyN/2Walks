@@ -1,32 +1,58 @@
-from characteristics import char_characteristic, save_characteristic
+"""Work — рабочая смена. Выбор вакансии, расчёт часов, финализация по таймеру.
+
+Phase 4 задачи 1.1: всё через `state: GameState` (default `state=None` →
+characteristics.game_state). Work() принимает state (или дефолт), а не legacy
+char_characteristic.
+"""
+
 from datetime import datetime, timedelta
-from settings import debug_mode
 from colorama import Fore, Style
+
+from characteristics import save_characteristic
+from settings import debug_mode
 from functions_02 import time
 from equipment_bonus import equipment_speed_skill_bonus
 from bonus import apply_move_optimization_work
 from inventory import Wear_Equipped_Items
+from actions import try_spend, start_work
+from state import GameState
 
 
-class Work():
-    """Класс для работы"""
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    # Legacy callers (locations.py) могут передать proxy.
+    if hasattr(state, '_get_state'):
+        return state._get_state()
+    return state
 
-    def __init__(self, char_characteristic):
+
+def _speed_bonus_pct(state: GameState) -> int:
+    """Сумма speed-бонусов в процентах: skill + equipment + level."""
+    return state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed
+
+
+class Work:
+    """Класс для работы — UI выбора + старт сессии."""
+
+    def __init__(self, state=None):
+        self._state = _resolve_state(state)
         self.work_requirements = {
-            'watchman': {'steps': apply_move_optimization_work(200), 'energy': 4, 'salary': 2},
-            'factory': {'steps': apply_move_optimization_work(500), 'energy': 7, 'salary': 5},
-            'courier_foot': {'steps': apply_move_optimization_work(1000), 'energy': 10, 'salary': 10},
-            'forwarder': {'steps': apply_move_optimization_work(5000), 'energy': 30, 'salary': 50},
+            'watchman': {'steps': apply_move_optimization_work(200, self._state), 'energy': 4, 'salary': 2},
+            'factory': {'steps': apply_move_optimization_work(500, self._state), 'energy': 7, 'salary': 5},
+            'courier_foot': {'steps': apply_move_optimization_work(1000, self._state), 'energy': 10, 'salary': 10},
+            'forwarder': {'steps': apply_move_optimization_work(5000, self._state), 'energy': 30, 'salary': 50},
         }
 
     def work_choice(self):
-        # Выбор места работы для персонажа.
-        if not char_characteristic['working']:
+        state = self._state
+        if not state.work.active:
             print('\n--- 🏭 Work Location 🏭 ---')
-            print(f'\nSteps 🏃: {char_characteristic["steps_can_use"]}; Energy 🔋: {char_characteristic["energy"]}')
+            print(f'\nSteps 🏃: {state.steps.can_use}; Energy 🔋: {state.energy}')
+            hour_time = round(60 - ((60 / 100) * state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed))
             print(f'В этой локации можно устроится на работу. '
-                  f'\nОплата почасовая 🕑: '
-                  f'1 час = {time(round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"])))}')
+                  f'\nОплата почасовая 🕑: 1 час = {time(hour_time)}')
             print('\nНа данный момент доступны вакансии:'
                   f'\n\t1. Сторож     - 💰: {Fore.LIGHTYELLOW_EX}2{Style.RESET_ALL} $ (🏃: {self.work_requirements["watchman"]["steps"]} + 🔋: 4)'
                   f'\n\t2. Завод      - 💰: {Fore.LIGHTYELLOW_EX}5{Style.RESET_ALL} $ (🏃: {self.work_requirements["factory"]["steps"]} + 🔋: 7)'
@@ -34,46 +60,30 @@ class Work():
                   f'\n\t4. Экспедитор - 💰: {Fore.LIGHTYELLOW_EX}50{Style.RESET_ALL} $ (🏃: {self.work_requirements["forwarder"]["steps"]} + 🔋: 50)'
                   '\n\t0. Вернуться назад.')
             working = input('\nВыберите вакансию, или вернитесь обратно:\n>>> ')
-            if working == '1':
-                # Вакансия - Сторож
-                self.ask_hours('watchman')
-            elif working == '2':
-                # Вакансия - Завод
-                self.ask_hours('factory')
-            elif working == '3':
-                # Вакансия - Курьер
-                self.ask_hours('courier_foot')
-            elif working == '4':
-                # Вакансия - Экспедитор
-                self.ask_hours('forwarder')
+            choices = {'1': 'watchman', '2': 'factory', '3': 'courier_foot', '4': 'forwarder'}
+            if working in choices:
+                self.ask_hours(choices[working])
             elif working == '0':
-                # Выход в меню.
                 pass
             else:
                 print('\nВы ввели не правильные данные. Попробуйте еще раз.')
                 self.work_choice()
             return working
-        elif char_characteristic['working']:
-            # Если персонаж уже на работе, можно добавить рабочие часы.
-            self.add_working_hours(char_characteristic['work'])
+        else:
+            self.add_working_hours(state.work.work_type)
 
     def ask_hours(self, work):
-        # Сколько рабочих часов
+        state = self._state
         try:
-#            print(f'char: {char_characteristic}')
-            print(f'\nSteps 🏃: {char_characteristic["steps_can_use"]}; Energy 🔋: {char_characteristic["energy"]}')
+            print(f'\nSteps 🏃: {state.steps.can_use}; Energy 🔋: {state.energy}')
             print(f'Вы выбрали вакансию: {Fore.GREEN}{work.title()}{Style.RESET_ALL} c зарплатой: {Fore.LIGHTYELLOW_EX}{self.work_requirements[work]["salary"]}{Style.RESET_ALL} $ в час.')
 
-            # Оплата почасовая 🕑
-            work_time_per_hour = round(60 - (
-                    (60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus() +
-                    char_characteristic["lvl_up_skill_speed"]))
+            work_time_per_hour = round(60 - ((60 / 100) * state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed))
             print(f'Оплата почасовая 🕑: 1 час = {time(work_time_per_hour)}')
 
-            # Расчёт максимального доступного количества рабочих часов
-            max_hours_by_steps = char_characteristic["steps_can_use"] // self.work_requirements[work]["steps"]
-            max_hours_by_energy = char_characteristic["energy"] // self.work_requirements[work]["energy"]
-            max_available_hours = min(max_hours_by_steps, max_hours_by_energy, 8)  # Ограничиваем максимум 8 часами
+            max_hours_by_steps = state.steps.can_use // self.work_requirements[work]['steps']
+            max_hours_by_energy = state.energy // self.work_requirements[work]['energy']
+            max_available_hours = min(max_hours_by_steps, max_hours_by_energy, 8)
 
             print(f'Max work hours: {Fore.LIGHTBLUE_EX}{max_available_hours}{Style.RESET_ALL} '
                   f'({Fore.LIGHTCYAN_EX}{max_available_hours * self.work_requirements[work]["steps"]}{Style.RESET_ALL} шагов, '
@@ -81,14 +91,10 @@ class Work():
                   f'{Fore.LIGHTYELLOW_EX}{max_available_hours * self.work_requirements[work]["salary"]}{Style.RESET_ALL} $ заработка).')
 
             working_hours = abs(int(input('\nВведите количество рабочих часов: 1 - 8.\n0. Выход.\n>>> ')))
-            if working_hours >= 1 and working_hours <= max_available_hours:
+            if 1 <= working_hours <= max_available_hours:
                 self.check_requirements(work, working_hours)
-
-                # Износ Экипировки
-                steps = working_hours * self.work_requirements[work]["steps"]
-                equipped_items_manager = Wear_Equipped_Items()
-                equipped_items_manager.decrease_durability(steps)
-
+                steps = working_hours * self.work_requirements[work]['steps']
+                Wear_Equipped_Items(state).decrease_durability(steps)
             elif working_hours == 0:
                 self.work_choice()
             else:
@@ -99,9 +105,11 @@ class Work():
             self.ask_hours(work)
 
     def add_working_hours(self, work):
-        # Если персонаж находится на работе, то можно добавить несколько рабочих часов. От 1 до 8 часов.
+        state = self._state
         print(f'\nПерсонаж на работе. Вы можете добавить несколько рабочих часов.'
-              f'\nМесто работы: {Fore.GREEN}{char_characteristic["work"].title()}{Style.RESET_ALL}, в час - {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"]}{Style.RESET_ALL} $ (💰: + {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"] * char_characteristic["working_hours"]}{Style.RESET_ALL} $).'
+              f'\nМесто работы: {Fore.GREEN}{state.work.work_type.title()}{Style.RESET_ALL}, '
+              f'в час - {Fore.LIGHTYELLOW_EX}{state.work.salary}{Style.RESET_ALL} $ '
+              f'(💰: + {Fore.LIGHTYELLOW_EX}{state.work.salary * state.work.hours}{Style.RESET_ALL} $).'
               '\n1. Добавить рабочие часы.'
               '\n0. Назад')
         ask = input('\nДобавить рабочие часы или вернуться обратно? \n>>> ')
@@ -113,71 +121,74 @@ class Work():
             self.work_choice()
 
     def check_requirements(self, work, working_hours):
-        # Проверка требований для устройства на работу.
-        if working_hours >= 1:
-            if (char_characteristic['steps_can_use'] >= working_hours * self.work_requirements[work]["steps"] and
-                char_characteristic['energy'] >= working_hours * self.work_requirements[work]["energy"]):
+        """Атомарно проверяет ресурсы и стартует/продлевает рабочую сессию."""
+        state = self._state
+        if working_hours < 1:
+            return False
 
-                char_characteristic['steps_today_used'] += working_hours * self.work_requirements[work]["steps"]
-                char_characteristic['steps_total_used'] += working_hours * self.work_requirements[work]["steps"]
-                char_characteristic['energy'] -= working_hours * self.work_requirements[work]["energy"]
-                char_characteristic['work'] = work
-                char_characteristic['working'] = True
+        steps_cost = working_hours * self.work_requirements[work]['steps']
+        energy_cost = working_hours * self.work_requirements[work]['energy']
 
-                # Обновление времени работы с учетом уже оставшегося времени.
-                now = datetime.now()
-                if char_characteristic.get('working_end'):
-                    current_end = char_characteristic['working_end']
-                    if isinstance(current_end, (int, float)):
-                        current_end = datetime.fromtimestamp(current_end)
-                    remaining_time = current_end - now
-                    if remaining_time < timedelta(0):
-                        remaining_time = timedelta(0)
-                else:
-                    remaining_time = timedelta(0)
+        if not try_spend(state, steps=steps_cost, energy=energy_cost):
+            print('\nДописать функционал, который показывает, чего именно не хватило. Можно использовать метод класса.')
+            print('Не достаточно: 🏃 или 🔋')
+            return False
 
-                # Вычисляем дополнительное время для новых рабочих часов
-                raw_duration = timedelta(minutes=working_hours * 60)
-                bonus_percent = char_characteristic['speed_skill'] + equipment_speed_skill_bonus() + \
-                                char_characteristic["lvl_up_skill_speed"]
-                adjusted_duration = raw_duration - (raw_duration * bonus_percent / 100)
+        # Подсчёт нового времени окончания смены с учётом уже накопленного.
+        now = datetime.now()
+        current_end = state.work.end
+        if current_end is not None:
+            if isinstance(current_end, (int, float)):
+                current_end = datetime.fromtimestamp(current_end)
+            remaining = current_end - now
+            if remaining < timedelta(0):
+                remaining = timedelta(0)
+        else:
+            remaining = timedelta(0)
 
-                new_working_end = now + remaining_time + adjusted_duration
-                char_characteristic['working_end'] = new_working_end
+        raw_duration = timedelta(minutes=working_hours * 60)
+        bonus_pct = _speed_bonus_pct(state)
+        adjusted_duration = raw_duration - (raw_duration * bonus_pct / 100)
+        new_end = now + remaining + adjusted_duration
 
-                char_characteristic['work_salary'] = self.work_requirements[work]['salary']
-                char_characteristic['working_hours'] += working_hours
+        # state.work уже могла быть активна — сохраняем накопленные hours.
+        prev_hours = state.work.hours if state.work.active else 0
+        start_work(
+            state,
+            work_type=work,
+            salary=self.work_requirements[work]['salary'],
+            hours=prev_hours + working_hours,
+            start=state.work.start if state.work.active else now,
+            end=new_end,
+        )
 
-                print(f'\nИспользовано 🏃: {Fore.LIGHTCYAN_EX}{working_hours * self.work_requirements[work]["steps"]}{Style.RESET_ALL} + '
-                    f'🔋: {Fore.GREEN}{working_hours * self.work_requirements[work]["energy"]}{Style.RESET_ALL}.')
-                print(f'Время работы 🕑: {time(working_hours * (round(60 - ((60 / 100) * char_characteristic["speed_skill"] + equipment_speed_skill_bonus()))))}')
-                print(f'Зарплата 💰: {Fore.LIGHTYELLOW_EX}{working_hours * char_characteristic["work_salary"]}{Style.RESET_ALL} $.')
-                return True
-            else:
-                print('\nДописать функционал, который показывает, чего именно не хватило. Можно использовать метод класса.')
-                print('Не достаточно: 🏃 или 🔋')
-                return False
+        print(f'\nИспользовано 🏃: {Fore.LIGHTCYAN_EX}{steps_cost}{Style.RESET_ALL} + '
+              f'🔋: {Fore.GREEN}{energy_cost}{Style.RESET_ALL}.')
+        print(f'Время работы 🕑: {time(working_hours * (round(60 - ((60 / 100) * state.gym.speed_skill + equipment_speed_skill_bonus(state)))))}')
+        print(f'Зарплата 💰: {Fore.LIGHTYELLOW_EX}{working_hours * state.work.salary}{Style.RESET_ALL} $.')
+        return True
 
 
-def work_check_done():
-    # Функция, которая проверяет окончание таймера работы.
-    global char_characteristic
+def work_check_done(state: GameState = None):
+    """Финализатор работы по таймеру: начислить зарплату, обнулить смену, save."""
+    state = _resolve_state(state)
 
-    if char_characteristic['working_end'] != None:
-        if debug_mode:
-            if char_characteristic['working_end'] >= datetime.fromtimestamp(datetime.now().timestamp()):
-                print('\n--- Персонаж на работе ---.')
+    if state.work.end is None:
+        return state
 
-        if char_characteristic['working_end'] <= datetime.fromtimestamp(datetime.now().timestamp()):
-            # Когда прошел кулдаун на работу. Добавить деньги, обнулить таймеры, и статусы связанные с работой.
-            char_characteristic['money'] += char_characteristic["work_salary"] * char_characteristic["working_hours"]
-            print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{char_characteristic["work_salary"] * char_characteristic["working_hours"]}{Style.RESET_ALL} $.')
-            # Обнуление переменных и статусов связанных с работой. (Возможно стоит сделать отдельной функцией).
-            char_characteristic['work'] = None
-            char_characteristic['work_salary'] = 0
-            char_characteristic['working'] = False
-            char_characteristic['working_hours'] = 0
-            char_characteristic['working_start'] = None
-            char_characteristic['working_end'] = None
-            save_characteristic()       # Сохранение прогресса при завершении работы
-    return char_characteristic
+    now = datetime.fromtimestamp(datetime.now().timestamp())
+    if debug_mode and state.work.end >= now:
+        print('\n--- Персонаж на работе ---.')
+
+    if state.work.end <= now:
+        earned = state.work.salary * state.work.hours
+        state.money += earned
+        print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{earned}{Style.RESET_ALL} $.')
+        state.work.work_type = None
+        state.work.salary = 0
+        state.work.active = False
+        state.work.hours = 0
+        state.work.start = None
+        state.work.end = None
+        save_characteristic()
+    return state

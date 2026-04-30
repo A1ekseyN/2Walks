@@ -1,317 +1,294 @@
-from datetime import datetime, timedelta
-from characteristics import char_characteristic, skill_training_table, save_characteristic, get_energy_training_data
-from settings import debug_mode
+"""Gym — прокачка навыков. UI + старт/финализация тренировки.
+
+Phase 4 задачи 1.1: всё работает через `state: GameState` (default `state=None`
+→ characteristics.game_state). Module-level f-строки `lvl_up_*` / `description_*`
+(были stale при импорте, см. задачу 1.2) превращены в функции.
+
+Удалены: dead-code `start_training()` (модульный, никогда не вызывался),
+дублирующие display-методы Skill_Training (`stamina_skill_training` etc.),
+финальный `Skill = Skill_Training(...)` (никем не использовался).
+"""
+
+from datetime import datetime
 from colorama import Fore, Style
+
+from characteristics import skill_training_table, save_characteristic, get_energy_training_data
+from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def
 from functions_02 import time
 from equipment_bonus import equipment_speed_skill_bonus, equipment_energy_max_bonus
 from bonus import apply_move_optimization_gym
 from inventory import Wear_Equipped_Items
+from actions import try_spend, start_training as actions_start_training
+from state import GameState
 
 
-lvl_up_stamina = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["stamina"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                 f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["stamina"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
-                 f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["stamina"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                 f'🕑: {time(round(skill_training_table[char_characteristic["stamina"] + 1]["time"] - ((skill_training_table[char_characteristic["stamina"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
-lvl_up_energy_max = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                    f'🔋: {Fore.GREEN}{get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["energy"]}{Style.RESET_ALL} эн. / ' \
-                    f'💰: {Fore.LIGHTYELLOW_EX}{get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["money"]}{Style.RESET_ALL} $ / ' \
-                    f'🕑: {time(round(get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["time"] - ((get_energy_training_data(char_characteristic["energy_max"] - 49 - equipment_energy_max_bonus() - char_characteristic["steps_daily_bonus"])["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
-lvl_up_speed_skill = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["speed_skill"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                     f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["speed_skill"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
-                     f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["speed_skill"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                     f'🕑: {time(round(skill_training_table[char_characteristic["speed_skill"] + 1]["time"] - ((skill_training_table[char_characteristic["speed_skill"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
-lvl_up_luck_skill = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["luck_skill"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                     f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["luck_skill"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
-                     f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["luck_skill"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                     f'🕑: {time(round(skill_training_table[char_characteristic["luck_skill"] + 1]["time"] - ((skill_training_table[char_characteristic["luck_skill"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
-
-lvl_up_move_optimization_adventure = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["move_optimization_adventure"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                                     f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["move_optimization_adventure"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
-                                     f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["move_optimization_adventure"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                                     f'🕑: {time(round(skill_training_table[char_characteristic["move_optimization_adventure"] + 1]["time"] - ((skill_training_table[char_characteristic["move_optimization_adventure"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
-lvl_up_move_optimization_gym = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["move_optimization_gym"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                               f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["move_optimization_gym"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
-                               f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["move_optimization_gym"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                               f'🕑: {time(round(skill_training_table[char_characteristic["move_optimization_gym"] + 1]["time"] - ((skill_training_table[char_characteristic["move_optimization_gym"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
-lvl_up_move_optimization_work = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["move_optimization_work"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                                f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["move_optimization_work"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
-                                f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["move_optimization_work"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                                f'🕑: {time(round(skill_training_table[char_characteristic["move_optimization_work"] + 1]["time"] - ((skill_training_table[char_characteristic["move_optimization_work"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
-
-lvl_up_neatness_in_using_things = f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-                                 f'🔋: {Fore.GREEN}{skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["energy"]}{Style.RESET_ALL} эн. / ' \
-                                 f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["money"]}{Style.RESET_ALL} $ / ' \
-                                 f'🕑: {time(round(skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["time"] - ((skill_training_table[char_characteristic["neatness_in_using_things"] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    return state
 
 
-description_stamina = f'\nВыносливость: {Fore.GREEN}{char_characteristic["stamina"]}{Style.RESET_ALL} уровень.' \
-                      f'\nКаждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.' \
-                      f'\n\nДля улучшения до {Fore.GREEN}{char_characteristic["stamina"] + 1}{Style.RESET_ALL} уровня необходимо: ({lvl_up_stamina}).'
+# ----- Чистые helper-функции расчёта (тестируются напрямую) -----
 
-description_energy_max = f'\nМаксимальный запас энергии: {Fore.GREEN}{char_characteristic["energy_max_skill"]}{Style.RESET_ALL} уровень.' \
-                         f'\nКаждый уровень, добавляет + 1 единицу к максимальному запасу энергии.' \
-                         f'\n\nДля улучшения необходимо: ({lvl_up_energy_max}).'
-
-description_speed = f'\nСкорость: {Fore.GREEN}{char_characteristic["speed_skill"]}{Style.RESET_ALL} уровень.' \
-                    f'\nКаждый уровень добавляет + 1% к общей скорости персонажа. Влияет на работу, прокачку навыков, прохождение приключений.' \
-                    f'\n\nДля улучшения необходимо: ({lvl_up_speed_skill}).'
-
-description_luck = f'\nУдача: {Fore.GREEN}{char_characteristic["luck_skill"]}{Style.RESET_ALL} уровень.' \
-                   f'\nКаждый уровень улучшения, увеличивается удача персонажа на 1%.' \
-                   f'\nУдача влияет на шанс выпадения предметов, а так же на их качество.' \
-                   f'\nТак же, удача влияет и на другие игровые события.' \
-                   f'\n\nДля улучшения необходимо: ({lvl_up_luck_skill}).'
-
-description_move_optimization_adventure = f'\nОптимизация движений Adventure: {Fore.GREEN}{char_characteristic["move_optimization_adventure"]}{Style.RESET_ALL} уровень.' \
-                                          f'\nКаждый уровень уменьшает на 1 % количество шагов необходимых для активности.' \
-                                          f'\n\nДля улучшения необходимо: ({lvl_up_move_optimization_adventure})'
-
-description_move_optimization_gym = f"\nОптимизация движений Gym: {Fore.GREEN}{char_characteristic['move_optimization_gym']}{Style.RESET_ALL} уровень." \
-                                    f"\nКаждый уровень уменьшает на 1 % количество шагов необходимых для активности." \
-                                    f"\n\nДля улучшения необходимо: ({lvl_up_move_optimization_gym})"
-
-description_move_optimization_work = f"\nОптимизация движений Work: {Fore.GREEN}{char_characteristic['move_optimization_work']}{Style.RESET_ALL} уровень." \
-                                     f"\nКаждый уровень уменьшает на 1 % количество шагов необходимых для активности." \
-                                     f"\n\nДля улучшения необходимо: ({lvl_up_move_optimization_work})"
-
-description_neatness_in_using_things = f"\nАккуратность при использовании вещей: {Fore.GREEN}{char_characteristic['neatness_in_using_things']}{Style.RESET_ALL}. " \
-                                       f"\nКаждый уровень навыка уменьшает износ вещей на 1 %. " \
-                                       f"\n\nДля улучшения необходимо: ({lvl_up_neatness_in_using_things})" \
+def _energy_max_skill_level(state: GameState) -> int:
+    """Текущий уровень навыка energy_max (выводится из state.energy_max)."""
+    return state.energy_max - 49 - equipment_energy_max_bonus(state) - state.steps.daily_bonus
 
 
-def gym_menu():
-    # Меню выбора навыка для прокачки.
-    global char_characteristic
+def _next_skill_level(state: GameState, skill_name: str) -> int:
+    """Уровень, до которого мы прокачиваем навык."""
+    if skill_name == 'energy_max':
+        return _energy_max_skill_level(state)
+    return getattr(state.gym, skill_name) + 1
+
+
+def _training_cost(state: GameState, skill_name: str) -> dict:
+    """Возвращает запись из skill_training_table для следующего уровня навыка."""
+    level = _next_skill_level(state, skill_name)
+    if skill_name == 'energy_max':
+        return get_energy_training_data(level)
+    return skill_training_table[level]
+
+
+def _apply_speed_bonus(base_minutes: int, state: GameState) -> float:
+    """Уменьшает длительность на сумму speed-бонусов (skill + equipment + level), %."""
+    speed_pct = (
+        state.gym.speed_skill
+        + equipment_speed_skill_bonus(state)
+        + state.char_level.skill_speed
+    )
+    return base_minutes - (base_minutes / 100) * speed_pct
+
+
+# ----- Форматирование описаний навыков (заменяет module-level f-строки) -----
+
+def format_lvl_up_info(state: GameState, skill_name: str) -> str:
+    """Описание стоимости прокачки одного навыка для меню Gym.
+
+    Заменяет 8 stale module-level f-строк lvl_up_* — теперь вычисляется в
+    момент отображения, видит актуальный state.
+    """
+    state = _resolve_state(state)
+    cost = _training_cost(state, skill_name)
+    return (
+        f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(cost["steps"], state):,.0f}{Style.RESET_ALL} / '
+        f'🔋: {Fore.GREEN}{cost["energy"]}{Style.RESET_ALL} эн. / '
+        f'💰: {Fore.LIGHTYELLOW_EX}{cost["money"]}{Style.RESET_ALL} $ / '
+        f'🕑: {time(round(_apply_speed_bonus(cost["time"], state)))}'
+    )
+
+
+def get_lvl_up_info(skill_name, level, state: GameState = None):
+    """Описание стоимости конкретного уровня навыка (используется в меню)."""
+    state = _resolve_state(state)
+    cost = skill_training_table[level]
+    return (
+        f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(cost["steps"], state):,.0f}{Style.RESET_ALL} / '
+        f'🔋: {Fore.GREEN}{cost["energy"]}{Style.RESET_ALL} эн. / '
+        f'💰: {Fore.LIGHTYELLOW_EX}{cost["money"]}{Style.RESET_ALL} $ / '
+        f'🕑: {time(round(_apply_speed_bonus(cost["time"], state)))}'
+    )
+
+
+_SKILL_DESCRIPTIONS = {
+    'stamina': (
+        'Выносливость',
+        'stamina',
+        'Каждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.',
+    ),
+    'energy_max': (
+        'Максимальный запас энергии',
+        'energy_max_skill',
+        'Каждый уровень, добавляет + 1 единицу к максимальному запасу энергии.',
+    ),
+    'speed_skill': (
+        'Скорость',
+        'speed_skill',
+        'Каждый уровень добавляет + 1% к общей скорости персонажа. Влияет на работу, прокачку навыков, прохождение приключений.',
+    ),
+    'luck_skill': (
+        'Удача',
+        'luck_skill',
+        'Каждый уровень улучшения, увеличивается удача персонажа на 1%.\n'
+        'Удача влияет на шанс выпадения предметов, а так же на их качество.\n'
+        'Так же, удача влияет и на другие игровые события.',
+    ),
+    'move_optimization_adventure': (
+        'Оптимизация движений Adventure',
+        'move_optimization_adventure',
+        'Каждый уровень уменьшает на 1 % количество шагов необходимых для активности.',
+    ),
+    'move_optimization_gym': (
+        'Оптимизация движений Gym',
+        'move_optimization_gym',
+        'Каждый уровень уменьшает на 1 % количество шагов необходимых для активности.',
+    ),
+    'move_optimization_work': (
+        'Оптимизация движений Work',
+        'move_optimization_work',
+        'Каждый уровень уменьшает на 1 % количество шагов необходимых для активности.',
+    ),
+    'neatness_in_using_things': (
+        'Аккуратность при использовании вещей',
+        'neatness_in_using_things',
+        'Каждый уровень навыка уменьшает износ вещей на 1 %.',
+    ),
+}
+
+
+def display_skill_description(skill_name, state: GameState = None):
+    """Печатает описание навыка + стоимость прокачки до следующего уровня."""
+    state = _resolve_state(state)
+    if skill_name not in _SKILL_DESCRIPTIONS:
+        return
+    title, attr_name, body = _SKILL_DESCRIPTIONS[skill_name]
+    current = getattr(state.gym, attr_name)
+    cost_line = format_lvl_up_info(state, skill_name)
+    print(f'\n{title}: {Fore.GREEN}{current}{Style.RESET_ALL} уровень.')
+    print(body)
+    if skill_name in ('stamina',):
+        print(f'\nДля улучшения до {Fore.GREEN}{current + 1}{Style.RESET_ALL} уровня необходимо: ({cost_line}).')
+    else:
+        print(f'\nДля улучшения необходимо: ({cost_line}).')
+
+
+# ----- Меню Gym -----
+
+def gym_menu(state: GameState = None):
+    state = _resolve_state(state)
     print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
 
-    if char_characteristic['skill_training']:
-        print(f'\t🏋 Улучшаем навык - {char_characteristic["skill_training_name"].title()} до {Fore.LIGHTCYAN_EX}{char_characteristic[char_characteristic["skill_training_name"]] + 1}{Style.RESET_ALL} уровня.'
-              f'\n\t🕑 Улучшение через: {Fore.CYAN}{char_characteristic["skill_training_time_end"] - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
-    else:
-        skill_options = {
-            '1': ('stamina', 'Stamina:    ', char_characteristic['stamina'] + 1),
-            '2': ('energy_max', 'Energy Max: ',
-                  char_characteristic['energy_max'] - 49 - equipment_energy_max_bonus() - char_characteristic[
-                      'steps_daily_bonus']),
-            '3': ('speed_skill', 'Speed:      ', char_characteristic['speed_skill'] + 1),
-            '4': ('luck_skill', 'Luck:       ', char_characteristic['luck_skill'] + 1),
-            '5': ('move_optimization_adventure', 'Оптимизация движений Adventure:   ', char_characteristic['move_optimization_adventure'] + 1),
-            '6': ('move_optimization_gym', 'Оптимизация движений Gym:         ', char_characteristic['move_optimization_gym'] + 1),
-            '7': ('move_optimization_work', 'Оптимизация движений Work:        ', char_characteristic['move_optimization_work'] + 1),
-            '8': ('neatness_in_using_things', 'Аккуратность использования вещей: ', char_characteristic['neatness_in_using_things'] + 1)
-        }
+    if state.training.active:
+        skill_lvl = getattr(state.gym, state.training.skill_name)
+        print(f'\t🏋 Улучшаем навык - {state.training.skill_name.title()} до {Fore.LIGHTCYAN_EX}{skill_lvl + 1}{Style.RESET_ALL} уровня.'
+              f'\n\t🕑 Улучшение через: {Fore.CYAN}{state.training.time_end - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
+        return
 
-        print(f"Steps 🏃: {char_characteristic['steps_can_use']}, "
-              f"Energy 🔋: {char_characteristic['energy']}, "
-              f"Money 💰: {char_characteristic['money']} $.")
-        print('На данный момент вы можете улучшить: ')
-        for key, (skill, name, level) in skill_options.items():
-            print(f'\t{key}. {name}{Fore.LIGHTCYAN_EX}{level}{Style.RESET_ALL} lvl ({get_lvl_up_info(skill, level)})')
-        print('\n\t0. Назад.')
+    skill_options = {
+        '1': ('stamina', 'Stamina:    ', state.gym.stamina + 1),
+        '2': ('energy_max', 'Energy Max: ', _energy_max_skill_level(state)),
+        '3': ('speed_skill', 'Speed:      ', state.gym.speed_skill + 1),
+        '4': ('luck_skill', 'Luck:       ', state.gym.luck_skill + 1),
+        '5': ('move_optimization_adventure', 'Оптимизация движений Adventure:   ',
+              state.gym.move_optimization_adventure + 1),
+        '6': ('move_optimization_gym', 'Оптимизация движений Gym:         ',
+              state.gym.move_optimization_gym + 1),
+        '7': ('move_optimization_work', 'Оптимизация движений Work:        ',
+              state.gym.move_optimization_work + 1),
+        '8': ('neatness_in_using_things', 'Аккуратность использования вещей: ',
+              state.gym.neatness_in_using_things + 1),
+    }
 
-        try:
-            temp_number = input('\nВыберите какой навык улучшить: \n>>> ')
-            if temp_number == '0':
-                return
-            elif temp_number in skill_options:
-                skill_name, skill_display_name, level = skill_options[temp_number]
+    print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money} $.")
+    print('На данный момент вы можете улучшить: ')
+    for key, (skill, name, level) in skill_options.items():
+        print(f'\t{key}. {name}{Fore.LIGHTCYAN_EX}{level}{Style.RESET_ALL} lvl ({get_lvl_up_info(skill, level, state)})')
+    print('\n\t0. Назад.')
 
-                # Вывод описания выбранного навыка
-                display_skill_description(skill_name)
+    try:
+        temp_number = input('\nВыберите какой навык улучшить: \n>>> ')
+        if temp_number == '0':
+            return
+        if temp_number not in skill_options:
+            return gym_menu(state)
 
-                ask = input(f'\t1. Повысить {skill_display_name.strip()} + 1.'
-                            f'\n\t0. Назад\n>>> ')
-                if ask == '1':
-                    char_characteristic['skill_training_name'] = skill_name
-                    skill_training = Skill_Training(training=True, name=skill_name, timestamp=None, time_end=None,
-                                                    time_stamp_now=None)
+        skill_name, skill_display_name, _ = skill_options[temp_number]
+        display_skill_description(skill_name, state)
 
-                    # Проверка наличия достаточных ресурсов
-                    if skill_training.check_requirements():
-                        # Запуск прокачки навыка
-                        skill_training.start_skill_training()
+        ask = input(f'\t1. Повысить {skill_display_name.strip()} + 1.'
+                    f'\n\t0. Назад\n>>> ')
+        if ask != '1':
+            return gym_menu(state)
 
-                        # Износ Экипировки
-                        steps = apply_move_optimization_gym(skill_training_table[char_characteristic[skill_name] + 1]["steps"])
-                        equipped_items_manager = Wear_Equipped_Items()
-                        equipped_items_manager.decrease_durability(steps)
+        state.training.skill_name = skill_name
+        skill_training = Skill_Training(state=state, name=skill_name)
 
-
-                    else:
-                        gym_menu()
-                else:
-                    gym_menu()
-            else:
-                gym_menu()
-        except Exception as error:
-            print(f'\nОшибка Gym: {error}')
-            gym_menu()
+        if skill_training.check_requirements():
+            skill_training.start_skill_training()
+            steps = apply_move_optimization_gym(skill_training_table[getattr(state.gym, skill_name) + 1]["steps"], state)
+            Wear_Equipped_Items(state).decrease_durability(steps)
+        else:
+            gym_menu(state)
+    except Exception as error:
+        print(f'\nОшибка Gym: {error}')
+        gym_menu(state)
 
 
-def get_lvl_up_info(skill_name, level):
-    return f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(skill_training_table[level]["steps"]):,.0f}{Style.RESET_ALL} / ' \
-           f'🔋: {Fore.GREEN}{skill_training_table[level]["energy"]}{Style.RESET_ALL} эн. / ' \
-           f'💰: {Fore.LIGHTYELLOW_EX}{skill_training_table[level]["money"]}{Style.RESET_ALL} $ / ' \
-           f'🕑: {time(round(skill_training_table[level]["time"] - ((skill_training_table[level]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}'
+def skill_training_check_done(state: GameState = None):
+    """Финализатор тренировки — если таймер истёк, повышает уровень навыка и чистит сессию."""
+    state = _resolve_state(state)
+    if debug_mode and not state.training.active:
+        print('\nНавыки не изучаются.')
+
+    if not state.training.active:
+        return
+    if datetime.fromtimestamp(datetime.now().timestamp()) < state.training.time_end:
+        return
+
+    skill_name = state.training.skill_name
+    new_level = getattr(state.gym, skill_name) + 1
+    setattr(state.gym, skill_name, new_level)
+    print(f'\n🏋 Навык {skill_name.title()} улучшен до {new_level}')
+
+    state.training.active = False
+    state.training.skill_name = None
+    state.training.timestamp = None
+    state.training.time_end = None
+    stamina_skill_bonus_def(state)
+    save_characteristic()
 
 
-def display_skill_description(skill_name):
-    # Вывод описания выбранного навыка
-    if skill_name == 'stamina':
-        print(description_stamina)
-    elif skill_name == 'energy_max':
-        print(description_energy_max)
-    elif skill_name == 'speed_skill':
-        print(description_speed)
-    elif skill_name == 'luck_skill':
-        print(description_luck)
-    elif skill_name == 'move_optimization_adventure':
-        print(description_move_optimization_adventure)
-    elif skill_name == 'move_optimization_gym':
-        print(description_move_optimization_gym)
-    elif skill_name == 'move_optimization_work':
-        print(description_move_optimization_work)
-    elif skill_name == 'neatness_in_using_things':
-        print(description_neatness_in_using_things)
+class Skill_Training:
+    """Прокачка навыка в Gym — проверка ресурсов, старт сессии."""
 
-
-def start_training():
-    char_characteristic['skill_training'] = True
-    char_characteristic['skill_training_timestamp'] = datetime.now().timestamp()
-    skill_name = char_characteristic['skill_training_name']
-    level = char_characteristic[skill_name] + 1
-    skill_training_time = round(skill_training_table[level]['time']) * 60
-    skill_training_speed_skill = skill_training_time - ((skill_training_time / 100) * (char_characteristic[skill_name] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))
-    skill_training_time_with_bonus = datetime.fromtimestamp(datetime.now().timestamp() + skill_training_speed_skill)
-    char_characteristic['skill_training_time_end'] = skill_training_time_with_bonus
-    char_characteristic['steps_today_used'] += apply_move_optimization_gym(skill_training_table[level]['steps'])
-    char_characteristic['steps_total_used'] += apply_move_optimization_gym(skill_training_table[level]['steps'])
-    char_characteristic['energy'] -= skill_training_table[level]['energy']
-    char_characteristic['money'] -= skill_training_table[level]['money']
-
-    print(f'\n🏋️ {skill_name.title()} - Начато улучшение навыка. 🏋')
-    print(f'На улучшение навыка {skill_name} потрачено:'
-          f'\n- 🏃: {apply_move_optimization_gym(skill_training_table[level]["steps"]):,.0f} steps'
-          f'\n- 🔋: {skill_training_table[level]["energy"]} эн.'
-          f'\n- 💰: {skill_training_table[level]["money"]} $'
-          f'\n- 🕑 Окончание тренировки навыка через: {Fore.LIGHTBLUE_EX}{time(round(skill_training_table[level]["time"] - ((skill_training_table[level]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}{Style.RESET_ALL}')
-
-
-def skill_training_check_done():
-    # Проверка или закончилось изучение навыка
-    global char_characteristic
-    if debug_mode:
-        if not char_characteristic['skill_training']:
-            print('\nНавыки не изучаются.')
-
-    if char_characteristic['skill_training']:
-        if datetime.fromtimestamp(datetime.now().timestamp()) >= char_characteristic['skill_training_time_end']:
-            skill_name = char_characteristic['skill_training_name']
-            char_characteristic[skill_name] += 1
-            print(f'\n🏋 Навык {skill_name.title()} улучшен до {char_characteristic[skill_name]}')
-            char_characteristic['skill_training'] = False
-            char_characteristic['skill_training_name'] = None
-            char_characteristic['skill_training_timestamp'] = None
-            char_characteristic['skill_training_time_end'] = None
-            stamina_skill_bonus_def()
-            save_characteristic()
-
-
-class Skill_Training():
-    # Класс инициализации прокачки навыков
-    def __init__(self, training, name, timestamp, time_end, time_stamp_now):
-        # Инициализация атрибутов
-        self.training = training
+    def __init__(self, state: GameState = None, name: str = None):
+        self._state = _resolve_state(state)
         self.name = name
-        self.timestamp = timestamp
-        self.time_end = time_end
-        self.timestamp_now = time_stamp_now
 
-    def check_requirements(self):
-        # Проверка или достаточно кол-ва шагов, энергии, и денег для запуска прокачки навыка
-        if char_characteristic['steps_can_use'] >= apply_move_optimization_gym(skill_training_table[char_characteristic[self.name] + 1]["steps"]) \
-            and char_characteristic['energy'] >= skill_training_table[char_characteristic[self.name] + 1]["energy"]\
-            and char_characteristic['money'] >= skill_training_table[char_characteristic[self.name] + 1]["money"]:
+    def check_requirements(self) -> bool:
+        """Проверяет (без списания), хватает ли ресурсов на прокачку.
+
+        Само списание происходит в `start_skill_training` через `try_spend`.
+        """
+        cost = skill_training_table[getattr(self._state.gym, self.name) + 1]
+        steps_needed = apply_move_optimization_gym(cost['steps'], self._state)
+        if (self._state.steps.can_use >= steps_needed
+                and self._state.energy >= cost['energy']
+                and self._state.money >= cost['money']):
             print('\nПроверка кол-ва шагов, энергии и денег - успешна.')
-
-            ### Проверить или здесь все нормально работает. И все ли хорошо с переменными.
-#            Skill_Training.start_skill_training(self)       # Начало прокачки навыка, если выполнены требования.
-
             return True
 
-        else:
-            print(f'\n{Fore.RED}У вас не достаточно ресурсов: {Style.RESET_ALL}')
-            if char_characteristic['steps_can_use'] <= apply_move_optimization_gym(skill_training_table[char_characteristic[self.name] + 1]["steps"]):
-                print(f'\t- 🏃: Не хватает - {skill_training_table[char_characteristic[self.name] + 1]["steps"] - char_characteristic["steps_can_use"]} шагов.')
-            if char_characteristic['energy'] <= skill_training_table[char_characteristic[self.name] + 1]["energy"]:
-                print(f'\t- 🔋: Не хватает - {skill_training_table[char_characteristic[self.name] + 1]["energy"] - char_characteristic["energy"]} энергии.')
-            if char_characteristic['money'] <= skill_training_table[char_characteristic[self.name] + 1]["money"]:
-                print(f'\t- 💰: Не хватает - {skill_training_table[char_characteristic[self.name] + 1]["money"] - char_characteristic["money"]} money.')
-            gym_menu()
-            return False
+        print(f'\n{Fore.RED}У вас не достаточно ресурсов: {Style.RESET_ALL}')
+        if self._state.steps.can_use <= steps_needed:
+            print(f'\t- 🏃: Не хватает - {cost["steps"] - self._state.steps.can_use} шагов.')
+        if self._state.energy <= cost['energy']:
+            print(f'\t- 🔋: Не хватает - {cost["energy"] - self._state.energy} энергии.')
+        if self._state.money <= cost['money']:
+            print(f'\t- 💰: Не хватает - {cost["money"] - self._state.money} money.')
+        gym_menu(self._state)
+        return False
 
     def start_skill_training(self):
-        # Начало обучения навыка
-        skill_training_time = round(skill_training_table[char_characteristic[self.name] + 1]['time']) * 60
-        skill_training_speed_skill = skill_training_time - ((skill_training_time / 100) * (char_characteristic[self.name] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))
-        skill_training_time_with_bonus = datetime.fromtimestamp(datetime.now().timestamp() + skill_training_speed_skill)
+        state = self._state
+        cost = skill_training_table[getattr(state.gym, self.name) + 1]
+        steps_needed = apply_move_optimization_gym(cost['steps'], state)
 
-        char_characteristic['skill_training'] = True
-        char_characteristic['skill_training_name'] = self.name
-        char_characteristic['skill_training_timestamp'] = datetime.now().timestamp()
-        char_characteristic['skill_training_time_end'] = skill_training_time_with_bonus
-        char_characteristic['steps_today_used'] += apply_move_optimization_gym(skill_training_table[char_characteristic[self.name] + 1]['steps'])
-        char_characteristic['steps_total_used'] += apply_move_optimization_gym(skill_training_table[char_characteristic[self.name] + 1]['steps'])
-        char_characteristic['energy'] -= skill_training_table[char_characteristic[self.name] + 1]['energy']
-        char_characteristic['money'] -= skill_training_table[char_characteristic[self.name] + 1]['money']
+        # Атомарное списание steps/energy/money через actions.try_spend.
+        try_spend(state, steps=steps_needed, energy=cost['energy'], money=cost['money'])
+
+        # Установка таймера тренировки.
+        skill_training_time = round(cost['time']) * 60
+        skill_training_time = _apply_speed_bonus(skill_training_time, state)
+        time_end = datetime.fromtimestamp(datetime.now().timestamp() + skill_training_time)
+        actions_start_training(state, skill_name=self.name, time_end=time_end,
+                               timestamp=datetime.now().timestamp())
 
         print(f'\n🏋️ {self.name.title()} - Начато улучшение навыка. 🏋')
         print(f'На улучшение навыка {self.name} потрачено:'
-              f'\n- 🏃: {apply_move_optimization_gym(skill_training_table[char_characteristic[self.name] + 1]["steps"]):,.0f} steps'
-              f'\n- 🔋: {skill_training_table[char_characteristic[self.name] + 1]["energy"]} эн.'
-              f'\n- 💰: {skill_training_table[char_characteristic[self.name] + 1]["money"]} $'
-              f'\n- 🕑 Окончание тренировки навыка через: {Fore.LIGHTBLUE_EX}{time(round(skill_training_table[char_characteristic[self.name] + 1]["time"] - ((skill_training_table[char_characteristic[self.name] + 1]["time"] / 100) * (char_characteristic["speed_skill"] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))))}{Style.RESET_ALL}')
-        return char_characteristic
-
-    def stamina_skill_training(self):
-        print(f'\nВыносливость: {Fore.GREEN}{char_characteristic["stamina"]}{Style.RESET_ALL} уровень.')
-        print('\nВыносливость - за каждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.')
-        print(f'\nДля улучшения до {Fore.GREEN}{char_characteristic["stamina"] + 1}{Style.RESET_ALL} уровня необходимо: ({lvl_up_stamina}).')
-
-    def enegry_max_skill_training(self):
-        print(f'\nМаксимальный запас энергии: {Fore.GREEN}{char_characteristic["energy_max_skill"]}{Style.RESET_ALL} уровень.')
-        print(f'\nМаксимальный запас энергии - каждый уровень, добавляет + 1 единицу к максимальному запасу энергии.')
-        print(f'\nДля улучшения необходимо: ({lvl_up_energy_max}).')
-
-    def speed_skill_training(self):
-        print(f'\nСкорость: {Fore.GREEN}{char_characteristic["speed_skill"]}{Style.RESET_ALL} уровень.')
-        print(f'\nСкорость - каждый уровень добавляет + 1% к общей скорости персонажа. Влияет на работу, прокачку навыков, прохождение приключений.')
-        print(f'\nДля улучшения необходимо: ({lvl_up_speed_skill}).')
-
-    def luck_skill_training(self):
-        print(f'\nУдача: {Fore.GREEN}{char_characteristic["luck_skill"]}{Style.RESET_ALL} уровень.')
-        print(f'\nУдача - за каждый уровень улучшения, увеличивается удача персонажа на 1%. '
-              f'\nУдача влияет на шанс выпадения предметов, а так же на их качество.'
-              f'\nТак же, удача влияет и на другие игровые события.')
-        print(f'\nДля улучшения необходимо: ({lvl_up_luck_skill}).')
-
-    def move_optimization_adventure_skill_training(self):
-        print(f'\nОптимизация движений Adventure: {Fore.GREEN}{char_characteristic["move_optimization_adventure"]}{Style.RESET_ALL} уровень.'
-              f'\nОптимизация движений Adventure - Каждый уровень уменьшает на 1 % количество шагов необходимых для активности.'
-              f'\nДля улучшения необходимо: ({lvl_up_move_optimization_adventure})')
-
-    def move_optimization_gym_skill_training(self):
-        print(f"\nОптимизация движений Gym: {Fore.GREEN}{char_characteristic['move_optimization_gym']}{Style.RESET_ALL} уровень."
-              f"\nОптимизация движений Gym - Каждый уровень уменьшает на 1 % количество шагов необходимых для активности."
-              f"\nДля улучшения необходимо: ({lvl_up_move_optimization_gym})")
-
-    def move_optimization_work_skill_training(self):
-        print(f"\nОптимизация движений Work: {Fore.GREEN}{char_characteristic['move_optimization_work']}{Style.RESET_ALL} уровень."
-            f"\nОптимизация движений Work - Каждый уровень уменьшает на 1 % количество шагов необходимых для активности."
-            f"\nДля улучшения необходимо: ({lvl_up_move_optimization_work})")
-
-
-Skill = Skill_Training(char_characteristic['skill_training'], char_characteristic['skill_training_name'],
-                       char_characteristic['skill_training_timestamp'], char_characteristic['skill_training_time_end'],
-                       datetime.now().timestamp())
+              f'\n- 🏃: {steps_needed:,.0f} steps'
+              f'\n- 🔋: {cost["energy"]} эн.'
+              f'\n- 💰: {cost["money"]} $'
+              f'\n- 🕑 Окончание тренировки навыка через: {Fore.LIGHTBLUE_EX}{time(round(_apply_speed_bonus(cost["time"], state)))}{Style.RESET_ALL}')
+        return state
