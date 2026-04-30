@@ -1,5 +1,6 @@
 Version: 0.2.0a (30.04.2026):
 - Refactor. GameState rollout Phase 2 of 6: persistence layer migrated. characteristics.py constructs GameState from loaded save and exposes it via CharCharacteristicProxy as char_characteristic. save_characteristic() writes via game_state.to_dict() (CSV/JSON formats unchanged). 25 new proxy tests; legacy modules untouched.
+- Refactor. GameState rollout Phase 3 of 6: read migration of bonus.py, skill_bonus.py, equipment_bonus.py, level.py. Functions accept `state: GameState` (default `state=None` falls back to characteristics.game_state for unmigrated callers). Module-level side effects removed: `equipment_list` in equipment_bonus.py, `stamina_skill_bonus = stamina_skill_bonus_def()` in skill_bonus.py. CharLevel now reads/writes through state via @property; `global char_characteristic` patterns gone. Proxy is auto-detected via `_get_state()` for legacy callers passing char_characteristic. 29 new tests across 4 files (test_equipment_bonus.py, test_bonus.py, test_skill_bonus.py, test_level.py); all 65 tests pass. Removed stray `stamina_skill_bonus` import from gym.py (unused name).
 
 Version: 0.2.0 (29.04.2026):
 - Refactor. GameState foundation (Phase 1 of 6). state.py + pytest setup. No game code changes.

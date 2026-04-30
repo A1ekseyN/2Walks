@@ -1,79 +1,86 @@
-from characteristics import char_characteristic
+"""Бонусы от экипировки.
+
+Phase 3 задачи 1.1: функции принимают `state: GameState` и читают слоты экипировки
+из `state.equipment`. Module-level список снаряжения убран — он бьл побочным
+эффектом импорта и фиксировал ссылки на dict'ы в момент импорта.
+
+Backward compat: `state=None` → подтягивается `game_state` из characteristics.
+Удалить default после Phase 5 (когда все вызовы перейдут на explicit state).
+"""
+
+from state import GameState
 
 
-def equipment_bonus():
-    # Бонус всей экипировки и всех бонусов
-    equipment_bonus_stamina = 0
-    equipment_bonus_max_energy = 0
-    equipment_bonus_speed_skill = 0
-    equipment_bonus_luck = 0
-
-    bonus_list = ['stamina', 'energy_max', 'speed_skill', 'luck']
-    equipment_list = [char_characteristic['equipment_head'], char_characteristic['equipment_neck'], char_characteristic['equipment_torso'], char_characteristic['equipment_finger_01'], char_characteristic['equipment_finger_02'], char_characteristic['equipment_legs'], char_characteristic['equipment_foots']]
-
-    for item in equipment_list:
-        if item is not None:
-            for characteristic in bonus_list:
-                if item['characteristic'][0] == characteristic:
-                    if item['characteristic'][0] == 'stamina':
-                        equipment_bonus_stamina += item['bonus'][0]
-                    elif item['characteristic'][0] == 'energy_max':
-                        equipment_bonus_max_energy += item['bonus'][0]
-                    elif item['characteristic'][0] == 'speed_skill':
-                        equipment_bonus_speed_skill += item['bonus'][0]
-                    elif item['characteristic'][0] == 'luck':
-                        equipment_bonus_luck += item['bonus'][0]
-    return equipment_bonus_stamina, equipment_bonus_max_energy, equipment_bonus_speed_skill, equipment_bonus_luck
-
-#    print(equipment_bonus_stamina)
-#    print(equipment_bonus_max_energy)
-#    print(equipment_bonus_speed_skill)
-#    print(equipment_bonus_luck)
-
-#equipment_bonus()
+def _equipment_slots(state: GameState):
+    """Список dict'ов экипировки (или None) из всех слотов state.equipment."""
+    eq = state.equipment
+    return [eq.head, eq.neck, eq.torso, eq.finger_01, eq.finger_02, eq.legs, eq.foots]
 
 
-equipment_list = [char_characteristic['equipment_head'], char_characteristic['equipment_neck'],
-                  char_characteristic['equipment_torso'], char_characteristic['equipment_finger_01'],
-                  char_characteristic['equipment_finger_02'], char_characteristic['equipment_legs'],
-                  char_characteristic['equipment_foots']]
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    return state
 
 
-def equipment_stamina_bonus():
-    equipment_stamina_bonus = 0
-    for item in equipment_list:
-        if item is not None:
-            if item['characteristic'][0] == 'stamina':
-                equipment_stamina_bonus += item['bonus'][0]
-#    print(f'Stamina: {equipment_stamina_bonus}')
-    return equipment_stamina_bonus
+def equipment_bonus(state: GameState = None):
+    """Сумма бонусов всей экипировки по 4 характеристикам.
+
+    Возвращает кортеж (stamina, energy_max, speed_skill, luck).
+    """
+    state = _resolve_state(state)
+    eq_stamina = 0
+    eq_energy_max = 0
+    eq_speed = 0
+    eq_luck = 0
+    for item in _equipment_slots(state):
+        if item is None:
+            continue
+        char = item['characteristic'][0]
+        bonus = item['bonus'][0]
+        if char == 'stamina':
+            eq_stamina += bonus
+        elif char == 'energy_max':
+            eq_energy_max += bonus
+        elif char == 'speed_skill':
+            eq_speed += bonus
+        elif char == 'luck':
+            eq_luck += bonus
+    return eq_stamina, eq_energy_max, eq_speed, eq_luck
 
 
-def equipment_energy_max_bonus():
-    equipment_bonus_max_energy = 0
-    for item in equipment_list:
-        if item is not None:
-            if item['characteristic'][0] == 'energy_max':
-                equipment_bonus_max_energy += item['bonus'][0]
-#    print(f'Energy Max: {equipment_bonus_max_energy}')
-    return equipment_bonus_max_energy
+def equipment_stamina_bonus(state: GameState = None):
+    state = _resolve_state(state)
+    total = 0
+    for item in _equipment_slots(state):
+        if item is not None and item['characteristic'][0] == 'stamina':
+            total += item['bonus'][0]
+    return total
 
 
-def equipment_speed_skill_bonus():
-    equipment_bonus_speed_skill = 0
-    for item in equipment_list:
-        if item is not None:
-            if item['characteristic'][0] == 'speed_skill':
-                equipment_bonus_speed_skill += item['bonus'][0]
-#    print(f'Speed: {equipment_bonus_speed_skill}')
-    return equipment_bonus_speed_skill
+def equipment_energy_max_bonus(state: GameState = None):
+    state = _resolve_state(state)
+    total = 0
+    for item in _equipment_slots(state):
+        if item is not None and item['characteristic'][0] == 'energy_max':
+            total += item['bonus'][0]
+    return total
 
 
-def equipment_luck_bonus():
-    equipment_bonus_luck = 0
-    for item in equipment_list:
-        if item is not None:
-            if item['characteristic'][0] == 'luck':
-                equipment_bonus_luck += item['bonus'][0]
-#    print(f'Luck: {equipment_bonus_luck}')
-    return equipment_bonus_luck
+def equipment_speed_skill_bonus(state: GameState = None):
+    state = _resolve_state(state)
+    total = 0
+    for item in _equipment_slots(state):
+        if item is not None and item['characteristic'][0] == 'speed_skill':
+            total += item['bonus'][0]
+    return total
+
+
+def equipment_luck_bonus(state: GameState = None):
+    state = _resolve_state(state)
+    total = 0
+    for item in _equipment_slots(state):
+        if item is not None and item['characteristic'][0] == 'luck':
+            total += item['bonus'][0]
+    return total

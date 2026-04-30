@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from characteristics import char_characteristic, skill_training_table, save_characteristic, get_energy_training_data
 from settings import debug_mode
 from colorama import Fore, Style
-from skill_bonus import stamina_skill_bonus, stamina_skill_bonus_def
+from skill_bonus import stamina_skill_bonus_def
 from functions_02 import time
 from equipment_bonus import equipment_speed_skill_bonus, equipment_energy_max_bonus
 from bonus import apply_move_optimization_gym

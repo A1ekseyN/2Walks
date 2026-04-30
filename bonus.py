@@ -1,63 +1,63 @@
-from characteristics import char_characteristic
-from equipment_bonus import *
+"""Бонусы (шаги/энергия/скорость) — функции, читающие GameState.
+
+Phase 3 задачи 1.1: функции принимают `state: GameState`. Backward compat:
+`state=None` → подтягивается `game_state` из characteristics. Удалить default
+после Phase 5.
+"""
+
+from equipment_bonus import equipment_stamina_bonus
+from state import GameState
 
 
-def skill_bonus_energy_max():
-    # Бонус Макс. Энергии от навыка
-    char_characteristic['energy_max'] += char_characteristic['energy_max_skill']
-    return char_characteristic['energy_max']
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    return state
 
 
-def equipment_bonus_stamina_steps():
-    # Вычисления бонуса шагов через бонус экипировки.
-    bonus = round((char_characteristic['steps_today'] / 100) * equipment_stamina_bonus())
-    return bonus
+def skill_bonus_energy_max(state: GameState = None):
+    # Бонус Макс. Энергии от навыка (мутирующая, нигде не вызывается; см. 1.5).
+    state = _resolve_state(state)
+    state.energy_max += state.gym.energy_max_skill
+    return state.energy_max
 
 
-def daily_steps_bonus():
+def equipment_bonus_stamina_steps(state: GameState = None):
+    # Бонус шагов через бонус экипировки.
+    state = _resolve_state(state)
+    return round((state.steps.today / 100) * equipment_stamina_bonus(state))
+
+
+def daily_steps_bonus(state: GameState = None):
     # Бонус за пройденное кол-во шагов, более 10к.
-    bonus = round((char_characteristic['steps_today'] / 100) * char_characteristic['steps_daily_bonus'])
-    return bonus
-
-def level_steps_bonus():
-    """Бонус к кол-ву шагов в зависимости от уровня прокачки навыка"""
-    bonus = round((char_characteristic['steps_today'] / 100) * char_characteristic['lvl_up_skill_stamina'])
-    return bonus
+    state = _resolve_state(state)
+    return round((state.steps.today / 100) * state.steps.daily_bonus)
 
 
-def apply_move_optimization_adventure(steps):
-    """
-    Функция для уменьшения необходимого количества шагов для прохождения Adventure
-    Количество steps уменьшается на % прокачки навыка Оптимизация движений Adventure
-    :param steps: Словарь с параметрами для прохождения Adventure
-    """
-    steps['steps'] *= (1 - char_characteristic['move_optimization_adventure'] / 100)
+def level_steps_bonus(state: GameState = None):
+    """Бонус к кол-ву шагов в зависимости от уровня прокачки навыка."""
+    state = _resolve_state(state)
+    return round((state.steps.today / 100) * state.char_level.skill_stamina)
+
+
+def apply_move_optimization_adventure(steps, state: GameState = None):
+    """Уменьшает требуемые шаги для Adventure на % прокачки соответствующего навыка."""
+    state = _resolve_state(state)
+    steps['steps'] *= (1 - state.gym.move_optimization_adventure / 100)
     steps['steps'] = int(steps['steps'])
     return steps
 
 
-def apply_move_optimization_gym(steps):
-    """
-    Функция для уменьшения необходимого количества шагов для улучшения навыков в Gym
-    Количество steps уменьшается на % прокачки навыка Оптимизация движений Gym
-    :param steps: Словарь с параметрами для прохождения Gym
-    """
-    steps *= (1 - char_characteristic['move_optimization_gym'] / 100)
-    steps = int(steps)
-    return steps
+def apply_move_optimization_gym(steps, state: GameState = None):
+    """Уменьшает требуемые шаги для Gym на % прокачки соответствующего навыка."""
+    state = _resolve_state(state)
+    steps *= (1 - state.gym.move_optimization_gym / 100)
+    return int(steps)
 
 
-def apply_move_optimization_work(steps):
-    """
-    Функция для уменьшения необходимого количества шагов для улучшения навыков в Gym
-    Количество steps уменьшается на % прокачки навыка Оптимизация движений Gym
-    :param steps: Словарь с параметрами для прохождения Gym
-    """
-    steps *= (1 - char_characteristic['move_optimization_work'] / 100)
-    steps = int(steps)
-    return steps
-
-
-#equipment_bonus_stamina_steps()
-#equipment_bonus_energy_max()
-#daily_steps_bonus()
+def apply_move_optimization_work(steps, state: GameState = None):
+    """Уменьшает требуемые шаги для Work на % прокачки соответствующего навыка."""
+    state = _resolve_state(state)
+    steps *= (1 - state.gym.move_optimization_work / 100)
+    return int(steps)

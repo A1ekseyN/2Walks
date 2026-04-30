@@ -1,18 +1,36 @@
-# Файл для расчёта бонусов от навыков.
-from characteristics import char_characteristic
+"""Бонусы от навыков персонажа.
+
+Phase 3 задачи 1.1: функции принимают `state: GameState`. Backward compat:
+`state=None` → подтягивается `game_state` из characteristics. Удалить default
+после Phase 5.
+
+Module-level вызов `stamina_skill_bonus = stamina_skill_bonus_def()` убран —
+он считал бонус один раз при импорте на ещё не прогретом состоянии. Импорт
+этого имени из gym.py был мёртвым (значение никогда не использовалось).
+"""
+
 from equipment_bonus import equipment_speed_skill_bonus
+from state import GameState
 
 
-def stamina_skill_bonus_def():
-    # Бонус кол-ва шагов.
-    stamina_skill_bonus = round(char_characteristic['steps_today'] / 100) * char_characteristic['stamina']
-    return stamina_skill_bonus
+def _resolve_state(state):
+    if state is None:
+        from characteristics import game_state
+        return game_state
+    return state
 
 
-def speed_skill_equipment_and_level_bonus(x):
-    # Бонус от скорости
-    x = int(x - (x / 100) * (char_characteristic['speed_skill'] + equipment_speed_skill_bonus() + char_characteristic["lvl_up_skill_speed"]))
-    return x
+def stamina_skill_bonus_def(state: GameState = None):
+    # Бонус кол-ва шагов от навыка Stamina.
+    state = _resolve_state(state)
+    return round(state.steps.today / 100) * state.gym.stamina
 
 
-stamina_skill_bonus = stamina_skill_bonus_def()
+def speed_skill_equipment_and_level_bonus(x, state: GameState = None):
+    # Уменьшение длительности на сумму speed-бонусов (gym + equipment + level).
+    state = _resolve_state(state)
+    return int(x - (x / 100) * (
+        state.gym.speed_skill
+        + equipment_speed_skill_bonus(state)
+        + state.char_level.skill_speed
+    ))
