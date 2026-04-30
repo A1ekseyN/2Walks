@@ -1,12 +1,8 @@
 """Drop_Item — генерация дропа после Adventure.
 
-Phase 4 задачи 1.1 (commit 4): методы принимают `state: GameState` (default
-`state=None` → characteristics.game_state). Module-level `luck_chr`
-(side-effect bug — пересчитывался при импорте, прокачка удачи не учитывалась)
-заменён на функцию `current_luck(state)`.
-
-Legacy-вызов `Drop_Item.item_collect(self=None, hard=...)` поддерживается —
-state подтягивается через resolve. Удалить `state=None` shim после Phase 5.
+Все методы и `current_luck(state)` принимают state явно — `luck_chr` больше не
+кэшируется на уровне модуля (раньше был side-effect bug: фиксировался при импорте
+и не учитывал прокачку удачи).
 """
 
 from random import randint
@@ -24,24 +20,15 @@ drop_percent_item_s = 30
 drop_percent_item_s_ = 15  # s_ = s+ Grade
 
 
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    return state
-
-
-def current_luck(state: GameState = None) -> int:
+def current_luck(state: GameState) -> int:
     """Текущая удача = luck_skill (gym) + equipment + level. Pure (без побочных эффектов)."""
-    state = _resolve_state(state)
     return state.gym.luck_skill + equipment_luck_bonus(state) + state.char_level.skill_luck
 
 
 class Drop_Item:
     """Генерация случайного item после Adventure. Все методы статичны по сути."""
 
-    def one_item_random_grade(self, hard, state: GameState = None):
-        state = _resolve_state(state)
+    def one_item_random_grade(self, hard, state: GameState):
         luck = current_luck(state)
         if hard == 'walk_easy':
             i = randint(1, 100 - luck)
@@ -128,8 +115,7 @@ class Drop_Item:
         elif grade[0] == 's+grade':
             return 5
 
-    def item_type(self, state: GameState = None):
-        state = _resolve_state(state)
+    def item_type(self, state: GameState):
         luck = current_luck(state)
         ring = randint(1, 100 + luck)
         necklace = randint(1, 100 + luck)
@@ -157,8 +143,7 @@ class Drop_Item:
             return None
         return item_type
 
-    def characteristic_type(self, state: GameState = None):
-        state = _resolve_state(state)
+    def characteristic_type(self, state: GameState):
         luck = current_luck(state)
         stamina = randint(1, 100 + luck)
         energy_max = randint(1, 100 + luck)
@@ -175,8 +160,7 @@ class Drop_Item:
             return 'luck'
         return None
 
-    def item_quality(self, state: GameState = None):
-        state = _resolve_state(state)
+    def item_quality(self, state: GameState):
         return randint(20 + current_luck(state), 100)
 
     def item_price(self, grade, quality):
@@ -191,9 +175,8 @@ class Drop_Item:
         elif grade[0] == 's+grade':
             return round(quality[0] * 2.5)
 
-    def item_collect(self, hard, state: GameState = None):
+    def item_collect(self, hard, state: GameState):
         """Собирает item из подразделов. Если все поля валидны — кладёт в state.inventory."""
-        state = _resolve_state(state)
         item = {
             'item_name': [],
             'item_type': [],

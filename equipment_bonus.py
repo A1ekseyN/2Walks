@@ -1,12 +1,4 @@
-"""Бонусы от экипировки.
-
-Phase 3 задачи 1.1: функции принимают `state: GameState` и читают слоты экипировки
-из `state.equipment`. Module-level список снаряжения убран — он бьл побочным
-эффектом импорта и фиксировал ссылки на dict'ы в момент импорта.
-
-Backward compat: `state=None` → подтягивается `game_state` из characteristics.
-Удалить default после Phase 5 (когда все вызовы перейдут на explicit state).
-"""
+"""Бонусы от экипировки. Все функции читают слоты из state.equipment."""
 
 from state import GameState
 
@@ -17,19 +9,11 @@ def _equipment_slots(state: GameState):
     return [eq.head, eq.neck, eq.torso, eq.finger_01, eq.finger_02, eq.legs, eq.foots]
 
 
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    return state
-
-
-def equipment_bonus(state: GameState = None):
+def equipment_bonus(state: GameState):
     """Сумма бонусов всей экипировки по 4 характеристикам.
 
     Возвращает кортеж (stamina, energy_max, speed_skill, luck).
     """
-    state = _resolve_state(state)
     eq_stamina = 0
     eq_energy_max = 0
     eq_speed = 0
@@ -50,8 +34,7 @@ def equipment_bonus(state: GameState = None):
     return eq_stamina, eq_energy_max, eq_speed, eq_luck
 
 
-def equipment_stamina_bonus(state: GameState = None):
-    state = _resolve_state(state)
+def equipment_stamina_bonus(state: GameState):
     total = 0
     for item in _equipment_slots(state):
         if item is not None and item['characteristic'][0] == 'stamina':
@@ -59,8 +42,7 @@ def equipment_stamina_bonus(state: GameState = None):
     return total
 
 
-def equipment_energy_max_bonus(state: GameState = None):
-    state = _resolve_state(state)
+def equipment_energy_max_bonus(state: GameState):
     total = 0
     for item in _equipment_slots(state):
         if item is not None and item['characteristic'][0] == 'energy_max':
@@ -68,8 +50,7 @@ def equipment_energy_max_bonus(state: GameState = None):
     return total
 
 
-def equipment_speed_skill_bonus(state: GameState = None):
-    state = _resolve_state(state)
+def equipment_speed_skill_bonus(state: GameState):
     total = 0
     for item in _equipment_slots(state):
         if item is not None and item['characteristic'][0] == 'speed_skill':
@@ -77,8 +58,7 @@ def equipment_speed_skill_bonus(state: GameState = None):
     return total
 
 
-def equipment_luck_bonus(state: GameState = None):
-    state = _resolve_state(state)
+def equipment_luck_bonus(state: GameState):
     total = 0
     for item in _equipment_slots(state):
         if item is not None and item['characteristic'][0] == 'luck':

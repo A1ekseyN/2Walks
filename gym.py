@@ -1,13 +1,4 @@
-"""Gym — прокачка навыков. UI + старт/финализация тренировки.
-
-Phase 4 задачи 1.1: всё работает через `state: GameState` (default `state=None`
-→ characteristics.game_state). Module-level f-строки `lvl_up_*` / `description_*`
-(были stale при импорте, см. задачу 1.2) превращены в функции.
-
-Удалены: dead-code `start_training()` (модульный, никогда не вызывался),
-дублирующие display-методы Skill_Training (`stamina_skill_training` etc.),
-финальный `Skill = Skill_Training(...)` (никем не использовался).
-"""
+"""Gym — прокачка навыков. UI + старт/финализация тренировки."""
 
 from datetime import datetime
 from colorama import Fore, Style
@@ -21,13 +12,6 @@ from bonus import apply_move_optimization_gym
 from inventory import Wear_Equipped_Items
 from actions import try_spend, start_training as actions_start_training
 from state import GameState
-
-
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    return state
 
 
 # ----- Чистые helper-функции расчёта (тестируются напрямую) -----
@@ -70,7 +54,6 @@ def format_lvl_up_info(state: GameState, skill_name: str) -> str:
     Заменяет 8 stale module-level f-строк lvl_up_* — теперь вычисляется в
     момент отображения, видит актуальный state.
     """
-    state = _resolve_state(state)
     cost = _training_cost(state, skill_name)
     return (
         f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(cost["steps"], state):,.0f}{Style.RESET_ALL} / '
@@ -80,9 +63,8 @@ def format_lvl_up_info(state: GameState, skill_name: str) -> str:
     )
 
 
-def get_lvl_up_info(skill_name, level, state: GameState = None):
+def get_lvl_up_info(skill_name, level, state: GameState):
     """Описание стоимости конкретного уровня навыка (используется в меню)."""
-    state = _resolve_state(state)
     cost = skill_training_table[level]
     return (
         f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(cost["steps"], state):,.0f}{Style.RESET_ALL} / '
@@ -138,9 +120,8 @@ _SKILL_DESCRIPTIONS = {
 }
 
 
-def display_skill_description(skill_name, state: GameState = None):
+def display_skill_description(skill_name, state: GameState):
     """Печатает описание навыка + стоимость прокачки до следующего уровня."""
-    state = _resolve_state(state)
     if skill_name not in _SKILL_DESCRIPTIONS:
         return
     title, attr_name, body = _SKILL_DESCRIPTIONS[skill_name]
@@ -156,8 +137,7 @@ def display_skill_description(skill_name, state: GameState = None):
 
 # ----- Меню Gym -----
 
-def gym_menu(state: GameState = None):
-    state = _resolve_state(state)
+def gym_menu(state: GameState):
     print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
 
     if state.training.active:
@@ -216,9 +196,8 @@ def gym_menu(state: GameState = None):
         gym_menu(state)
 
 
-def skill_training_check_done(state: GameState = None):
+def skill_training_check_done(state: GameState):
     """Финализатор тренировки — если таймер истёк, повышает уровень навыка и чистит сессию."""
-    state = _resolve_state(state)
     if debug_mode and not state.training.active:
         print('\nНавыки не изучаются.')
 
@@ -243,8 +222,8 @@ def skill_training_check_done(state: GameState = None):
 class Skill_Training:
     """Прокачка навыка в Gym — проверка ресурсов, старт сессии."""
 
-    def __init__(self, state: GameState = None, name: str = None):
-        self._state = _resolve_state(state)
+    def __init__(self, state: GameState, name: str = None):
+        self._state = state
         self.name = name
 
     def check_requirements(self) -> bool:

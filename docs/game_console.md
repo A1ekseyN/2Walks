@@ -26,36 +26,37 @@ python game.py
 
 Порядок выполнения опирается на то, что Python исполняет код модулей при первом импорте. Важно помнить: **значительная часть "инициализации игры" — это побочные эффекты импорта `characteristics.py`**, а не вызов функции `game()`.
 
-1. `game.py:158` выводит `Version: 0.2.0a` и переключает codepage.
-2. Вызывается `game()` (`game.py:19`).
-3. Первое, что делает `game()` — импортирует из `characteristics` всё через `from characteristics import *` (`game.py:9`). На этом импорте происходит:
-   - `characteristics.py:101` — `load_data_from_google_sheet_or_csv()` пытается скачать сейв с Google Sheets (`google_sheets_db.py:51`), при неудаче читает `characteristic.csv`.
-   - `characteristics.py:107` — строится основной словарь `char_characteristic` из загруженных полей и текущего `timestamp()`.
-   - `steps_today` берётся из загруженного сейва (через `steps_today()` в `characteristics.py:12`). Сетевые запросы для шагов отсутствуют — поле обновляется только командой `+` или сбрасывается в 0 при смене даты.
-   - `characteristics.py:204-206` дописывают к `energy_max` бонусы от экипировки, навыков и уровня.
-4. Создаётся объект `Adventure(adventure_data_table)` (`game.py:24`) — нужен для меню приключений и предвычисленных бонусов.
-5. Определяется внутренняя функция `location_selection()` (`game.py:26`). Главный цикл игры — именно она, не `game()`.
-6. Проверяется `char_characteristic['loc']` из сохранения (`game.py:131`) и вызывается соответствующая локация (`home_location`, `gym_location`, `work_location`, `adventure_location`, ...), после чего запускается `location_selection()`.
+1. `game.py` выводит `Version: 0.2.0` и переключает codepage.
+2. Вызывается `game()`.
+3. На импортах модулей происходит:
+   - `characteristics.py` — `load_data_from_google_sheet_or_csv()` пытается скачать сейв с Google Sheets, при неудаче читает `characteristic.csv`.
+   - Из загруженного flat-dict собирается `game_state = GameState.from_dict(...)`. `timestamp_last_enter`, `loc='home'`, `steps.used` пересчитываются по сейву; к `energy_max` дописываются бонусы экипировки/навыков/уровня.
+   - `game_state` экспортируется из `characteristics.py` — все остальные модули принимают его как явный параметр.
+4. Создаётся `Adventure(adventure_data_table, state=game_state)` — нужен для меню приключений и предвычисленных бонусов с учётом текущей прокачки.
+5. Определяется внутренняя функция `location_selection()`. Главный цикл игры — именно она, не `game()`.
+6. Проверяется `game_state.loc` из сохранения и вызывается соответствующая локация (`home_location(state)`, `gym_location(state)`, `work_location(state)`, `adventure_location(adventure_instance)`, ...), после чего запускается `location_selection()`.
 
-### Глобальное состояние `char_characteristic`
+### Игровое состояние: `GameState`
 
-Весь игровой процесс держится на одном общем словаре — `characteristics.char_characteristic`. Его импортируют напрямую почти все модули; мутация поля в одном модуле мгновенно видна во всех остальных.
+Весь игровой процесс держится на одной структуре — `state.GameState` (dataclass с nested подклассами). Живой instance — `game_state`, экспортирован из `characteristics.py`. Каждая функция геймплея принимает `state: GameState` явно. Мутация поля в одном модуле мгновенно видна во всех — все держат ссылку на тот же `game_state`.
 
-Ключевые группы полей:
+Группы полей и их адреса в state:
 
-| Группа | Поля |
+| Группа | Поле в state |
 |---|---|
-| Идентификатор дня и шаги | `date_last_enter`, `timestamp_last_enter`, `steps_today`, `steps_can_use`, `steps_today_used`, `steps_yesterday`, `steps_daily_bonus`, `steps_total_used` |
-| Уровень и очки | `char_level`, `char_level_up_skills`, `lvl_up_skill_stamina`, `lvl_up_skill_energy_max`, `lvl_up_skill_speed`, `lvl_up_skill_luck` |
-| Ресурсы | `energy`, `energy_max`, `energy_time_stamp`, `money` |
-| Прокачиваемые навыки (Gym) | `stamina`, `energy_max_skill`, `speed_skill`, `luck_skill`, `neatness_in_using_things`, `move_optimization_adventure`, `move_optimization_gym`, `move_optimization_work` |
-| Текущая тренировка | `skill_training`, `skill_training_name`, `skill_training_timestamp`, `skill_training_time_end` |
-| Работа | `work`, `work_salary`, `working`, `working_hours`, `working_start`, `working_end` |
-| Приключение | `adventure`, `adventure_name`, `adventure_start_timestamp`, `adventure_end_timestamp` + 7 счётчиков `adventure_walk_*_counter` |
-| Инвентарь и экипировка | `inventory` (список словарей), `equipment_head`, `equipment_neck`, `equipment_torso`, `equipment_finger_01`, `equipment_finger_02`, `equipment_legs`, `equipment_foots` |
-| Локация | `loc` (`home` / `gym` / `shop` / `work` / `adventure` / `garage` / `auto_dialer` / `bank`) |
+| Идентификатор дня и шаги | `state.date_last_enter`, `state.timestamp_last_enter`, `state.steps.{today,used,yesterday,total_used,can_use,daily_bonus}` |
+| Уровень и очки | `state.char_level.{level,up_skills,skill_stamina,skill_energy_max,skill_speed,skill_luck}` |
+| Ресурсы | `state.energy`, `state.energy_max`, `state.energy_time_stamp`, `state.money` |
+| Прокачиваемые навыки (Gym) | `state.gym.{stamina,energy_max_skill,speed_skill,luck_skill,neatness_in_using_things,move_optimization_adventure,move_optimization_gym,move_optimization_work,mechanics,it_technologies}` |
+| Текущая тренировка | `state.training.{active,skill_name,timestamp,time_end}` |
+| Работа | `state.work.{work_type,active,hours,salary,start,end}` |
+| Приключение | `state.adventure.{active,name,start_ts,end_ts}` + `state.adventure.counters` (dict с 7 ключами `walk_easy/walk_normal/.../walk_30k`) |
+| Инвентарь и экипировка | `state.inventory` (список словарей-предметов), `state.equipment.{head,neck,torso,finger_01,finger_02,legs,foots}` |
+| Локация | `state.loc` (`home` / `gym` / `shop` / `work` / `adventure` / `garage` / `auto_dialer` / `bank`) |
 
-При добавлении нового поля его нужно сохранить в трёх местах: `characteristic.csv`, `characteristic.txt` и Google Sheets (см. раздел "Сохранение и загрузка").
+CSV / JSON / Google Sheets хранят flat-формат с прежними ключами; конвертация в обе стороны через `GameState.from_dict()` / `state.to_dict()`. При добавлении нового поля обнови оба маппинга.
+
+Историческая справка: до версии 0.2.0 это был один module-level dict `char_characteristic`. Удалён при завершении задачи 1.1; в старых коммитах/доках имя ещё встречается.
 
 ---
 
@@ -85,15 +86,15 @@ python game.py
 | `1` | 🏠 Домой (заглушка — `home_location()` только печатает текст) |
 | `2` | 🏋️ Спортзал — `gym_location()` → `gym_menu()` |
 | `3` | 🛒 Магазин (в тестовом режиме) — `shop_location()` → `Shop.shop_menu()` |
-| `4` | 🏭 Работа — `work_location()` → `Work(char_characteristic).work_choice()` |
+| `4` | 🏭 Работа — `work_location(state)` → `Work(state).work_choice()` |
 | `5` | 🗺️ Приключение — `adventure_location(adventure_instance)` → `adventure_menu()` |
 | `+` | Ручной ввод количества шагов (`steps_today_manual_entry()`) — перезаписывает `steps_today` максимумом из текущего и введённого |
 | `m` / `ь` | Раздел "Меню" (заглушка) |
 | `i` / `ш` | `inventory_menu()` — просмотр/продажа инвентаря |
 | `e` / `у` | `Equipment.equipment_view()` — просмотр экипировки |
 | `c` / `с` | `char_info()` — подробные характеристики |
-| `u` / `г` | `CharLevel(char_characteristic).menu_skill_point_allocation()` — распределение очков навыков |
-| `l` / `д` | Загрузка сейва из Google Sheets (обновляет `char_characteristic` через `.update()`) |
+| `u` / `г` | `CharLevel(state).menu_skill_point_allocation()` — распределение очков навыков |
+| `l` / `д` | Загрузка сейва из Google Sheets (обновляет `game_state` in-place через `update_from_dict()`) |
 | `s` / `ы` | Сохранение в CSV + Google Sheets |
 | `q` / `й` | Сохранение и выход (`sys.exit()`) |
 | любое другое | Сообщение "Неизвестная команда. Попробуй ещё раз." |
@@ -102,20 +103,19 @@ python game.py
 
 Диспатч построен на словаре `COMMANDS: dict[str, Callable]` (`game.py:60-85`) + helper `enter_location(loc, enter_fn, can_reopen, call_map_on_switch)` (`game.py:31-40`), инкапсулирующий логику смены локации. Каждый вызов — `COMMANDS.get(user_input, unknown_command)()`.
 
-### 2.3 Смена локации и `char_characteristic['loc']`
+### 2.3 Смена локации и `state.loc`
 
-Когда игрок впервые выбирает локацию отличную от текущей, `loc` обновляется, а затем вызывается `location_change_map()` (`functions.py:291`). Сейчас эта функция заглушка (без трат), но проектировалась как "стоимость перехода между локациями". Повторный вход в ту же локацию `loc` не меняет — это используется для Gym и Work (при повторном выборе сразу открывается меню, без стартового текста).
+Когда игрок впервые выбирает локацию отличную от текущей, `state.loc` обновляется, а затем вызывается `location_change_map(state)`. Сейчас эта функция заглушка (без трат), но проектировалась как "стоимость перехода между локациями". Повторный вход в ту же локацию не меняет `state.loc` — это используется для Gym и Work (при повторном выборе сразу открывается меню, без стартового текста).
 
 Логика живёт в helper-функции `enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True)`:
 
 ```python
 def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
-    current = char_characteristic['loc']
-    if current != loc:
-        char_characteristic['loc'] = loc
+    if game_state.loc != loc:
+        game_state.loc = loc
         enter_fn()
         if call_map_on_switch:
-            location_change_map()
+            location_change_map(game_state)
     elif can_reopen:
         enter_fn()
 ```

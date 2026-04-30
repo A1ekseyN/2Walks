@@ -1,8 +1,4 @@
-"""Adventure — приключения, проверка таймера, дроп предметов.
-
-Phase 4 задачи 1.1: всё через `state: GameState` (default `state=None` →
-characteristics.game_state).
-"""
+"""Adventure — приключения, проверка таймера, дроп предметов."""
 
 from datetime import datetime
 from colorama import Fore, Style
@@ -17,13 +13,6 @@ from bonus import apply_move_optimization_adventure
 from inventory import Wear_Equipped_Items
 from actions import try_spend, start_adventure as actions_start_adventure
 from state import GameState
-
-
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    return state
 
 
 # Маппинг adventure_name → ключ adventure.counters в state.
@@ -41,10 +30,8 @@ _ADV_COUNTER_KEYS = {
 class Adventure:
     """Приключения: меню, выбор, старт, финализация."""
 
-    def __init__(self, adventure_data_table, state: GameState = None):
-        # state в __init__ опционален — на момент инициализации (game.py) state
-        # ещё может быть незавершённо собран. Методы внутри resolve'ят сами.
-        self._state = _resolve_state(state)
+    def __init__(self, adventure_data_table, state: GameState):
+        self._state = state
         self.adventure_data_table = adventure_data_table
         self.adventures = {
             '1': {'name': 'walk_easy', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_easy']), self._state)},
@@ -66,12 +53,11 @@ class Adventure:
     def adventure_check_done(self, state: GameState = None):
         """Финализатор приключения по таймеру: дроп + инкремент счётчика + clear.
 
-        Поддерживает legacy-вызов `Adventure.adventure_check_done(self=None)` —
-        тогда state берётся через resolve (game_state). Иначе из self._state.
+        Поддерживает legacy-вызов `Adventure.adventure_check_done(self=None, state=state)` —
+        в этом случае state приходит явно. Иначе берётся из self._state.
         """
         if state is None and self is not None:
             state = self._state
-        state = _resolve_state(state)
         if not state.adventure.active:
             return
 
@@ -79,7 +65,7 @@ class Adventure:
             print('\n🗺 Приключение пройдено. 🗺')
             adv_name = state.adventure.name
             if adv_name in _ADV_COUNTER_KEYS:
-                Drop_Item.item_collect(self=None, hard=adv_name)
+                Drop_Item.item_collect(self=None, hard=adv_name, state=state)
                 counter_key = _ADV_COUNTER_KEYS[adv_name]
                 state.adventure.counters[counter_key] = state.adventure.counters.get(counter_key, 0) + 1
 

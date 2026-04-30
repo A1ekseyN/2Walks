@@ -7,10 +7,7 @@ from colorama import init
 
 from characteristics import (
     game_state,
-    char_characteristic,
     save_characteristic,
-    skill_training_table,
-    get_energy_training_data,
 )
 from adventure import Adventure
 from adventure_data import adventure_data_table
@@ -76,8 +73,9 @@ def game():
                 sys.exit()
 
             def load_from_cloud():
-                # Proxy.update() пишет в существующий GameState — все импортёры видят новые данные.
-                char_characteristic.update(load_char_characteristic_from_google_sheet())
+                # update_from_dict мутирует существующий game_state — все импортёры,
+                # удерживающие ссылку, видят новые данные без rebind.
+                game_state.update_from_dict(load_char_characteristic_from_google_sheet())
 
             def unknown_command():
                 print('\nНеизвестная команда. Попробуй ещё раз.')
@@ -171,7 +169,7 @@ def game():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.2.0a")
+    print(f"Version: 0.2.0b")
     os.system("chcp 65001")
     init()
 

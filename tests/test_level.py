@@ -93,14 +93,3 @@ def test_progress_bar_lvl_up_message_when_no_points():
     assert cl.progress_bar_lvl_up_message() == ""
 
 
-def test_proxy_backward_compat():
-    """Legacy callers могут передать CharCharacteristicProxy — должен извлечь state."""
-    from state import CharCharacteristicProxy
-    state = GameState.default_new_game()
-    state.steps.total_used = 30000
-    state.char_level.level = 2
-    proxy = CharCharacteristicProxy(state)
-
-    cl = CharLevel(proxy)
-    assert cl.total_used_steps == 30000
-    assert cl.level == 2

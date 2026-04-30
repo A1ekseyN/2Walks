@@ -32,15 +32,6 @@ def test_work_init_uses_state_for_move_optimization():
     assert w.work_requirements['factory']['steps'] == 250
 
 
-def test_work_init_accepts_proxy_via_resolve():
-    """Legacy locations.py:54 вызывает Work(char_characteristic) — proxy."""
-    from state import CharCharacteristicProxy
-    state = GameState.default_new_game()
-    proxy = CharCharacteristicProxy(state)
-    w = Work(proxy)
-    assert w._state is state
-
-
 # ----- Work.check_requirements -----
 
 def test_check_requirements_starts_work_session():

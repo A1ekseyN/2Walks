@@ -1,9 +1,7 @@
 """Управление экипировкой персонажа — отображение слотов, надевание / снятие.
 
-Phase 4 задачи 1.1: методы принимают `state: GameState` (default `state=None`
-→ fallback на characteristics.game_state). Чистая логика (`_equip_from_inventory`,
-`_unequip`) выделена для тестируемости — UI-обёртки в Equipment.* остаются
-с input/print.
+Чистая логика (`_equip_from_inventory`, `_unequip`) выделена для тестируемости —
+UI-обёртки в Equipment.* остаются с input/print.
 """
 
 from inventory import inventory_view
@@ -20,13 +18,6 @@ _SLOT_ATTR = {
     'equipment_legs': 'legs',
     'equipment_foots': 'foots',
 }
-
-
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    return state
 
 
 # ----- Чистая логика -----
@@ -65,8 +56,7 @@ class Equipment:
     """Отображение и смена экипировки. Все методы фактически статические — `self`
     в них не используется (вызовы передают `self=None`)."""
 
-    def equipment_view(self, state: GameState = None):
-        state = _resolve_state(state)
+    def equipment_view(self, state: GameState):
         eq = state.equipment
 
         print('\n--- 🎒 Экипировка персонажа 🎒 ---')
@@ -108,8 +98,7 @@ class Equipment:
         print('0. Назад')
         Equipment.equipment_change(self, state)
 
-    def equipment_change(self, state: GameState = None):
-        state = _resolve_state(state)
+    def equipment_change(self, state: GameState):
         ask = input('\nВыберите слот, в котором хотите заменить одежду или экипировку: \n>>> ')
         slot_map = {
             '1': ('голова',           'helmet',   'equipment_head'),
@@ -127,8 +116,7 @@ class Equipment:
         else:
             Equipment.equipment_change(self, state)
 
-    def equipment_change_item_in_slot(self, item_name, item_type, item_slot, state: GameState = None):
-        state = _resolve_state(state)
+    def equipment_change_item_in_slot(self, item_name, item_type, item_slot, state: GameState):
         slot_attr = _SLOT_ATTR[item_slot]
         cnt = 0
         list_cnt = []
@@ -159,8 +147,7 @@ class Equipment:
 
         Equipment.change_item_in_slot(self, item_name, item_type, item_slot, list_cnt, state)
 
-    def change_item_in_slot(self, item_name, item_type, item_slot, list_cnt, state: GameState = None):
-        state = _resolve_state(state)
+    def change_item_in_slot(self, item_name, item_type, item_slot, list_cnt, state: GameState):
         slot_attr = _SLOT_ATTR[item_slot]
         try:
             index = int(input('\n>>> '))
@@ -193,7 +180,6 @@ class Equipment:
             print('\nПроизошла ошибка при выборе экипировки. Введите число.')
             Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
 
-    def inventory_view(self, state: GameState = None):
-        state = _resolve_state(state)
+    def inventory_view(self, state: GameState):
         print(f'\nВ инвентаре находится {len(state.inventory)} предметов: ')
         inventory_view(state)

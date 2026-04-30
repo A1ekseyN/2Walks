@@ -1,11 +1,5 @@
 """CharLevel — отображение и управление уровнем персонажа.
 
-Phase 3 задачи 1.1: класс читает/пишет через `GameState`. Backward compat:
-- `state=None` → подтягивается `game_state` из characteristics.
-- если передан `CharCharacteristicProxy` (legacy), извлекаем state через `_get_state()`.
-
-Удалить shim'ы после Phase 5 (когда все вызовы перейдут на explicit state).
-
 Имя `CharLevel` существует и в `state.py` (dataclass для nested-полей уровня) —
 коллизия не реальная, классы живут в разных модулях и не пересекаются по импортам.
 """
@@ -13,16 +7,6 @@ Phase 3 задачи 1.1: класс читает/пишет через `GameSta
 from colorama import Fore, Style
 
 from state import GameState
-
-
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    # Backward-compat: legacy callers могут передать proxy.
-    if hasattr(state, '_get_state'):
-        return state._get_state()
-    return state
 
 
 class CharLevel:
@@ -43,8 +27,8 @@ class CharLevel:
         11: 2500000,    # + 450к
     }
 
-    def __init__(self, state: GameState = None):
-        self._state = _resolve_state(state)
+    def __init__(self, state: GameState):
+        self._state = state
 
     @property
     def total_used_steps(self):
@@ -167,8 +151,9 @@ class CharLevel:
 
 
 if __name__ == "__main__":
+    from characteristics import game_state
     print()
-    char_level_view = CharLevel()
+    char_level_view = CharLevel(game_state)
     char_level_view.view_total_used_steps()
     char_level_view.view_char_level()
     char_level_view.level_status_bar()

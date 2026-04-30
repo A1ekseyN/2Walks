@@ -1,9 +1,4 @@
-"""Work — рабочая смена. Выбор вакансии, расчёт часов, финализация по таймеру.
-
-Phase 4 задачи 1.1: всё через `state: GameState` (default `state=None` →
-characteristics.game_state). Work() принимает state (или дефолт), а не legacy
-char_characteristic.
-"""
+"""Work — рабочая смена. Выбор вакансии, расчёт часов, финализация по таймеру."""
 
 from datetime import datetime, timedelta
 from colorama import Fore, Style
@@ -18,16 +13,6 @@ from actions import try_spend, start_work
 from state import GameState
 
 
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    # Legacy callers (locations.py) могут передать proxy.
-    if hasattr(state, '_get_state'):
-        return state._get_state()
-    return state
-
-
 def _speed_bonus_pct(state: GameState) -> int:
     """Сумма speed-бонусов в процентах: skill + equipment + level."""
     return state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed
@@ -36,8 +21,8 @@ def _speed_bonus_pct(state: GameState) -> int:
 class Work:
     """Класс для работы — UI выбора + старт сессии."""
 
-    def __init__(self, state=None):
-        self._state = _resolve_state(state)
+    def __init__(self, state: GameState):
+        self._state = state
         self.work_requirements = {
             'watchman': {'steps': apply_move_optimization_work(200, self._state), 'energy': 4, 'salary': 2},
             'factory': {'steps': apply_move_optimization_work(500, self._state), 'energy': 7, 'salary': 5},
@@ -169,10 +154,8 @@ class Work:
         return True
 
 
-def work_check_done(state: GameState = None):
+def work_check_done(state: GameState):
     """Финализатор работы по таймеру: начислить зарплату, обнулить смену, save."""
-    state = _resolve_state(state)
-
     if state.work.end is None:
         return state
 

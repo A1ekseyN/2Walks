@@ -107,7 +107,7 @@ def test_adventure_check_done_expired_drops_and_clears(monkeypatch, capsys):
     """По таймеру: дроп, инкремент counter, очистка сессии."""
     drops = []
     monkeypatch.setattr('adventure.Drop_Item.item_collect',
-                        lambda self, hard: drops.append(hard))
+                        lambda self, hard, state: drops.append(hard))
 
     state = GameState.default_new_game()
     state.adventure.active = True

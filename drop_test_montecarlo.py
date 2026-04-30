@@ -1,7 +1,6 @@
 """Monte-Carlo симулятор drop-механики (10 000 итераций × 6 сложностей).
 
-Phase 4 задачи 1.1 (commit 4): использует GameState. Standalone скрипт —
-запускается как `python drop_test_montecarlo.py`.
+Standalone скрипт — запускается как `python drop_test_montecarlo.py`.
 
 NB: внутренние формулы — упрощённый fork drop.py для измерения распределения
 по grade'ам (см. TASKS.md 3.2.1 для контекста). Не использовать для логики игры.
@@ -21,21 +20,12 @@ drop_percent_item_s = 30
 drop_percent_item_s_ = 20  # s_ = s+ Grade
 
 
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    return state
-
-
-def current_luck(state: GameState = None) -> int:
-    state = _resolve_state(state)
+def current_luck(state: GameState) -> int:
     return state.gym.luck_skill + equipment_luck_bonus(state) + state.char_level.skill_luck
 
 
 class Drop_Item:
-    def one_item_random_grade(self, hard, state: GameState = None):
-        state = _resolve_state(state)
+    def one_item_random_grade(self, hard, state: GameState):
         luck = current_luck(state)
         i = randint(1, 100 - luck)
         if i > drop_percent_gl:
@@ -95,15 +85,13 @@ class Drop_Item:
             'c-grade': 1, 'b-grade': 2, 'a-grade': 3, 's-grade': 4, 's+grade': 5,
         }.get(grade, 0)
 
-    def item_type(self, state: GameState = None):
-        state = _resolve_state(state)
+    def item_type(self, state: GameState):
         luck = current_luck(state)
         ring = randint(1, 100 + luck)
         necklace = randint(1, 100 + luck)
         return 'ring' if ring > necklace else 'necklace'
 
-    def characteristic_type(self, state: GameState = None):
-        state = _resolve_state(state)
+    def characteristic_type(self, state: GameState):
         luck = current_luck(state)
         return max(
             ('stamina', randint(1, 100 + luck)),
@@ -113,8 +101,7 @@ class Drop_Item:
             key=lambda x: x[1],
         )[0]
 
-    def item_quality(self, state: GameState = None):
-        state = _resolve_state(state)
+    def item_quality(self, state: GameState):
         return randint(20 + current_luck(state), 100)
 
     def item_price(self, grade, quality):
@@ -122,8 +109,7 @@ class Drop_Item:
             'c-grade': 0.5, 'b-grade': 1, 'a-grade': 1.5, 's-grade': 2, 's+grade': 2.5,
         }.get(grade, 0))
 
-    def item_collect(self, hard, state: GameState = None):
-        state = _resolve_state(state)
+    def item_collect(self, hard, state: GameState):
         item = {
             'item_name': '', 'item_type': '', 'grade': '',
             'characteristic': '', 'bonus': 0, 'quality': 0, 'price': 0,
@@ -148,8 +134,7 @@ class Drop_Item:
         return item
 
 
-def test_item_generation(state: GameState = None):
-    state = _resolve_state(state)
+def test_item_generation(state: GameState):
     difficulties = ['walk_easy', 'walk_normal', 'walk_hard', 'walk_15k', 'walk_25k', 'walk_30k']
     results = {d: {'total': 0, 'c-grade': 0, 'b-grade': 0, 'a-grade': 0,
                    's-grade': 0, 's+grade': 0, 'none': 0}
@@ -173,6 +158,6 @@ def test_item_generation(state: GameState = None):
 
 
 if __name__ == "__main__":
-    test_item_generation()
     from characteristics import game_state
+    test_item_generation(game_state)
     print(f"Luck: {current_luck(game_state)}")

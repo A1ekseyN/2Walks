@@ -1,35 +1,10 @@
 """Инвентарь — отображение, продажа, износ экипированных предметов.
 
-Phase 4 задачи 1.1: функции/классы принимают `state: GameState` (default
-`state=None` → fallback на characteristics.game_state). Чистая логика
-(`_sort_inventory`, `_sell_item_at_index`) выделена для тестируемости —
-UI-обёртки через `inventory_menu` / `sold_item` остаются с input/print.
-
-Module-level `Wear_Equipped_Items.equipped_items` (side-effect dict, забирал
-ссылки на экипировку при импорте) убран — экипировка читается из state в
-момент вызова. Это попутно закрывает часть задачи 1.2.
+Чистая логика (`_sort_inventory`, `_sell_item_at_index`) выделена для
+тестируемости — UI-обёртки `inventory_menu` / `sold_item` остаются с input/print.
 """
 
 from state import GameState
-
-
-# Слоты экипировки: атрибут в state.equipment ↔ legacy-ключ.
-_EQUIPMENT_SLOTS = (
-    ('head', 'equipment_head'),
-    ('neck', 'equipment_neck'),
-    ('torso', 'equipment_torso'),
-    ('finger_01', 'equipment_finger_01'),
-    ('finger_02', 'equipment_finger_02'),
-    ('legs', 'equipment_legs'),
-    ('foots', 'equipment_foots'),
-)
-
-
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    return state
 
 
 # ----- Чистая логика (тестируется напрямую) -----
@@ -64,8 +39,7 @@ def _sell_item_at_index(state: GameState, index: int):
 
 # ----- UI-обёртки -----
 
-def inventory_menu(state: GameState = None):
-    state = _resolve_state(state)
+def inventory_menu(state: GameState):
     print('\n--- 🎒 Меню инвентаря 🎒 ---'
           f'\nВсего в инвентаре - {len(state.inventory)} предметов: ')
     inventory_view(state)
@@ -82,9 +56,8 @@ def inventory_menu(state: GameState = None):
         inventory_menu(state)
 
 
-def inventory_view(state: GameState = None):
+def inventory_view(state: GameState):
     """Отображает содержимое инвентаря и возвращает отсортированный список."""
-    state = _resolve_state(state)
     sorted_inventory = _sort_inventory(state.inventory)
 
     if sorted_inventory:
@@ -103,8 +76,7 @@ def inventory_view(state: GameState = None):
     return sorted_inventory
 
 
-def sold_item(state: GameState = None):
-    state = _resolve_state(state)
+def sold_item(state: GameState):
     print('\n--- Продажа предметов из инвентаря: ---')
     print(f'Всего в инвентаре: {len(state.inventory)} предметов.')
     state.inventory = inventory_view(state)
@@ -159,8 +131,8 @@ class Wear_Equipped_Items:
     экипировка отражает актуальные слоты, а не зафиксированные в момент импорта.
     """
 
-    def __init__(self, state: GameState = None):
-        self._state = _resolve_state(state)
+    def __init__(self, state: GameState):
+        self._state = state
         self.max_durability = 10000000
         self.durability = self.max_durability
         self.neatness_factor = 1 - (self._state.gym.neatness_in_using_things / 100)

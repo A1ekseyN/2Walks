@@ -6,12 +6,7 @@ import ast
 
 from settings import debug_mode
 from google_sheets_db import load_char_characteristic_from_google_sheet
-from state import GameState, CharCharacteristicProxy
-
-
-# Шаги за сегодня — читаются из сейва. Источник обновления — ручной ввод (команда `+`).
-def steps_today():
-    return loaded_data_char_characteristic.get('steps_today', 0)
+from state import GameState
 
 
 def load_characteristic():
@@ -97,10 +92,9 @@ loaded_data_char_characteristic = load_data_from_google_sheet_or_csv()
 #print(f"loaded_data_char_characteristic: {loaded_data_char_characteristic}")
 
 
-# Phase 2 задачи 1.1: переход с module-level dict на GameState + backward-compat proxy.
-# Все легаси-модули продолжают делать `from characteristics import char_characteristic`
-# и обращаться к нему как к dict — proxy транслирует это в nested-поля GameState.
-# proxy будет удалён в Phase 5 после полной миграции.
+# Источник правды для игрового состояния — GameState (задача 1.1).
+# Импортируется как `from characteristics import game_state` всеми модулями,
+# которым нужен доступ. Загрузка через Google Sheets / CSV → from_dict.
 game_state = GameState.from_dict(loaded_data_char_characteristic)
 
 # Поведение, сохранённое от legacy-кода:
@@ -140,10 +134,6 @@ game_state.energy_max += (
     + game_state.steps.daily_bonus
     + game_state.char_level.skill_energy_max
 )
-
-# Backward-compat: legacy-модули обращаются к char_characteristic как к dict.
-char_characteristic = CharCharacteristicProxy(game_state)
-
 
 skill_training_table = {
     # Таблица стоимости изучения навыков.

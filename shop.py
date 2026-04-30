@@ -1,20 +1,12 @@
 """Shop — магазин: еда/напитки + одежда (тестовый режим).
 
-Phase 4 задачи 1.1 (commit 4): методы принимают `state: GameState` (default
-`state=None` → characteristics.game_state). Чистая логика покупки выделена
-в `_buy_item` для тестируемости — UI-методы Shop.shop_menu* остаются с input/print.
+Чистая логика покупки выделена в `_buy_item` для тестируемости — UI-методы
+Shop.shop_menu* остаются с input/print.
 """
 
 from colorama import Fore, Style
 
 from state import GameState
-
-
-def _resolve_state(state):
-    if state is None:
-        from characteristics import game_state
-        return game_state
-    return state
 
 
 def _money_line(state: GameState) -> str:
@@ -47,8 +39,7 @@ def _buy_item(state: GameState, item: dict, cost: int) -> bool:
 class Shop:
     """Магазин — UI-обёртка вокруг покупок."""
 
-    def shop_menu(self, state: GameState = None):
-        state = _resolve_state(state)
+    def shop_menu(self, state: GameState):
         money = _money_line(state)
         item = _empty_item()
 
@@ -71,8 +62,7 @@ class Shop:
         else:
             Shop.shop_menu(self, state=state)
 
-    def shop_menu_food_and_water(self, item, money, state: GameState = None):
-        state = _resolve_state(state)
+    def shop_menu_food_and_water(self, item, money, state: GameState):
         print('\nВы можете купить еду и другие расходные материалы.'
               f'\n{money}'
               '\n\t1. 🍔 Чизбургер (🔋: + 5) - 2 $.'
@@ -110,9 +100,7 @@ class Shop:
         else:
             Shop.shop_menu(self, state=state)
 
-    def shop_menu_clothes(self, item, money, state: GameState = None):
-        state = _resolve_state(state)
-
+    def shop_menu_clothes(self, item, money, state: GameState):
         def clothes_head(money):
             print('\nВ этом меню можно приобрести головной убор: '
                   f'\n{money}'
