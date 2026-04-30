@@ -12,71 +12,23 @@
 
 ## 1. Архитектура и рефакторинг
 
-### 1.1. Обернуть `char_characteristic` в класс `GameState` `[H / L / in-progress (Phase 1 in progress)]`
+### 1.1. Обернуть `char_characteristic` в класс `GameState` `[H / L / done (30.04.2026)]`
 
-Корневая задача, разблокирует почти все остальные.
+Корневая архитектурная задача — заменили module-level dict `char_characteristic` на типизированный `GameState` dataclass с nested подклассами. После завершения геймплейные функции принимают `state: GameState` явным параметром, тесты возможны без HTTP-импортов, веб-интерфейс (4.48) разблокирован.
 
-**Почему:**
-- Глобальный мутабельный dict делает невозможными тесты, несколько сейвов, undo-логику.
-- Баг "Adventure не видит прокачку" (`bugs.txt`) — прямое следствие.
-- Команда `l` (load from cloud) в `game.py:113` создаёт локальную копию, а не обновляет глобал — скрытый баг.
-- **Soft-blocker для 4.48 (Web Interface)** — без отделения логики от I/O FastAPI handler не может вызывать те же функции, что CLI.
-
-**Зафиксированные технические решения (29.04.2026):**
+**Зафиксированные технические решения (на которые опирается актуальная архитектура):**
 - **dataclass** (stdlib), не Pydantic. Конвертация в Pydantic — отдельной задачей позже для FastAPI.
 - **Nested структура** — связанные поля сгруппированы в подклассы: `StepsState`, `CharLevel`, `GymSkills`, `TrainingSession`, `WorkSession`, `AdventureSession`, `Equipment`.
-- **Переименование полей** — кривые имена (`lvl_up_skill_stamina`, `working_end`, `adventure_walk_15k_counter`) делаются осмысленными в коде. На границе load/save — explicit mapping в legacy save format.
-- **Items как dict пока** — задача 1.6 (Items as dataclass) делается отдельно после 1.1.
-- **Backward compat через proxy** во время миграции — `char_characteristic` остаётся работать через `__getitem__` proxy, удаляется в Phase 5.
-- **CSV save format не меняется** — `to_dict()` возвращает тот же flat dict с теми же ключами. Старые сейвы продолжают работать.
-- **Manual smoke testing** — после полной миграции (конец Phase 5), не после каждого модуля.
-- **Тесты по мере реализации** — pytest-тесты добавляются в каждой фазе.
-- **Версия после полной миграции — 0.2.0** (мажорная — большое архитектурное изменение).
-- **Helper функции** для не-тривиальных мутаций — в `actions.py` (создаётся в Phase 4).
-- **Имя файла** — `state.py` в корне (не `game/state.py`).
+- **Переименование полей** — кривые имена (`lvl_up_skill_stamina`, `working_end`, `adventure_walk_15k_counter`) сделаны осмысленными в коде. На границе load/save — explicit mapping в legacy save format (`from_dict` / `to_dict`).
+- **CSV / JSON / Sheets save format не менялся** — `to_dict()` возвращает тот же flat dict с прежними ключами; старые сейвы продолжают работать.
+- **Items как dict пока** — задача 1.6 (Items as dataclass) делается отдельно.
+- **Helper функции** для не-тривиальных мутаций — в `actions.py` (`try_spend`, `start_work`, `start_training`, `start_adventure`).
+- **Имя файла** — `state.py` в корне.
+- **Тесты** — pytest, 156 проходящих юнит-тестов покрывают все мигрированные модули + round-trip сейва.
 
-**План по фазам:**
+**Реализация по фазам:** 6 фаз, см. changelog `0.2.0..0.2.0b` (29-30.04.2026). Версия игры после Phase 5: `0.2.0b`.
 
-#### Phase 1 — Foundation `[in-progress, 29.04.2026]`
-- Создать `state.py` с dataclass'ами (GameState + 7 nested subclasses).
-- `from_dict(d)` — конструктор из legacy flat-формата (с маппингом старых ключей в nested-структуру).
-- `to_dict()` — обратная сериализация (preserves CSV save format).
-- `default_new_game()` — factory для нового персонажа.
-- Helper `_deser_datetime()` — толерантный к str/datetime/None.
-- `tests/test_state.py` с round-trip тестами.
-- Установить pytest, добавить в `requirements.txt`.
-- Существующий код **не трогаем** — параллельная структура.
-
-#### Phase 2 — Persistence Layer
-- `characteristics.py:load_data_from_google_sheet_or_csv()` → возвращает `GameState`.
-- `characteristics.py:save_characteristic()` → принимает `GameState` (через `to_dict`).
-- `google_sheets_db.py` — работает с `GameState`.
-- `state.py:CharCharacteristicProxy` — `__getitem__` / `__setitem__` для backward compat.
-- `characteristics.py:char_characteristic = CharCharacteristicProxy(state)` — все модули видят proxy.
-
-#### Phase 3 — Read Migration
-Модули с read-only обращениями: `bonus.py`, `skill_bonus.py`, `equipment_bonus.py`, `level.py`, `functions.py:status_bar` и helpers.
-Сигнатуры функций меняются на `f(state: GameState)`.
-
-#### Phase 4 — Write Migration
-Модули с мутациями (от простого к сложному): `functions.py` → `inventory.py`/`equipment.py` → `gym.py`/`work.py`/`adventure.py` → `shop.py` → `game.py`.
-Создаётся `actions.py` для не-тривиальных мутаций (`try_spend`, `start_work`, `start_training`, `start_adventure`).
-
-#### Phase 5 — Cleanup
-- Удалить `CharCharacteristicProxy`.
-- Удалить все `from characteristics import char_characteristic`.
-- Удалить все `global char_characteristic`.
-- Версия в `game.py` → `0.2.0`.
-- Manual smoke test.
-
-#### Phase 6 — Documentation
-- Обновить `CLAUDE.md` (раздел про state).
-- Обновить `docs/game_console.md`.
-- Пометить 1.1 как done. Разблокированные задачи (2.3, 4.9, 4.33, 4.48 etc.) — обновить статус.
-
-**Связанные файлы:** `characteristics.py:101-176`, все ~13 мест с `global char_characteristic`, все импорты `from characteristics import char_characteristic`.
-
-**Разблокирует:** 2.2.3, 2.3, 3.1, 4.9, 4.33, 4.46, 4.48 (полный web).
+**Разблокировано:** 2.2.3 (синк стампа при тратах), 2.3 (Adventure не видит прокачку — закрыто неявно), 3.1 (pytest setup — закрыто), 3.2.1 (luck как параметр Drop_Item — закрыто неявно), 4.9 (мульти-сейв), 4.33 (Reincarnation), 4.46 (Story Mode), 4.48 (Web Interface — все подзадачи).
 
 ---
 
@@ -306,24 +258,22 @@ class Item:
 
 Для полного закрытия бага из `bugs.txt` нужна 2.2.3 (sync стампа в местах трат).
 
-##### 2.2.3. Полный фикс "бесплатной энергии" — sync стампа при тратах `[M / M / blocked by 1.1]`
+##### 2.2.3. Полный фикс "бесплатной энергии" — sync стампа при тратах `[M / S / todo]`
 
-Скоуп: все места в коде, где тратится энергия. После каждого `char_characteristic['energy'] -= X` нужно добавить логику обновления `energy_time_stamp`.
+После завершения 1.1 ресурсы тратятся через `actions.try_spend(state, ...)` — единая точка для энергии. Внутри `try_spend` после `state.energy -= energy` добавить sync `state.energy_time_stamp` (если энергия была на максимуме — обновить к `now`, иначе оставить как есть, чтобы не убить накопленный частичный прогресс к +1).
 
-Места (по поиску `char_characteristic\['energy'\] -=`):
-- `gym.py` — тренировки навыков
-- `work.py` — начало и завершение смен
-- `adventure.py` — старт приключения
+Скоуп — один файл `actions.py`. Тестирование через `tests/test_actions.py`: после try_spend при ранее full-энергии `state.energy_time_stamp == now`; при не-full — стамп не сдвигается.
 
-Правильная семантика стампа после траты — отдельный design-вопрос (сбросить к `now` / оставить как есть / сдвинуть). Удобнее делать в рамках 1.1 (GameState), где энергия станет методом класса — один entry point для трат, одно место для инварианта.
+Правильная семантика — design-вопрос: сбросить к `now` (теряем накопленный прогресс к +1) / оставить (даёт небольшую "честную" подачу при сразу следующем тике) / сдвинуть на `interval - elapsed` (сложнее, но точнее). Решение принимается при реализации.
 
 ---
 
-### 2.3. Adventure-класс не видит прокачку во время сессии `[M / S / todo]`
+### 2.3. Adventure-класс не видит прокачку во время сессии `[M / S / done (30.04.2026)]`
 
-`self.adventures` фиксируется в `__init__`. Требует рестарта игры.
-
-**Фикс:** либо lazy-property `@property def adventures(self)`, либо пересчёт при каждом `adventure_menu()`. Правильное решение приходит после 1.1 (GameState).
+**Сделано в рамках 1.1 (Phase 4 commit 3):**
+- `Adventure.__init__` теперь принимает `state: GameState` и пересоздаётся в каждой итерации главного цикла (`game.py`) — так что `self.adventures` строится с актуальной прокачкой.
+- Заодно зафиксирован сопутствующий bug: `apply_move_optimization_adventure` мутировал словарь `adventure_data_table` in-place при каждом конструировании Adventure — значения сходились к 0 со временем. Теперь `Adventure.__init__` копирует записи через `dict(...)` перед применением.
+- Drop-сторона: `drop.py:luck_chr` (тоже фиксировался при импорте) заменён на `current_luck(state)` — Luck из Gym видна на следующем дропе без рестарта.
 
 ---
 
@@ -470,18 +420,20 @@ Steps 🏃: 0 / 2,296 (Bonus: Stamina + 0 / Equipment + 0 / Daily 0 / Level: 0. 
 
 ## 3. Тесты
 
-### 3.1. Настроить pytest + первые тесты `[H / M / todo]`
+### 3.1. Настроить pytest + первые тесты `[H / M / done (30.04.2026)]`
 
-Без тестов любой рефакторинг — рулетка.
+**Сделано в рамках 1.1:**
+- Pytest установлен (`requirements.txt`), сконфигурирован (`pytest.ini`).
+- `tests/` содержит 14 файлов, **156 проходящих юнит-тестов** — покрывают все мигрированные модули.
+- Закрыты пункты из исходного "минимального набора":
+  - **save_roundtrip** — `tests/test_state.py` (11 тестов: round-trip default, with-data, datetime-fields, partial-dict, inventory, equipment).
+  - **energy_charge_cap** — `tests/test_functions.py:test_energy_time_charge_clamps_to_max` + ещё 3 теста про регенерацию.
+  - **level_up_allocates_skill_points** — `tests/test_level.py:test_update_level_grants_skill_points`.
+- Не закрыто (мелкий полишинг):
+  - `test_adventure_unlock` — counter unlocks (3+ counter открывает следующий walk). Сейчас проверяется через UI smoke в `test_adventure.py`, но прямой ассерт на разблокировку не написан.
+  - `test_drop_deterministic` — детерминированный дроп с `random.seed(42)`. Сейчас в `test_drop.py` используется `monkeypatch.setattr('drop.randint', lambda a, b: ...)`, что эквивалентно по эффекту.
 
-**Минимальный набор:**
-- `test_save_roundtrip` — `state -> json -> state` идентично.
-- `test_adventure_unlock` — счётчики разблокируют следующий уровень.
-- `test_energy_charge_cap` — `energy_time_charge` не превышает `energy_max`.
-- `test_drop_deterministic` — с `random.seed(42)` дроп воспроизводимый.
-- `test_level_up_allocates_skill_points` — после lvl up появляются `char_level_up_skills`.
-
-Блокируется 1.1 (GameState) — без него тесты будут тянуть HTTP на импорте.
+Импорт тестов всё ещё триггерит Google Sheets через `characteristics.py` (~2 сек). Это закроется задачей **1.2** (lazy initialization).
 
 ---
 
@@ -507,32 +459,18 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 Эффект: импорты безопасны, кодобаза чище на ~860 строк. Внутренняя копия `Drop_Item` в симуляторе пока сохраняется — это чинится в 3.2.2 после рефакторинга drop.py (3.2.1).
 
-#### 3.2.1. `luck` как параметр `Drop_Item` (refactor drop.py) `[M / S / todo]`
+#### 3.2.1. `luck` как параметр `Drop_Item` (refactor drop.py) `[M / S / done (30.04.2026)]`
 
-Убрать module-level `luck_chr` в `drop.py:14`. Перевести в параметр:
+**Сделано в рамках 1.1 (Phase 4 commit 4):**
+- Module-level `luck_chr = ...` в `drop.py` удалён.
+- Вместо него — функция `current_luck(state)` (читает `state.gym.luck_skill + equipment_luck_bonus(state) + state.char_level.skill_luck`).
+- Все методы `Drop_Item` принимают `state: GameState` и зовут `current_luck(state)` в момент дропа.
+- Прокачка Luck в Gym теперь применяется на следующем дропе без рестарта.
+- Закрыто часть задачи **2.3** (Adventure не видит прокачку), часть **1.2** (module-level side-effects).
 
-```python
-class Drop_Item:
-    def __init__(self, luck=0):
-        self.luck = luck
-    
-    def one_item_random_grade(self, hard):
-        # ... randint(1, 100 - self.luck) везде вместо 100 - luck_chr
-```
+**Тесты:** `tests/test_drop.py:12` (`current_luck` formula); ещё 11 тестов покрывают отдельные методы Drop_Item с явным state.
 
-Обновить вызовы в `adventure.py:40+` — 7 мест с `Drop_Item.item_collect(self=None, hard=...)` заменить на `Drop_Item(luck=current_luck()).item_collect(hard=...)`. Функцию `current_luck()` завести в `drop.py` или пробросить из `bonus.py`:
-
-```python
-def current_luck():
-    return char_characteristic['luck_skill'] + equipment_luck_bonus() + char_characteristic['lvl_up_skill_luck']
-```
-
-**Эффект:**
-- Прокачка Luck в Gym применяется **сразу** на следующем дропе, без рестарта — закрывает часть задачи **2.3** (Adventure не видит прокачку).
-- Убирается один module-level side-effect — засчитывается в задачу **1.2**.
-- Разблокирует 3.2.2 (симулятор на реальном `Drop_Item`) и 4.19 (pity system).
-
-Ручная проверка: прокачать Luck через Gym, сходить в walk_easy, убедиться что новый Luck виден (через debug_mode в `drop.py` или руками в консоли).
+Подзадача **3.2.2** (симулятор на реальном Drop_Item) — теперь разблокирована и стала проще: `drop_test_montecarlo.py` уже использует ту же сигнатуру `state: GameState`, осталось только импортировать `Drop_Item` вместо локальной копии.
 
 #### 3.2.2. Симулятор использует реальный `Drop_Item` `[L / S / todo (blocked by 3.2.1)]`
 
@@ -644,9 +582,9 @@ def current_luck():
 
 ---
 
-### 4.9. Мульти-сейв `[M / M / blocked by 1.1]`
+### 4.9. Мульти-сейв `[M / M / todo]`
 
-Несколько персонажей в папке `saves/char_<name>.json`. Меню выбора при старте. Требует `GameState` (1.1).
+Несколько персонажей в папке `saves/char_<name>.json`. Меню выбора при старте. После 1.1 это вопрос: добавить выбор имени сейва в `characteristics.py:load_data_from_google_sheet_or_csv()` и в `save_characteristic()`, плюс CLI-меню при старте перед загрузкой `game_state`.
 
 ---
 
@@ -1189,7 +1127,7 @@ def current_luck():
 
 **Effort: L** — большая фича. Нужен UI, новая логика сохранения, тестирование баланса.
 
-**Зависимость:** **blocked by 1.1** (GameState) — реинкарнация = чистый перезапуск GameState с сохранением части полей. Сейчас при модульной архитектуре это будет хак.
+**Зависимость:** разблокировано после 1.1. Реализация: `actions.py:reincarnate(state)` — вызывает `GameState.default_new_game()` для тех полей, что сбрасываются, и сохраняет `prestige_level` + `meta_bonuses`. Чистый перезапуск GameState с whitelist'ом сохраняемых полей.
 
 ---
 
@@ -1592,7 +1530,7 @@ def current_luck():
 
 **Effort: L+** — это roadmap на месяцы.
 
-**Зависимость:** **blocked by 1.1** (GameState — нужна для отслеживания story progress / current chapter / expedition state). Связана с 4.42 (Locations), 4.40 (Equipment), 4.37 (Pets — собака как компаньон).
+**Зависимость:** разблокировано после 1.1. Story progress / current chapter / expedition state хранятся как новые nested-поля в `GameState` (например, `state.story.chapter`, `state.story.expedition` — отдельный dataclass). Связана с 4.42 (Locations), 4.40 (Equipment), 4.37 (Pets — собака как компаньон).
 
 ---
 
@@ -1650,14 +1588,14 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
   - Так же можно унести SPREADSHEET_ID и прочее в env, чтобы laptop и VPS не конфликтовали.
 
 **Зависимости:**
-- **1.1 GameState (минимальная версия)** — обязательна ДО action endpoints (4.48.3-4.48.6, 4.48.8). Минимальный 1.1: extract pure mutation functions без print/input. Полный 1.1 (полноценный класс) — отдельная сессия позже.
+- **1.1 GameState** — ✅ **сделано (30.04.2026, версия 0.2.0b)**. Action endpoints могут вызывать `actions.try_spend / start_work / start_training / start_adventure` напрямую — у них нет print/input, они работают с `state: GameState`.
 - **4.14 Sheets split** — желательно ДО 4.48 для разделения `game_state` и `steps_log` в источнике.
 
 **Замены / устаревания:**
 - **4.13 (Apps Script + iOS Shortcut)** — **deprecated by 4.48.2**. После работоспособности `/api/steps` — заменяет Apps Script, iOS Shortcut шлёт прямо в FastAPI.
 - **4.10 (Dashboard в Sheets)** — частично замещается 4.48.1.
 
-#### 4.48.0. Setup: FastAPI + deploy на VPS `[H / M / todo (blocked by 1.1)]`
+#### 4.48.0. Setup: FastAPI + deploy на VPS `[H / M / todo]`
 
 - FastAPI скелет с роутингом, Jinja2 templates, HTMX для динамики.
 - Интеграция с gspread (тот же service account, что у game.py).
@@ -1684,26 +1622,26 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
 - ⚡ **ЗАМЕНЯЕТ 4.13** — iOS Shortcut шлёт прямо сюда вместо Apps Script.
 - В MVP без auth (публичный POST). После 4.55 — добавить shared-secret или session.
 
-#### 4.48.3. Web: Adventure `[H / M / todo (blocked by 1.1, 4.48.1)]`
+#### 4.48.3. Web: Adventure `[H / M / todo (blocked by 4.48.1)]`
 
 - `GET /adventure` — список доступных прогулок + прогресс разблокировки (синергия с 4.34).
 - `POST /api/adventure/start` — старт прогулки + списание ресурсов.
 - Локальный countdown до завершения, прогресс-бар.
 - Auto-finalize при истечении таймера (детектится в polling, дроп показывается).
 
-#### 4.48.4. Web: Gym `[H / M / todo (blocked by 1.1, 4.48.1)]`
+#### 4.48.4. Web: Gym `[H / M / todo (blocked by 4.48.1)]`
 
 - `GET /gym` — таблица скиллов с ценами/требованиями.
 - `POST /api/gym/train` — старт обучения.
 - Локальный countdown до завершения тренировки.
 
-#### 4.48.5. Web: Work `[H / M / todo (blocked by 1.1, 4.48.1)]`
+#### 4.48.5. Web: Work `[H / M / todo (blocked by 4.48.1)]`
 
 - `GET /work` — выбор вакансии и часов.
 - `POST /api/work/start` — старт смены.
 - Прогресс смены, добавление часов через `POST /api/work/add_hours`.
 
-#### 4.48.6. Web: Inventory + Equipment `[M / M / todo (blocked by 1.1, 4.48.1)]`
+#### 4.48.6. Web: Inventory + Equipment `[M / M / todo (blocked by 4.48.1)]`
 
 - Просмотр инвентаря, продажа (`POST /api/inventory/sell`).
 - Equipment слоты, надевание/снятие (`POST /api/equipment/wear`, `/unwear`).
@@ -1713,7 +1651,7 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
 - После доделывания Shop в CLI (4.7).
 - Food / Clothes / Equipment / Sell — те же категории, что и в CLI.
 
-#### 4.48.8. Web: Level + skill point allocation `[M / S / todo (blocked by 1.1, 4.48.1)]`
+#### 4.48.8. Web: Level + skill point allocation `[M / S / todo (blocked by 4.48.1)]`
 
 - Меню распределения `char_level_up_skills`.
 
