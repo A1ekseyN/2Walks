@@ -35,6 +35,8 @@ python drop_test_montecarlo.py
 
 CLI и web — отдельные процессы, у каждого свой `game.state`. В MVP запускаем только что-то одно за раз; sync resolution CLI ↔ Web — задача 4.54.
 
+Подробная шпаргалка по локальному запуску (включая доступ с iPhone через домашнюю Wi-Fi) — [`docs/local_setup.md`](docs/local_setup.md).
+
 Pytest is the test framework (config in `pytest.ini`, tests in `tests/`). Run all tests with `.venv/bin/pytest tests/`. There is no linter or CI configured. `drop_test_montecarlo.py` is a standalone Monte-Carlo drop simulator.
 
 ## Architecture

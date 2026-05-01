@@ -26,9 +26,18 @@
         <p>Локация: {{ icon_loc or "" }} <strong>{{ state.loc.title() }}</strong></p>
     </hgroup>
 
+    {% if last_reload and not last_reload.ok %}
+    <article style="background: var(--pico-color-pumpkin-100, #fff3e0); border-left: 3px solid var(--pico-color-pumpkin-500, #d97706); padding: 0.5rem 0.75rem; margin-bottom: 1rem;">
+        <small>
+            ⚠️ Cloud sync failed at {{ last_reload.at.strftime('%H:%M:%S') }} — showing cached data.
+            {% if last_reload.error %}<br><em>{{ last_reload.error }}</em>{% endif %}
+        </small>
+    </article>
+    {% endif %}
+
     <div id="status-bar"
          hx-get="/status"
-         hx-trigger="every 15s"
+         hx-trigger="every 60s"
          hx-swap="innerHTML">
         {% include "_status_fragment.html" %}
     </div>

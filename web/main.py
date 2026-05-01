@@ -40,9 +40,10 @@ from functions import bonus_percentage, total_bonus_steps
 from level import CharLevel
 from locations import icon_loc
 from skill_bonus import stamina_skill_bonus_def
+from web.sync import get_last_reload, try_reload_state
 
 
-VERSION = "0.2.0f"
+VERSION = "0.2.0g"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -113,6 +114,8 @@ def _dashboard_context(request: Request) -> dict:
         "version": VERSION,
         "state": state,
         "icon_loc": icon_loc(state),
+        # Last reload status — UI показывает badge при ok=False (4.54.0).
+        "last_reload": get_last_reload(),
         # Steps + bonuses
         "stamina_bonus_steps": stamina_skill_bonus_def(state),
         "equipment_stamina_steps": equipment_bonus_stamina_steps(state),
@@ -160,7 +163,13 @@ async def healthz():
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    """Главная страница — read-only dashboard."""
+    """Главная страница — read-only dashboard.
+
+    На каждом GET / (заход / F5 / pull-to-refresh) подтягиваем свежий state
+    из Sheets через `try_reload_state()`. При сетевой ошибке оставляем
+    кэшированный state — UI покажет badge на основе `last_reload.ok` (4.54.0).
+    """
+    try_reload_state()
     context = _dashboard_context(request)
     # Новый сигнатура Starlette 1.0+: TemplateResponse(request, name, context).
     return templates.TemplateResponse(request, "dashboard.html", context)
@@ -168,7 +177,11 @@ async def dashboard(request: Request):
 
 @app.get("/status", response_class=HTMLResponse)
 async def status_fragment(request: Request):
-    """HTML-фрагмент для HTMX-полинга (каждые 15 сек). Тот же контент, без
-    обёртки с <html>, чтобы HTMX мог подставить через innerHTML."""
+    """HTML-фрагмент для HTMX-полинга (каждые 60 сек). Тот же контент, без
+    обёртки с <html>, чтобы HTMX мог подставить через innerHTML.
+
+    НЕ зовёт `try_reload_state()` — рендерит из памяти. Это сохраняет дешёвый
+    polling: 1 заход в Sheets на F5, 0 заходов на каждый автообновление (4.54.0).
+    """
     context = _dashboard_context(request)
     return templates.TemplateResponse(request, "_status_fragment.html", context)

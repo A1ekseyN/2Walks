@@ -1,18 +1,40 @@
-"""Тесты FastAPI скелета и dashboard (задачи 4.48.0 + 4.48.1).
+"""Тесты FastAPI скелета и dashboard (задачи 4.48.0 + 4.48.1 + 4.54.0).
 
 Используется ``fastapi.testclient.TestClient`` — он автоматически вызывает
 lifespan на входе/выходе из контекста. Перед TestClient мы инициализируем
 ``game.state`` через ``init_game_state(GameState.default_new_game())``;
 повторный вызов в lifespan — no-op (idempotent), Sheets не дёргается.
+
+Auto-fixture ``patch_sheets_load`` мокает ``GameStateRepo.load`` для всех
+тестов в этом файле — чтобы `GET /` (который через 4.54.0 делает reload)
+не ходил в реальный Sheets.
 """
 
 from datetime import datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from characteristics import game, init_game_state
 from state import GameState
+from web import sync as web_sync
 from web.main import VERSION, app
+
+
+@pytest.fixture(autouse=True)
+def patch_sheets_load(monkeypatch):
+    """Мокает GameStateRepo.load — возвращает текущий state.to_dict() (no-op
+    reload). Тесты, которые хотят assert call count или симулировать ошибку,
+    переопределяют patch внутри тела теста."""
+    from google_sheets_db import GameStateRepo
+
+    def fake_load(self):
+        return game.state.to_dict() if game.state is not None else {}
+
+    monkeypatch.setattr(GameStateRepo, "load", fake_load)
+    # Сброс кэша last_reload между тестами — чтобы badge от предыдущих
+    # тестов не протекал в текущий.
+    web_sync._reset_for_tests()
 
 
 def _setup_state(state=None):
@@ -81,7 +103,7 @@ def test_dashboard_includes_htmx_polling_attributes():
         response = client.get("/")
     body = response.text
     assert 'hx-get="/status"' in body
-    assert 'hx-trigger="every 15s"' in body
+    assert 'hx-trigger="every 60s"' in body
 
 
 def test_dashboard_loads_pico_and_htmx_cdn():
@@ -394,6 +416,95 @@ def test_no_active_session_renders_no_progress_bars():
     body = response.text
     # Прогресс-бары секции "Активные сессии" не рендерятся (Level прогресс — только обычный прогресс-бар).
     assert "data-progress-start-ts=" not in body
+
+
+# ----- Sync (task 4.54.0) -----
+
+def test_get_root_triggers_sheets_reload(monkeypatch):
+    """GET / должен дёргать GameStateRepo.load() (свежие данные из Sheets)."""
+    from google_sheets_db import GameStateRepo
+    calls = []
+
+    def counting_load(self):
+        calls.append(1)
+        return game.state.to_dict() if game.state else {}
+
+    monkeypatch.setattr(GameStateRepo, "load", counting_load)
+    _setup_state()
+
+    with TestClient(app) as client:
+        client.get("/")
+
+    assert len(calls) == 1
+
+
+def test_get_status_does_not_trigger_sheets_reload(monkeypatch):
+    """GET /status (HTMX-полинг) — НЕ дёргает Sheets, рендерит из памяти."""
+    from google_sheets_db import GameStateRepo
+    calls = []
+
+    def counting_load(self):
+        calls.append(1)
+        return game.state.to_dict() if game.state else {}
+
+    monkeypatch.setattr(GameStateRepo, "load", counting_load)
+    _setup_state()
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    assert calls == []
+
+
+def test_get_root_with_sheets_error_returns_200_and_shows_badge(monkeypatch):
+    """Сетевая ошибка во время reload — возвращаем 200 + кэшированный state + badge."""
+    from google_sheets_db import GameStateRepo
+
+    def failing_load(self):
+        raise RuntimeError("Network down")
+
+    monkeypatch.setattr(GameStateRepo, "load", failing_load)
+    _setup_state()
+
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "Cloud sync failed" in body
+    assert "Network down" in body
+    # state остался кэшированным — основной контент рендерится.
+    assert "Stats" in body
+
+
+def test_dashboard_no_badge_when_reload_succeeds():
+    """Успешный reload — badge не должен показываться."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    assert "Cloud sync failed" not in body
+
+
+def test_status_fragment_does_not_show_reload_badge():
+    """Badge показывается только в полной странице (dashboard), не в HTMX-фрагменте."""
+    _setup_state()
+    with TestClient(app) as client:
+        # Сначала вызвать reload, чтобы last_reload был заполнен (даже успешный).
+        client.get("/")
+        response = client.get("/status")
+    # Fragment не содержит badge даже после reload.
+    assert "Cloud sync failed" not in response.text
+
+
+def test_dashboard_polling_interval_is_60_seconds():
+    """HTMX polling интервал должен быть 60s (4.54.0), не 15s."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    assert 'hx-trigger="every 60s"' in body
+    assert 'hx-trigger="every 15s"' not in body
 
 
 # ----- Section ordering -----
