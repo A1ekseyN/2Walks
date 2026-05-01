@@ -151,9 +151,10 @@ class CharLevel:
 
 
 if __name__ == "__main__":
-    from characteristics import game_state
+    from characteristics import init_game_state
     print()
-    char_level_view = CharLevel(game_state)
+    state = init_game_state()
+    char_level_view = CharLevel(state)
     char_level_view.view_total_used_steps()
     char_level_view.view_char_level()
     char_level_view.level_status_bar()

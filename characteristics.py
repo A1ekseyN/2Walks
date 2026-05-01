@@ -1,5 +1,6 @@
 import time
 from datetime import datetime
+from typing import Optional
 import csv
 import json
 import ast
@@ -7,6 +8,83 @@ import ast
 from settings import debug_mode
 from google_sheets_db import load_char_characteristic_from_google_sheet
 from state import GameState
+
+
+# ----------------------------------------------------------------------------
+# State container (задача 1.2 — убрать побочные эффекты импорта).
+#
+# Вместо module-level `game_state = ...` (который грузил Sheets при импорте)
+# держим контейнер `game` с атрибутом `state`. Атрибут заполняется через
+# `init_game_state()`, которую CLI вызывает в начале `__main__`, а FastAPI
+# (когда появится) — в startup hook.
+#
+# Все callers получают живую ссылку через `from characteristics import game`
+# и обращаются как `game.state.<field>` — без проблемы "from import None".
+# ----------------------------------------------------------------------------
+
+
+class _GameContainer:
+    """Контейнер для активного `GameState`. Один игрок = один state.
+
+    Расширение до multi-user (задача 4.53) — заменить `state` на `states[user_id]`.
+    """
+    state: Optional[GameState] = None
+
+
+game = _GameContainer()
+
+
+def init_game_state(state: Optional[GameState] = None) -> GameState:
+    """Идемпотентная инициализация игрового состояния.
+
+    Вызывается в начале `__main__` (CLI) или из FastAPI startup hook.
+    Если state передан — используется как есть (для тестов/инжекта). Иначе
+    подгружается из Google Sheets / CSV и применяются post-load fixups.
+
+    Возвращает заполненный `game.state`.
+    """
+    if game.state is not None:
+        return game.state
+
+    if state is not None:
+        game.state = state
+        return game.state
+
+    loaded = load_data_from_google_sheet_or_csv()
+    s = GameState.from_dict(loaded)
+
+    # Legacy fixups, которые делались на module-level до 1.2:
+    # - timestamp_last_enter всегда обновляется до текущего момента при загрузке.
+    # - loc всегда сбрасывается в 'home' (загруженное значение игнорируется).
+    # - energy_max начинается с 50, потом добавляются бонусы.
+    # NB: дубликат date-check через save.txt убран — единая точка проверки
+    # дня живёт в functions.save_game_date_last_enter() и срабатывает на первом
+    # тике main loop. Полное удаление save.txt — задача 2.1.
+    s.timestamp_last_enter = datetime.now().timestamp()
+    s.loc = 'home'
+    s.energy_max = 50  # сброс перед добавлением бонусов
+    s.energy_max += (
+        s.gym.energy_max_skill
+        + _equipment_energy_max_bonus(s)
+        + s.steps.daily_bonus
+        + s.char_level.skill_energy_max
+    )
+
+    game.state = s
+    return game.state
+
+
+def _equipment_energy_max_bonus(s: GameState) -> int:
+    """Бонус Energy Max от экипировки. Дубликат `equipment_energy_max_bonus`
+    из equipment_bonus.py — оставлен здесь, чтобы характеристики не зависели
+    от bonus-модулей при инициализации (избегаем циклов импорта)."""
+    bonus = 0
+    for item in (s.equipment.head, s.equipment.neck, s.equipment.torso,
+                 s.equipment.finger_01, s.equipment.finger_02,
+                 s.equipment.legs, s.equipment.foots):
+        if item is not None and item['characteristic'][0] == 'energy_max':
+            bonus += item['bonus'][0]
+    return bonus
 
 
 def load_characteristic():
@@ -47,33 +125,14 @@ def load_characteristic():
     return char_characteristic
 
 
-def date_check_steps_today_used():
-    # Функция проверки последнего входа в игру.
-    # Если дата последнего входа в игру не сегодня - обнуление счётчика steps_today_used
-    date_today_check = open('save.txt', 'r')
-    last_enter_date = date_today_check.read()
-    now_date = datetime.now().date()
-    if str(now_date) != last_enter_date:
-        return 0
-    elif str(now_date) == last_enter_date:
-        return load_characteristic()['steps_today_used']
-
-
 def load_data_from_google_sheet_or_csv():
-    """
-    Сначала пытается загрузить данные из Google Sheets.
-    Если это не удастся или данные пусты, загружает данные из CSV файла.
-
-    :return: Словарь данных.
-    """
+    """Сначала пытается загрузить данные из Google Sheets, при неудаче — CSV."""
     try:
-        # Попытка загрузить данные из Google Sheets
         loaded_data_char_characteristic = load_char_characteristic_from_google_sheet()
 
         if loaded_data_char_characteristic:
             return loaded_data_char_characteristic
         else:
-            # Если Google Sheets пуст, загружаем данные из CSV
             print("Google Sheets пуст. Загружаем данные из CSV файла.")
             loaded_data_char_characteristic = load_characteristic()
             print("Loaded Data from CSV.")
@@ -81,59 +140,9 @@ def load_data_from_google_sheet_or_csv():
 
     except Exception as error:
         print(f"Ошибка при загрузке данных из Google Sheets: {error}. Загружаем данные из CSV файла.")
-        # В случае ошибки загрузки из Google Sheets, загружаем данные из CSV файла
         loaded_data_char_characteristic = load_characteristic()
         print("Loaded Data from CSV.")
         return loaded_data_char_characteristic
-
-
-# Загружаем данные из Google Sheets / CSV (legacy flat-dict).
-loaded_data_char_characteristic = load_data_from_google_sheet_or_csv()
-#print(f"loaded_data_char_characteristic: {loaded_data_char_characteristic}")
-
-
-# Источник правды для игрового состояния — GameState (задача 1.1).
-# Импортируется как `from characteristics import game_state` всеми модулями,
-# которым нужен доступ. Загрузка через Google Sheets / CSV → from_dict.
-game_state = GameState.from_dict(loaded_data_char_characteristic)
-
-# Поведение, сохранённое от legacy-кода:
-# - timestamp_last_enter всегда обновляется до текущего момента при загрузке.
-# - loc всегда сбрасывается в 'home' (загруженное значение игнорируется).
-# - steps_today_used пересчитывается через date_check_steps_today_used() (зависит от save.txt).
-# - energy_max начинается с 50, потом добавляются бонусы (см. ниже).
-game_state.timestamp_last_enter = datetime.now().timestamp()
-game_state.loc = 'home'
-game_state.steps.used = date_check_steps_today_used()
-game_state.energy_max = 50  # сброс перед добавлением бонусов
-
-# Список слотов экипировки (для расчёта бонуса energy_max ниже).
-equipment_list = [
-    game_state.equipment.head, game_state.equipment.neck,
-    game_state.equipment.torso, game_state.equipment.finger_01,
-    game_state.equipment.finger_02, game_state.equipment.legs,
-    game_state.equipment.foots,
-]
-
-
-def equipment_energy_max_bonus_for_char_characteristics():
-    # Бонус Energy Max. Функция для вычисления бонуса экипировки.
-    # Архитектурно неверно реализованное решение — рефакторинг отложен (см. equipment_bonus.py).
-    bonus = 0
-    for item in equipment_list:
-        if item is not None:
-            if item['characteristic'][0] == 'energy_max':
-                bonus += item['bonus'][0]
-    return bonus
-
-
-# Просчёт Energy Max в зависимости от навыков, скиллов, уровня.
-game_state.energy_max += (
-    game_state.gym.energy_max_skill
-    + equipment_energy_max_bonus_for_char_characteristics()
-    + game_state.steps.daily_bonus
-    + game_state.char_level.skill_energy_max
-)
 
 skill_training_table = {
     # Таблица стоимости изучения навыков.
@@ -386,9 +395,9 @@ def json_serial(obj):
 
 def save_characteristic():
     """Записывает характеристики в файл в формате JSON и CSV."""
-    # Phase 2 задачи 1.1: source of truth — game_state, не proxy.
-    # to_dict() даёт legacy flat-формат, совместимый с прежней структурой CSV/JSON.
-    state_dict = game_state.to_dict()
+    if game.state is None:
+        raise RuntimeError("game.state не инициализирован — вызови init_game_state() до save_characteristic().")
+    state_dict = game.state.to_dict()
     if debug_mode:
         print(f'Сохраняем данные: {state_dict}')
     try:

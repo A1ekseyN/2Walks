@@ -32,17 +32,27 @@
 
 ---
 
-### 1.2. Убрать побочные эффекты из module-level кода `[H / M / todo]`
+### 1.2. Убрать побочные эффекты из module-level кода `[H / M / done (01.05.2026)]`
 
-**Почему:**
-- `import characteristics` -> HTTP в Google Sheets. Импорт не должен ходить в сеть.
-- `drop.py:12` фиксирует `luck_chr` при импорте -> прокачка удачи не влияет на дроп.
-- `gym.py:12-46` строит f-строки `lvl_up_*` при импорте -> меню Gym показывает устаревшие цены.
+**Сделано:**
+- **drop.py:** module-level `luck_chr` (фиксировался при импорте, не учитывал прокачку удачи) → функция `current_luck(state)`, вызываемая в момент дропа. Сделано в Phase 4 commit 4 (1.1).
+- **gym.py:** 8 stale module-level f-строк `lvl_up_*` / `description_*` → функции `format_lvl_up_info(state, skill)` и `display_skill_description(skill, state)`, вычисляемые в момент рендера меню. Сделано в Phase 4 commit 3 (1.1).
+- **equipment_bonus.py:** module-level `equipment_list` (захватывал ссылки на dict экипировки при импорте) → функция `_equipment_slots(state)`. Сделано в Phase 3 (1.1).
+- **skill_bonus.py:** module-level `stamina_skill_bonus = stamina_skill_bonus_def()` (считал бонус один раз при импорте на ещё не прогретом state) → удалён, был мёртвым импортом. Сделано в Phase 3 (1.1).
+- **inventory.py:** module-level `Wear_Equipped_Items.equipped_items` (захватывал слоты при импорте) → метод `_slots(state)`, вызываемый при создании экземпляра. Сделано в Phase 4 commit 2 (1.1).
+- **characteristics.py:** последний и самый большой источник — `import characteristics` ходил в Google Sheets при загрузке (`load_data_from_google_sheet_or_csv()` на module-level). Закрыто 01.05.2026:
+  - Module-level `game_state = ...` заменён на container `game = _GameContainer()` с атрибутом `state: Optional[GameState] = None`.
+  - Загрузка вынесена в `init_game_state()` функцию (idempotent), которую CLI вызывает в начале `__main__`. FastAPI (когда появится) — в startup hook.
+  - Дубликат date-check (`date_check_steps_today_used()` через save.txt при импорте) удалён — единая точка проверки дня живёт в `functions.save_game_date_last_enter()` на первом тике main loop.
+  - Все callers (`game.py`, `level.py:__main__`, `drop_test_montecarlo.py:__main__`, `save_characteristic`) переключены с `from characteristics import game_state` на `from characteristics import game; game.state.<field>`.
+  - Полное удаление `save.txt` остаётся в задаче **2.1**.
 
-**Как подступиться:**
-- Инициализацию состояния перенести в `game()` / `main()`.
-- `luck_chr` -> функция `current_luck(state)`, вызываемая в момент дропа.
-- `lvl_up_stamina` и ко. в `gym.py` — превратить в функции `format_skill_cost(state, skill_name)`.
+**Эффект:**
+- Импорт `characteristics` больше не делает сетевых вызовов. Тесты теперь стартуют ~1 сек вместо ~5 сек (×5 ускорение).
+- FastAPI (4.48) разблокирован: uvicorn `--reload` не перезагружает Sheets каждый раз; startup hook чисто инициализирует state; можно сделать выбор сейва "при логине".
+- Архитектурный путь к multi-user (4.53) — расширить container до `game.states[user_id]`.
+
+**Тесты:** `tests/test_characteristics.py` — 7 тестов (контейнер, idempotent init, live reference через container, energy_max bonus helper).
 
 ---
 
@@ -217,9 +227,11 @@ class Item:
 
 ### 2.1. "Новый день — можно использовать вчерашние шаги, если не сохранить" `[H / S / todo]`
 
-**Диагноз (исторический):** `save.txt` пишется в `save_game_date_last_enter()` (`functions.py:106`), и он же читался в `api.steps_today_update()` (модуль `api.py` удалён в 4.16). После удаления Fitness API гонка через `save.txt` ушла, но логика "новый день / тот же день" всё ещё опирается на сравнение даты в файле — потенциальные edge-cases при ручном вводе остались.
+**Диагноз (исторический):** `save.txt` пишется в `save_game_date_last_enter()` (`functions.py`), и он же читался в `api.steps_today_update()` (модуль `api.py` удалён в 4.16). После удаления Fitness API гонка через `save.txt` ушла, но логика "новый день / тот же день" всё ещё опирается на сравнение даты в файле — потенциальные edge-cases при ручном вводе остались.
 
-**Фикс:** флаг "сегодняшние шаги уже забраны" хранить в `GameState`, а не в текстовом файле. `save.txt` убрать.
+**Прогресс (после 1.2, 01.05.2026):** дубликат проверки даты при импорте `characteristics.py` (через `date_check_steps_today_used()`) удалён. Теперь единая точка проверки — `save_game_date_last_enter(state)` на первом тике main loop, где источник правды для "тот же день / новый день" — `state.date_last_enter` из сейва. Файл `save.txt` ещё пишется в момент смены дня (legacy-tracking), но НЕ читается логикой игры.
+
+**Финальный фикс (что осталось):** убрать запись в `save.txt` из `save_game_date_last_enter` (теперь она избыточна), удалить файл из репозитория и `.gitignore` (если он там).
 
 ---
 
@@ -1768,6 +1780,8 @@ class Deposit:
 ---
 
 ### 4.53. Multi-user support `[H / L+ / todo (отложено)]`
+
+**Архитектурная подсказка после 1.2 (01.05.2026):** в `characteristics.py` уже есть container `game = _GameContainer()` с атрибутом `state`. Расширение до multi-user — заменить `state` на `states: dict[str, GameState]`, добавить `init_game_state(user_id, state=None)`, в FastAPI handlers резолвить `user_id` из session/JWT.
 
 User accounts, регистрация, логин. Per-user state в Sheets (отдельные листы или columns) или миграция на БД (SQLite/Postgres).
 

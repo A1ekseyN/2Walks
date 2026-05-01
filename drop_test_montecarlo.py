@@ -158,6 +158,7 @@ def test_item_generation(state: GameState):
 
 
 if __name__ == "__main__":
-    from characteristics import game_state
-    test_item_generation(game_state)
-    print(f"Luck: {current_luck(game_state)}")
+    from characteristics import init_game_state
+    state = init_game_state()
+    test_item_generation(state)
+    print(f"Luck: {current_luck(state)}")

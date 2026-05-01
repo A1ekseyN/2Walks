@@ -6,21 +6,18 @@ import sys
 from colorama import init
 
 from characteristics import (
-    game_state,
+    game,
+    init_game_state,
     save_characteristic,
 )
 from adventure import Adventure
 from adventure_data import adventure_data_table
 from equipment import Equipment
 from functions import (
-    save_game_date_last_enter,
     char_info,
     location_change_map,
-    steps,
     steps_today_manual_entry,
     steps_today_set,
-    timestamp_now,
-    energy_timestamp,
     energy_time_charge,
     status_bar,
 )
@@ -32,7 +29,6 @@ from gym import skill_training_check_done
 from inventory import inventory_menu
 from level import CharLevel
 from locations import (
-    icon_loc,
     home_location,
     gym_location,
     shop_location,
@@ -42,23 +38,29 @@ from locations import (
     auto_dialer_location,
     bank_location,
 )
-from work import Work, work_check_done
+from work import work_check_done
 
 
-def game():
+def play():
+    """Главный игровой цикл. Требует, чтобы game.state был инициализирован
+    через init_game_state() — обычно из __main__."""
+    state = game.state
+    if state is None:
+        raise RuntimeError("game.state не инициализирован — вызови init_game_state() до play().")
+
     while True:
         # Adventure пересоздаётся каждый цикл, чтобы adventure_requirements увидели
         # актуальную прокачку move_optimization_adventure (см. TASKS.md 2.3).
-        adventure_instance = Adventure(adventure_data_table, state=game_state)
+        adventure_instance = Adventure(adventure_data_table, state=state)
 
         def location_selection():
             def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
                 """Смена локации: если уже там — молчим либо повторно показываем меню."""
-                if game_state.loc != loc:
-                    game_state.loc = loc
+                if state.loc != loc:
+                    state.loc = loc
                     enter_fn()
                     if call_map_on_switch:
-                        location_change_map(game_state)
+                        location_change_map(state)
                 elif can_reopen:
                     enter_fn()
 
@@ -73,33 +75,33 @@ def game():
                 sys.exit()
 
             def load_from_cloud():
-                # update_from_dict мутирует существующий game_state — все импортёры,
+                # update_from_dict мутирует существующий state — все импортёры,
                 # удерживающие ссылку, видят новые данные без rebind.
-                game_state.update_from_dict(load_char_characteristic_from_google_sheet())
+                state.update_from_dict(load_char_characteristic_from_google_sheet())
 
             def unknown_command():
                 print('\nНеизвестная команда. Попробуй ещё раз.')
 
             COMMANDS = {
                 # Локации
-                '1': lambda: enter_location('home', lambda: home_location(game_state)),
-                '2': lambda: enter_location('gym', lambda: gym_location(game_state), can_reopen=True),
-                '3': lambda: enter_location('shop', lambda: shop_location(game_state)),
-                '4': lambda: enter_location('work', lambda: work_location(game_state), can_reopen=True),
+                '1': lambda: enter_location('home', lambda: home_location(state)),
+                '2': lambda: enter_location('gym', lambda: gym_location(state), can_reopen=True),
+                '3': lambda: enter_location('shop', lambda: shop_location(state)),
+                '4': lambda: enter_location('work', lambda: work_location(state), can_reopen=True),
                 '5': lambda: enter_location('adventure',
                                             lambda: adventure_location(adventure_instance),
                                             call_map_on_switch=False),
-                '6': lambda: enter_location('garage', lambda: garage_location(game_state)),
-                '7': lambda: enter_location('auto_dialer', lambda: auto_dialer_location(game_state)),
-                '8': lambda: enter_location('bank', lambda: bank_location(game_state)),
+                '6': lambda: enter_location('garage', lambda: garage_location(state)),
+                '7': lambda: enter_location('auto_dialer', lambda: auto_dialer_location(state)),
+                '8': lambda: enter_location('bank', lambda: bank_location(state)),
                 # Шаги
-                '+': lambda: steps_today_manual_entry(game_state),
+                '+': lambda: steps_today_manual_entry(state),
                 # Меню персонажа
                 'm': lambda: print('\nРаздел "Меню" - (Пока не работает).'),
-                'i': lambda: inventory_menu(game_state),
-                'e': lambda: Equipment.equipment_view(self=None, state=game_state),
-                'c': lambda: char_info(game_state),
-                'u': lambda: CharLevel(game_state).menu_skill_point_allocation(),
+                'i': lambda: inventory_menu(state),
+                'e': lambda: Equipment.equipment_view(self=None, state=state),
+                'c': lambda: char_info(state),
+                'u': lambda: CharLevel(state).menu_skill_point_allocation(),
                 # Сохранение / загрузка
                 'l': load_from_cloud,
                 's': save_game_local_and_cloud,
@@ -115,11 +117,11 @@ def game():
                     COMMANDS[cyr] = COMMANDS[lat]
 
             while True:
-                energy_time_charge(game_state)
-                work_check_done(game_state)
-                skill_training_check_done(game_state)
+                energy_time_charge(state)
+                work_check_done(state)
+                skill_training_check_done(state)
 
-                status_bar(game_state)
+                status_bar(state)
 
                 print(f'Вы можете пройти в локацию:'
                       f'\n\t1. 🏠 Домой (Не работает)'
@@ -142,10 +144,10 @@ def game():
                 if temp_number.startswith('+') and temp_number != '+':
                     rest = temp_number[1:].strip()
                     if not rest:
-                        steps_today_manual_entry(game_state)
+                        steps_today_manual_entry(state)
                     else:
                         try:
-                            steps_today_set(int(rest), game_state)
+                            steps_today_set(int(rest), state)
                         except ValueError:
                             print('Неверный формат. Ожидается "+N", где N — целое число.')
                 else:
@@ -153,27 +155,29 @@ def game():
 
         # Запуск функции, которая относится к локациям.
         loc_dispatch = {
-            'home': lambda: home_location(game_state),
-            'gym': lambda: gym_location(game_state),
-            'shop': lambda: shop_location(game_state),
-            'work': lambda: work_location(game_state),
+            'home': lambda: home_location(state),
+            'gym': lambda: gym_location(state),
+            'shop': lambda: shop_location(state),
+            'work': lambda: work_location(state),
             'adventure': lambda: adventure_location(adventure_instance),
-            'garage': lambda: garage_location(game_state),
-            'auto_dialer': lambda: auto_dialer_location(game_state),
-            'bank': lambda: bank_location(game_state),
+            'garage': lambda: garage_location(state),
+            'auto_dialer': lambda: auto_dialer_location(state),
+            'bank': lambda: bank_location(state),
         }
-        loc_handler = loc_dispatch.get(game_state.loc)
+        loc_handler = loc_dispatch.get(state.loc)
         if loc_handler is not None:
             loc_handler()
             location_selection()
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.2.0b")
+    print(f"Version: 0.2.0c")
     os.system("chcp 65001")
     init()
 
+    init_game_state()  # Загрузка из Sheets / CSV — отложена с импорта (1.2).
+
     try:
-        game()
+        play()
     except (KeyboardInterrupt, EOFError):
         print('\n\nВыход без сохранения. Пока!')
