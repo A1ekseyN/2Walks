@@ -102,6 +102,16 @@ curl -X POST http://127.0.0.1:8008/api/steps \
 
 **Ввод через web-форму:** на dashboard'е кликни на блок `🏃 Steps` — раскроется форма с input. Введи актуальное число шагов с браслета, нажми "Применить".
 
+### Cross-channel input
+
+Шаги можно вводить параллельно через CLI (`+N`), web-форму или `POST /api/steps`. Все три источника пишут в `steps_log` лист в Sheets. При следующем старте CLI или F5 на dashboard'е — `apply_steps_log_max_merge()` (задача 4.15) подтянет максимум за сегодня. То есть:
+
+1. CLI стартанул в 10:00 с `today=872` (из game_state snapshot).
+2. Через web в 10:30 ввёл `1500` — записалось в steps_log, в памяти uvicorn state.steps.today = 1500.
+3. CLI exit + restart в 11:00 → `init_game_state()` загрузит game_state (872) + max-merge из steps_log (1500) → `today=1500`.
+
+Тот же сценарий для F5 в браузере — `try_reload_state()` тоже применяет max-merge.
+
 CLI и web — **отдельные процессы**, у каждого свой `game.state`. В MVP запускаем **что-то одно за раз**: иначе при `s` (сохранение) последний из них перезапишет данные в Sheets.
 
 ---

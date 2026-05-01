@@ -252,13 +252,18 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 - `GameStateRepo.save(state_dict)` — пишет flat-dict (от `state.to_dict()`) на лист `game_state`. Перед записью делает `clear()`, потом `update(rows)`.
 - `GameStateRepo.load() -> dict` — читает лист, восстанавливает типы (int/float/bool/None/list/dict/datetime), возвращает flat dict для `GameState.from_dict()` / `state.update_from_dict()`.
 - `StepsLogRepo.append(ts, steps, source, user_id='alex')` — добавляет одну строку в `steps_log` (через gspread `append_row`).
-- `StepsLogRepo.for_day(date_str, user_id='alex') -> list[dict]` — возвращает все записи за день для пользователя. Используется будущим max-merge (4.15).
+- `StepsLogRepo.for_day(date_str, user_id='alex') -> list[dict]` — возвращает все записи за день для пользователя.
+- **Max-merge (4.15)**: `characteristics.apply_steps_log_max_merge(state)` поднимает `state.steps.today` до максимума по записям лога за сегодня. Вызывается в `init_game_state()` (CLI start) и `web.sync.try_reload_state()` (web F5). Гарантирует, что ввод из любого канала (CLI / Web / API) виден на следующий старт даже если `game_state` snapshot ещё не обновлён.
 
 **Lazy singleton client:** `_get_client()` авторизует gspread один раз за процесс (вместо ~0.5 сек на каждый save/load). Все Repo-классы переиспользуют один client.
 
 **Migration:** при первом deploy на новое окружение — `python migrate_sheets.py` (idempotent: переименовывает `Sheet1`, создаёт `steps_log`).
 
-**Запись в `steps_log` идёт только при явном `s` / `q`** — не на каждый ввод `+N`. Это сохраняет offline-mode (можно ввести шаги, передумать и выйти без save). Для max-merge достаточно "одна актуальная строка за сессию".
+**Когда пишется `steps_log`:**
+- **CLI:** при явном `s` / `q` (Save / Save&Exit) — одна запись за сессию с актуальным `state.steps.today`. Сохраняет offline-mode (можно ввести шаги, передумать и выйти без save).
+- **Web / API:** на каждый успешный `POST /web/steps` или `POST /api/steps` — мгновенная запись в момент ввода.
+
+**Что делает max-merge при load:** игрок открывает CLI / делает F5 в браузере → загружается `game_state` snapshot + `apply_steps_log_max_merge` подтягивает максимум из `steps_log` за сегодня. Если CLI сохранился час назад с `today=872`, потом через web ввели `1500` — на следующем CLI start `state.steps.today` сразу будет `1500`, без необходимости сначала переоткрыть game_state в Sheets.
 
 ### 6.3 Команды игрока
 

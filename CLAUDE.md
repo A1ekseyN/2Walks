@@ -57,7 +57,7 @@ Saves are written to **all three** on save; loads prefer Google Sheets with CSV 
 2. `characteristic.txt` — JSON mirror, same `to_dict()` format.
 3. Google Sheets — two specialized worksheets in one spreadsheet (task 4.14, version 0.2.0d):
     - `game_state` — full state snapshot (Key/Value layout). Renamed from legacy `Sheet1`.
-    - `steps_log` — append-only log of step measurements (`ts | user_id | steps | source`). `ts` is Unix timestamp (`float`); `source` is `'manual'` (CLI) / `'auto'` (future iPhone Shortcut, currently отложено) / `'web'` (future POST /api/steps). Used by max-merge (task 4.15) and as the source of truth for cross-channel input (CLI / Web / API).
+    - `steps_log` — append-only log of step measurements (`ts | user_id | steps | source`). `ts` is Unix timestamp (`float`); `source` is `'manual'` (CLI), `'web'` (web form / `POST /api/steps`), `'auto'` (future iPhone Shortcut, currently отложено). Used by max-merge (`apply_steps_log_max_merge`, task 4.15) — applied on every load (CLI start + web reload) so any input channel reflects on next start, even if the `game_state` snapshot is stale.
 
    Access via `google_sheets_db.GameStateRepo` (save/load) and `StepsLogRepo` (append/for_day) classes. A lazy singleton `_get_client()` keeps one authorized gspread client per process. New deployments need a one-time `python migrate_sheets.py` to rename `Sheet1` and create `steps_log`.
 
@@ -67,7 +67,14 @@ When adding new fields to `GameState`, update both `from_dict` and `to_dict` so 
 
 ### Step-count input
 
-`state.steps.today` is set by manual entry only — the `+` command in the main menu invokes `steps_today_manual_entry(state)` (`functions.py`), which reads a number from the player and stores `max(current, entered)`. On date change (`save_game_date_last_enter(state)`), `today` and `used` reset to `0` so the new day starts fresh; the player re-enters the bracelet reading via `+`. `save.txt` holds the last-enter date used for the day-rollover check.
+`state.steps.today` is set by one of three input channels:
+1. **CLI**: `+N` command in main menu invokes `steps_today_manual_entry(state)` — `max(current, entered)`.
+2. **Web form**: clickable Steps row on dashboard → `POST /web/steps` (form-data) → `_apply_new_steps()`.
+3. **API**: `POST /api/steps` with JSON `{"steps": int}` — same helper, used by curl / future iPhone Shortcut.
+
+All three write a row to the `steps_log` Sheet; web/API additionally update `state.steps.today` in memory immediately. The `apply_steps_log_max_merge()` helper (task 4.15) runs on every load (CLI start via `init_game_state`, web reload via `web.sync.try_reload_state`) and bumps `state.steps.today` to the maximum of all log entries for today — so input from any channel becomes visible on next start even if the `game_state` snapshot in Sheets is stale.
+
+On date change (`save_game_date_last_enter(state)`), `today` and `used` reset to `0` so the new day starts fresh; the player re-enters the bracelet reading via any channel. `save.txt` holds the last-enter date used for the day-rollover check (legacy, removal tracked as task 2.1).
 
 ### Mutation helpers: `actions.py`
 

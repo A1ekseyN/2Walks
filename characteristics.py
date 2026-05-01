@@ -70,8 +70,45 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
         + s.char_level.skill_energy_max
     )
 
+    # Max-merge с steps_log (задача 4.15) — поднимает state.steps.today до
+    # максимума по записям лога за сегодня (web/iPhone/manual). Без этого CLI
+    # не увидит ввод через web, если game_state лист ещё не обновлён.
+    apply_steps_log_max_merge(s)
+
     game.state = s
     return game.state
+
+
+def apply_steps_log_max_merge(state: GameState) -> None:
+    """Поднимает `state.steps.today` до максимума по `steps_log` записям за
+    сегодня. Также пересчитывает `state.steps.can_use` если today изменился.
+
+    Используется после load (в init_game_state и web.sync.try_reload_state)
+    чтобы свежий ввод через любой канал (CLI / Web / iPhone) применялся
+    немедленно, независимо от того, обновлён ли `game_state` лист в Sheets.
+
+    Silent-fail при сетевой ошибке: если steps_log недоступен — оставляем
+    state как есть. Лучше показать чуть-старое значение, чем падать.
+    """
+    # Lazy imports — characteristics.py загружается до google_sheets_db в
+    # некоторых сценариях, а functions.py имеет циклическую зависимость.
+    from google_sheets_db import StepsLogRepo
+
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    try:
+        entries = StepsLogRepo().for_day(today_str)
+    except Exception:
+        return  # silent fail
+
+    if not entries:
+        return
+
+    max_in_log = max(e['steps'] for e in entries)
+    if max_in_log > state.steps.today:
+        state.steps.today = max_in_log
+        # Recompute can_use — lazy import чтобы избежать circular.
+        from functions import total_bonus_steps
+        state.steps.can_use = state.steps.today - state.steps.used + total_bonus_steps(state)
 
 
 def _equipment_energy_max_bonus(s: GameState) -> int:

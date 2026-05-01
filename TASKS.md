@@ -709,9 +709,17 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 ---
 
-### 4.15. Merge-стратегия шагов: `max(все записи за сегодня)` `[H / S / todo]`
+### 4.15. Merge-стратегия шагов: `max(все записи за сегодня)` `[H / S / done (01.05.2026)]`
 
-После 4.14 (01.05.2026) разблокировано — `StepsLogRepo.for_day(date, user_id)` уже возвращает все записи за день. Осталось вызвать его в подходящем месте main loop'а / API и применять `max(steps)` к `state.steps.today`.
+**Сделано:** `apply_steps_log_max_merge(state)` в `characteristics.py` поднимает `state.steps.today` до максимума по записям лога за сегодня + пересчитывает `state.steps.can_use` если today изменился. Silent-fail при сетевой ошибке (steps_log недоступен — оставляем как есть). Вызывается:
+- В `init_game_state()` после load — для CLI start.
+- В `web.sync.try_reload_state()` после load — для web F5 / pull-to-refresh.
+
+**Контекст:** до этого фикса 4.48.2 имела смущающий баг — web ввёл шаги 1500, переоткрыл страницу или CLI — и видел старое значение из `game_state` листа. Причина: `_apply_new_steps` пишет только в `steps_log`, не обновляя `game_state` snapshot. Без max-merge при load — никто не читал `steps_log`. Теперь любой канал ввода (CLI / Web / iPhone Shortcut) применяется немедленно при следующем старте/F5.
+
+**Тесты:** `tests/test_steps_max_merge.py` — 6 тестов (raises today, doesn't lower, picks max from multiple, empty log no-op, silent fail on Sheets error, recomputes can_use with bonuses).
+
+**Версия:** `0.2.0i`.
 
 Когда игра спрашивает "сколько шагов сегодня", читает все строки `steps_log` с `date(ts) == today` и `user_id == self` и возвращает **максимум** по полю `steps`.
 

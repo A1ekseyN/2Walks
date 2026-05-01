@@ -23,15 +23,20 @@ from web.main import VERSION, app
 
 @pytest.fixture(autouse=True)
 def patch_sheets_load(monkeypatch):
-    """Мокает GameStateRepo.load — возвращает текущий state.to_dict() (no-op
-    reload). Тесты, которые хотят assert call count или симулировать ошибку,
-    переопределяют patch внутри тела теста."""
-    from google_sheets_db import GameStateRepo
+    """Мокает GameStateRepo.load и StepsLogRepo.for_day — чтобы тесты не ходили
+    в реальный Sheets во время reload + max-merge (4.15). Тесты, которые хотят
+    assert call count или симулировать ошибку, переопределяют patch внутри тела
+    теста."""
+    from google_sheets_db import GameStateRepo, StepsLogRepo
 
     def fake_load(self):
         return game.state.to_dict() if game.state is not None else {}
 
+    def fake_for_day(self, date_str, user_id=None):
+        return []  # пустой лог = max-merge no-op
+
     monkeypatch.setattr(GameStateRepo, "load", fake_load)
+    monkeypatch.setattr(StepsLogRepo, "for_day", fake_for_day)
     # Сброс кэша last_reload между тестами — чтобы badge от предыдущих
     # тестов не протекал в текущий.
     web_sync._reset_for_tests()

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from characteristics import game
+from characteristics import apply_steps_log_max_merge, game
 from google_sheets_db import GameStateRepo
 
 
@@ -58,6 +58,10 @@ def try_reload_state() -> ReloadStatus:
     else:
         try:
             game.state.update_from_dict(GameStateRepo().load())
+            # Max-merge со steps_log (4.15) — применяем свежий ввод из любого
+            # канала (CLI / Web / iPhone), даже если game_state лист ещё не
+            # обновлён. Silent-fail внутри если steps_log недоступен.
+            apply_steps_log_max_merge(game.state)
             status = ReloadStatus(ok=True, at=datetime.now())
         except Exception as e:
             status = ReloadStatus(ok=False, at=datetime.now(), error=str(e))
