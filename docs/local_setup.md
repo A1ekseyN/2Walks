@@ -86,9 +86,21 @@ http://192.168.0.201:8008
 
 ### Endpoints
 
-- `GET /` — dashboard (статус, активные сессии, инвентарь, экипировка).
+- `GET /` — dashboard (статус, активные сессии, инвентарь, экипировка). При заходе/F5 подтягивает свежий state из Sheets.
 - `GET /healthz` — `{"status": "ok", "state_loaded": true, "version": "..."}`.
-- `GET /status` — HTML-фрагмент для HTMX-полинга (обновляется автоматически каждые 15 сек).
+- `GET /status` — HTML-фрагмент для HTMX-полинга (обновляется автоматически каждые 60 сек, не дёргает Sheets).
+- `POST /api/steps` (JSON) — ввод шагов через API. Body: `{"steps": int, "ts"?: float, "source"?: str}`. Применяет max-merge: значение должно быть строго больше текущего `state.steps.today`. Возвращает `{ok, applied, steps_today, steps_can_use, logged}` или 422/503 при ошибке.
+- `POST /web/steps` (form-data) — то же, но для HTMX-формы на dashboard'е. Возвращает HTML-фрагмент.
+
+**Пример curl для /api/steps:**
+
+```bash
+curl -X POST http://127.0.0.1:8008/api/steps \
+  -H "Content-Type: application/json" \
+  -d '{"steps": 12500}'
+```
+
+**Ввод через web-форму:** на dashboard'е кликни на блок `🏃 Steps` — раскроется форма с input. Введи актуальное число шагов с браслета, нажми "Применить".
 
 CLI и web — **отдельные процессы**, у каждого свой `game.state`. В MVP запускаем **что-то одно за раз**: иначе при `s` (сохранение) последний из них перезапишет данные в Sheets.
 

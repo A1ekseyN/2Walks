@@ -1715,12 +1715,36 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 - Live recalc `steps.can_use` при day rollover — отдельной задачей при необходимости.
 - Auth — задача 4.55.
 
-#### 4.48.2. POST /api/steps `[H / S / todo (blocked by 4.48.0)]`
+#### 4.48.2. POST /api/steps + web-форма ввода `[H / S / done (01.05.2026)]`
 
-- Эндпоинт принимает `{steps: int, ts?: ISO-8601}`.
-- Применяет `max(old, new)` к `steps_today`, пишет в Sheets.
-- ⚡ **ЗАМЕНЯЕТ 4.13** — iOS Shortcut шлёт прямо сюда вместо Apps Script.
-- В MVP без auth (публичный POST). После 4.55 — добавить shared-secret или session.
+**Цель:** ввод реальных шагов с браслета через любой канал — web-форма на dashboard, `curl`/iPhone Shortcut через API. Применяется `max(old, new)` к `state.steps.today` (max-merge) и пишется в `steps_log` Sheet.
+
+**Реализация (01.05.2026):**
+- **Два endpoint'а с общим helper:**
+  - `POST /api/steps` — JSON `{"steps": int, "ts"?: float, "source"?: str}`. Возвращает JSON `{ok, applied, steps_today, steps_can_use, logged}`. Универсально для curl / Shortcut.
+  - `POST /web/steps` — form-data `steps=N`. Возвращает HTML-фрагмент `_status_fragment.html` (HTMX swap `#status-bar`). Используется кликабельным блоком на dashboard.
+- **Применение к state (Variant ii):** `state.steps.today = N` + `state.steps.can_use = today - used + total_bonus_steps(state)` + `StepsLogRepo().append(ts, N, source)`. Instant memory update.
+- **Валидация:** `N > state.steps.today` (строго больше). Меньшее → 422 + сообщение. Client-side `<input min="today+1">` + server-side проверка для curl/Shortcut.
+- **Ошибка Sheets:** state НЕ обновляется, log не пишется, 503 + `{"ok": false, "error": "Sheets unavailable"}`. Без retry, без cache.
+- **UX (web):** клик на блок `🏃 Steps` (вся строка с цифрами + bonuses) → ниже expand inline-форма (input + Применить + Отмена). Pre-fill input пустой. Loading state — disabled + "Сохраняем..." на кнопке. После успеха форма закрывается (HTMX swap фрагмента, который рендерится без открытой формы).
+
+**Версия:** `0.2.0h`.
+
+**Тесты:**
+- `POST /api/steps` valid > today → 200 + applied=true + steps_log.append вызван.
+- `POST /api/steps` <= today → 422 + applied=false + state не изменён.
+- `POST /api/steps` non-int / negative → 422 от Pydantic.
+- `POST /api/steps` Sheets error → 503 + state не изменён.
+- `POST /web/steps` valid → 200 + HTML fragment с обновлёнными числами.
+- `POST /web/steps` invalid → 200 + HTML fragment с error message + form open.
+- HTML form с `<input min="N+1">` присутствует в dashboard.
+- Форма скрыта по умолчанию (CSS), показывается через JS toggle на клик.
+
+**Что НЕ делается в этой задаче:**
+- Авто-сохранение `game_state` в Sheets после применения шагов — задача на будущее (web Save button).
+- Силовой пересчёт day rollover — отдельный канал через `save_game_date_last_enter` остаётся для CLI.
+- iPhone Shortcut canonical интеграция — задача отложена (4.13). Endpoint работает с любым клиентом, но воспринимается как "ручной".
+- Авторизация — задача 4.55.
 
 #### 4.48.3. Web: Adventure `[H / M / todo (blocked by 4.48.1)]`
 

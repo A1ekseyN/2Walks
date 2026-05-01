@@ -507,6 +507,201 @@ def test_dashboard_polling_interval_is_60_seconds():
     assert 'hx-trigger="every 15s"' not in body
 
 
+# ----- Steps input (task 4.48.2) -----
+
+def test_api_steps_valid_value_applies_and_logs(monkeypatch):
+    from google_sheets_db import StepsLogRepo
+    appended = []
+    monkeypatch.setattr(StepsLogRepo, "append",
+                        lambda self, ts, steps, source, user_id="alex":
+                        appended.append((ts, steps, source)))
+
+    state = GameState.default_new_game()
+    state.steps.today = 1000
+    state.steps.used = 200
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/api/steps", json={"steps": 5000})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["applied"] is True
+    assert body["steps_today"] == 5000
+    assert state.steps.today == 5000
+    # can_use = today - used + bonuses; bonuses = 0 для default state.
+    assert state.steps.can_use == 5000 - 200
+    assert len(appended) == 1
+    assert appended[0][1] == 5000
+    assert appended[0][2] == "web"
+
+
+def test_api_steps_below_today_is_rejected_no_log(monkeypatch):
+    from google_sheets_db import StepsLogRepo
+    appended = []
+    monkeypatch.setattr(StepsLogRepo, "append",
+                        lambda self, ts, steps, source, user_id="alex":
+                        appended.append((ts, steps, source)))
+
+    state = GameState.default_new_game()
+    state.steps.today = 5000
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/api/steps", json={"steps": 4000})
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["applied"] is False
+    assert "должно быть больше" in body["error"]
+    assert state.steps.today == 5000  # state не изменён
+    assert appended == []  # log не вызван
+
+
+def test_api_steps_equal_to_today_is_rejected():
+    state = GameState.default_new_game()
+    state.steps.today = 5000
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/api/steps", json={"steps": 5000})
+
+    assert response.status_code == 422
+    assert state.steps.today == 5000
+
+
+def test_api_steps_negative_value_rejected_by_pydantic():
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.post("/api/steps", json={"steps": -1})
+    assert response.status_code == 422
+
+
+def test_api_steps_non_int_rejected():
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.post("/api/steps", json={"steps": "hello"})
+    assert response.status_code == 422
+
+
+def test_api_steps_sheets_error_returns_503_state_unchanged(monkeypatch):
+    from google_sheets_db import StepsLogRepo
+    def failing_append(self, ts, steps, source, user_id="alex"):
+        raise RuntimeError("Network down")
+    monkeypatch.setattr(StepsLogRepo, "append", failing_append)
+
+    state = GameState.default_new_game()
+    state.steps.today = 1000
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/api/steps", json={"steps": 5000})
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["ok"] is False
+    assert "Sheets unavailable" in body["error"]
+    assert state.steps.today == 1000  # state НЕ изменён при Sheets-ошибке
+
+
+def test_api_steps_with_explicit_ts_and_source(monkeypatch):
+    from google_sheets_db import StepsLogRepo
+    appended = []
+    monkeypatch.setattr(StepsLogRepo, "append",
+                        lambda self, ts, steps, source, user_id="alex":
+                        appended.append((ts, steps, source)))
+
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.post("/api/steps", json={
+            "steps": 7000,
+            "ts": 1746125425.5,
+            "source": "auto",
+        })
+
+    assert response.status_code == 200
+    assert appended[0] == (1746125425.5, 7000, "auto")
+
+
+# ----- /web/steps (HTML form) -----
+
+def test_web_steps_valid_returns_html_fragment_with_updated_value(monkeypatch):
+    from google_sheets_db import StepsLogRepo
+    monkeypatch.setattr(StepsLogRepo, "append",
+                        lambda self, ts, steps, source, user_id="alex": None)
+
+    state = GameState.default_new_game()
+    state.steps.today = 1000
+    state.steps.used = 0
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/web/steps", data={"steps": "8500"})
+
+    assert response.status_code == 200
+    body = response.text
+    # Fragment, не полная страница.
+    assert "<html" not in body.lower()
+    assert "Stats" in body
+    # Новый steps.today применён → can_use = 8500 - 0 = 8500.
+    assert "8,500" in body
+    # Форма закрыта (не form-visible).
+    assert 'class="form-visible"' not in body
+
+
+def test_web_steps_invalid_value_keeps_form_open_with_error_message(monkeypatch):
+    from google_sheets_db import StepsLogRepo
+    appended = []
+    monkeypatch.setattr(StepsLogRepo, "append",
+                        lambda self, ts, steps, source, user_id="alex":
+                        appended.append((ts, steps, source)))
+
+    state = GameState.default_new_game()
+    state.steps.today = 5000
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/web/steps", data={"steps": "3000"})
+
+    # Возвращаем 200 с ошибкой в теле — для HTMX swap.
+    assert response.status_code == 200
+    body = response.text
+    assert "должно быть больше" in body
+    # form-visible маркер есть.
+    assert "form-visible" in body
+    # Log не вызван.
+    assert appended == []
+
+
+def test_dashboard_includes_steps_form_with_min_attribute():
+    state = GameState.default_new_game()
+    state.steps.today = 1500
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    body = response.text
+    # Форма + клиентская валидация min=today+1.
+    assert 'name="steps"' in body
+    assert 'min="1501"' in body
+    assert 'hx-post="/web/steps"' in body
+    # Кнопка Применить и Отмена.
+    assert "Применить" in body
+    assert "Отмена" in body
+
+
+def test_dashboard_steps_form_hidden_by_default():
+    """form-visible класс отсутствует на свежем dashboard'е."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    # Класс form-visible отсутствует — форма скрыта (CSS hide).
+    assert 'class="form-visible"' not in body
+
+
 # ----- Section ordering -----
 
 def test_equipment_section_appears_before_inventory():

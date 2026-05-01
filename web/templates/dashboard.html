@@ -17,6 +17,14 @@
         .item-row { font-size: 0.9em; }
         .equipment-empty { color: var(--pico-muted-color); font-style: italic; }
         section { margin-bottom: 1.25rem; }
+
+        /* Steps inline form (4.48.2): toggle через JS, по клику на .steps-clickable. */
+        .steps-form-container { display: none; }
+        #steps-section.form-visible .steps-form-container { display: block; }
+
+        /* Loading state кнопки во время HTMX-запроса. */
+        .htmx-request .steps-btn-default { display: none !important; }
+        .htmx-request .steps-btn-loading { display: inline !important; }
     </style>
 </head>
 <body>
@@ -102,6 +110,23 @@
     setInterval(tickTimers, 1000);
     document.addEventListener("DOMContentLoaded", tickTimers);
     document.body.addEventListener("htmx:afterSwap", tickTimers);
+
+    /* Steps form toggle (4.48.2). Используем event delegation на body, чтобы
+       обработчики работали и после HTMX swap (фрагмент перерисовывается). */
+    document.body.addEventListener("click", (e) => {
+        // Клик на блок Steps → открыть/закрыть форму.
+        const clickable = e.target.closest("[data-toggle-steps]");
+        if (clickable) {
+            const section = clickable.closest("#steps-section");
+            if (section) section.classList.toggle("form-visible");
+            return;
+        }
+        // Клик на кнопку Отмена → закрыть форму.
+        if (e.target.matches("[data-cancel-steps]") || e.target.closest("[data-cancel-steps]")) {
+            const section = e.target.closest("#steps-section");
+            if (section) section.classList.remove("form-visible");
+        }
+    });
 </script>
 </body>
 </html>

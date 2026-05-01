@@ -4,18 +4,44 @@
 <section id="stats">
     <article>
         <header><strong>📊 Stats</strong></header>
-        <div class="stat-row">
-            <span class="stat-label">🏃 Steps</span>
-            <span>{{ "{:,}".format(state.steps.can_use) }} / {{ "{:,}".format(max_steps) }}</span>
+
+        {# Кликабельный блок Steps — клик открывает inline форму ввода (4.48.2). #}
+        <div id="steps-section" class="{% if steps_form_open %}form-visible{% endif %}">
+            <div class="steps-clickable" data-toggle-steps style="cursor: pointer;" title="Кликни, чтобы ввести шаги">
+                <div class="stat-row">
+                    <span class="stat-label">🏃 Steps</span>
+                    <span>{{ "{:,}".format(state.steps.can_use) }} / {{ "{:,}".format(max_steps) }}</span>
+                </div>
+                <small>
+                    Bonus 🏃: stamina +{{ stamina_bonus_steps }} ·
+                    equipment +{{ equipment_stamina_steps }} ·
+                    daily +{{ daily_steps_bonus }} ·
+                    level +{{ level_steps_bonus }}
+                    (всего +{{ total_bonus_steps }}, {{ "%.2f"|format(bonus_pct) }} %)
+                </small>
+                <br><small>Total used: {{ "{:,}".format(state.steps.total_used) }} шагов</small>
+            </div>
+
+            <div class="steps-form-container">
+                {% if steps_error %}
+                <small style="color: var(--pico-color-pumpkin-600, #b45309);">❌ {{ steps_error }}</small>
+                {% endif %}
+                <form hx-post="/web/steps" hx-target="#status-bar" hx-swap="innerHTML"
+                      hx-disabled-elt="this"
+                      style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                    <input name="steps" type="number"
+                           min="{{ state.steps.today + 1 }}"
+                           required autocomplete="off"
+                           placeholder="введи число с браслета"
+                           style="flex: 1; min-width: 8rem;">
+                    <button type="submit" style="margin: 0;">
+                        <span class="steps-btn-default">Применить</span>
+                        <span class="steps-btn-loading" style="display: none;">Сохраняем...</span>
+                    </button>
+                    <button type="button" data-cancel-steps class="secondary outline" style="margin: 0;">Отмена</button>
+                </form>
+            </div>
         </div>
-        <small>
-            Bonus 🏃: stamina +{{ stamina_bonus_steps }} ·
-            equipment +{{ equipment_stamina_steps }} ·
-            daily +{{ daily_steps_bonus }} ·
-            level +{{ level_steps_bonus }}
-            (всего +{{ total_bonus_steps }}, {{ "%.2f"|format(bonus_pct) }} %)
-        </small>
-        <br><small>Total used: {{ "{:,}".format(state.steps.total_used) }} шагов</small>
 
         <div class="stat-row" style="margin-top: 0.5rem;">
             <span class="stat-label">🔋 Energy</span>
