@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>2Walks — версия {{ version }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        /* Mobile-first точечные правки поверх Pico defaults. */
+        :root { --pico-spacing: 0.75rem; }
+        main { padding-top: 1rem; padding-bottom: 2rem; }
+        .timer-active { color: var(--pico-color-azure-500); font-weight: 600; }
+        .timer-finished { color: var(--pico-color-pumpkin-500); font-weight: 600; }
+        .stat-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+        .stat-row .stat-label { font-weight: 600; }
+        .item-row { font-size: 0.9em; }
+        .equipment-empty { color: var(--pico-muted-color); font-style: italic; }
+        section { margin-bottom: 1.25rem; }
+    </style>
+</head>
+<body>
+<main class="container">
+    <hgroup>
+        <h2>2Walks <small style="font-weight: 400;">v{{ version }}</small></h2>
+        <p>Локация: {{ icon_loc or "" }} <strong>{{ state.loc.title() }}</strong></p>
+    </hgroup>
+
+    <div id="status-bar"
+         hx-get="/status"
+         hx-trigger="every 15s"
+         hx-swap="innerHTML">
+        {% include "_status_fragment.html" %}
+    </div>
+</main>
+
+<script>
+    /* JS-таймер: между HTMX-обновлениями (каждые 15 сек) плавно убывает время
+       до конца смены/тренировки/приключения. Каждый таймер-элемент имеет
+       data-end-ts="<unix_ts_float>". Раз в секунду пересчитываем разницу
+       и обновляем textContent.
+
+       После HTMX swap событие htmx:afterSwap триггерит refresh — таймеры
+       могут появиться/исчезнуть с обновлённым state. */
+
+    function formatRemaining(seconds) {
+        if (seconds <= 0) return "0:00:00";
+        const sign = seconds < 0 ? "-" : "";
+        seconds = Math.abs(Math.floor(seconds));
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        return `${sign}${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+
+    function tickTimers() {
+        const now = Date.now() / 1000;
+        document.querySelectorAll("[data-end-ts]").forEach(el => {
+            const endTs = parseFloat(el.dataset.endTs);
+            const remaining = endTs - now;
+            el.textContent = formatRemaining(remaining);
+            if (remaining <= 0) {
+                el.classList.add("timer-finished");
+                el.classList.remove("timer-active");
+            } else {
+                el.classList.add("timer-active");
+                el.classList.remove("timer-finished");
+            }
+        });
+    }
+
+    // Запускаем каждую секунду; первый тик сразу.
+    setInterval(tickTimers, 1000);
+    document.addEventListener("DOMContentLoaded", tickTimers);
+    document.body.addEventListener("htmx:afterSwap", tickTimers);
+</script>
+</body>
+</html>

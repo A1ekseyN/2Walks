@@ -1,0 +1,147 @@
+{# Status fragment — обновляется HTMX каждые 15 секунд.
+   Без <html>/<body> обёрток: HTMX вставляет это innerHTML в #status-bar. #}
+
+<section id="stats">
+    <article>
+        <header><strong>📊 Stats</strong></header>
+        <div class="stat-row">
+            <span class="stat-label">🏃 Steps</span>
+            <span>{{ "{:,}".format(state.steps.can_use) }} / {{ "{:,}".format(max_steps) }}</span>
+        </div>
+        <small>
+            Bonus 🏃: stamina +{{ stamina_bonus_steps }} ·
+            equipment +{{ equipment_stamina_steps }} ·
+            daily +{{ daily_steps_bonus }} ·
+            level +{{ level_steps_bonus }}
+            (всего +{{ total_bonus_steps }}, {{ "%.2f"|format(bonus_pct) }} %)
+        </small>
+        <br><small>Total used: {{ "{:,}".format(state.steps.total_used) }} шагов</small>
+
+        <div class="stat-row" style="margin-top: 0.5rem;">
+            <span class="stat-label">🔋 Energy</span>
+            <span>{{ state.energy }} / {{ state.energy_max }}</span>
+        </div>
+        <small>
+            Equipment +{{ equipment_energy_max_bonus }} ·
+            daily +{{ state.steps.daily_bonus }} ·
+            level +{{ state.char_level.skill_energy_max }}
+        </small>
+
+        <div class="stat-row" style="margin-top: 0.5rem;">
+            <span class="stat-label">💰 Money</span>
+            <span>{{ "{:,}".format(state.money) }} $</span>
+        </div>
+
+        <div class="stat-row" style="margin-top: 0.5rem;">
+            <span class="stat-label">⭐ Level</span>
+            <span>{{ char_level }}{% if char_level_up_skills > 0 %} <small>(+{{ char_level_up_skills }} skill points)</small>{% endif %}</span>
+        </div>
+        <progress value="{{ char_level_progress }}" max="100"></progress>
+        <small>Прогресс до следующего уровня: {{ "%.2f"|format(char_level_progress) }} %</small>
+    </article>
+</section>
+
+{# Активные сессии — показываем только если активны. #}
+{% if state.training.active or state.work.active or state.adventure.active %}
+<section id="active-sessions">
+    <article>
+        <header><strong>⏱ Активные сессии</strong></header>
+
+        {% if state.training.active %}
+        <p>
+            🏋 Тренировка: <strong>{{ state.training.skill_name.title() if state.training.skill_name else "?" }}</strong>
+            {% if training_skill_target is not none %} → уровень {{ training_skill_target }}{% endif %}
+            <br>
+            🕑 До завершения:
+            {% if training_end_ts %}
+                <span data-end-ts="{{ training_end_ts }}" class="timer-active">…</span>
+            {% else %}
+                —
+            {% endif %}
+        </p>
+        {% endif %}
+
+        {% if state.work.active %}
+        <p>
+            🏭 Работа: <strong>{{ state.work.work_type.title() if state.work.work_type else "?" }}</strong>
+            (💰 +{{ state.work.salary * state.work.hours }} $ за смену)
+            <br>
+            🕑 До конца смены:
+            {% if work_end_ts %}
+                <span data-end-ts="{{ work_end_ts }}" class="timer-active">…</span>
+            {% else %}
+                —
+            {% endif %}
+        </p>
+        {% endif %}
+
+        {% if state.adventure.active %}
+        <p>
+            🗺️ Приключение: <strong>{{ state.adventure.name.title() if state.adventure.name else "?" }}</strong>
+            <br>
+            {% if adventure_finished %}
+                <strong class="timer-finished">Adventure finished — return to game (CLI) to claim drop.</strong>
+                <br><small>Завершение через web появится в задаче 4.48.3.</small>
+            {% elif adv_end_ts %}
+                🕑 До возвращения: <span data-end-ts="{{ adv_end_ts }}" class="timer-active">…</span>
+            {% else %}
+                🕑 —
+            {% endif %}
+        </p>
+        {% endif %}
+    </article>
+</section>
+{% endif %}
+
+<section id="inventory">
+    <article>
+        <header><strong>🎒 Инвентарь</strong> ({{ state.inventory|length }})</header>
+        {% if state.inventory %}
+            {% for item in state.inventory %}
+                <div class="item-row">
+                    {{ loop.index }}. {{ item['item_type'][0].title() }} <em>{{ item['grade'][0] }}</em>
+                    +{{ item['bonus'][0] }} {{ item['characteristic'][0].title() }}
+                    {% if item['quality']|length %}(Q: {{ "%.1f"|format(item['quality'][0]) if item['quality'][0] is number else item['quality'][0] }}){% endif %}
+                    {% if item['price']|length %}— {{ item['price'][0] }} ${% endif %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <small class="equipment-empty">— пусто —</small>
+        {% endif %}
+    </article>
+</section>
+
+<section id="equipment">
+    <article>
+        <header><strong>🧥 Экипировка</strong></header>
+        {% set slots = [
+            ('Голова', state.equipment.head),
+            ('Шея', state.equipment.neck),
+            ('Торс', state.equipment.torso),
+            ('Палец 1', state.equipment.finger_01),
+            ('Палец 2', state.equipment.finger_02),
+            ('Ноги', state.equipment.legs),
+            ('Ступни', state.equipment.foots),
+        ] %}
+        {% for slot_name, item in slots %}
+            <div class="item-row">
+                <strong>{{ slot_name }}:</strong>
+                {% if item %}
+                    {{ item['item_name'][0].title() }} <em>{{ item['grade'][0] }}</em>
+                    +{{ item['bonus'][0] }} {{ item['characteristic'][0].title() }}
+                    (Q: {{ "%.1f"|format(item['quality'][0]) if item['quality'][0] is number else item['quality'][0] }})
+                {% else %}
+                    <span class="equipment-empty">— пусто —</span>
+                {% endif %}
+            </div>
+        {% endfor %}
+        <small style="margin-top: 0.5rem; display: block;">
+            Bonuses: stamina +{{ equipment_stamina_bonus }} · energy_max +{{ equipment_energy_max_bonus }} ·
+            speed +{{ equipment_speed_skill_bonus }} · luck +{{ equipment_luck_bonus }}
+        </small>
+    </article>
+</section>
+
+<footer>
+    <small>Обновляется каждые 15 секунд. Действия (тренировка / работа / приключение) — через CLI пока. Web-actions — задача 4.48.3+.</small>
+</footer>

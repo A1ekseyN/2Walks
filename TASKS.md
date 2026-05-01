@@ -1681,13 +1681,35 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 - Sheets ссылка та же (single source of truth работает на dev и prod).
 - Делается когда web-функционал стабилен (после 4.48.1, минимум).
 
-#### 4.48.1. Dashboard (read-only HTML) `[H / M / todo (blocked by 4.48.0)]`
+#### 4.48.1. Dashboard (read-only HTML) `[H / M / done (01.05.2026)]`
 
-- Главная страница со status_bar (steps, energy, money, level), inventory, equipment, текущая активность (work/training/adventure timer).
-- HTMX-обновление каждые 15 секунд.
-- Frontend countdown timer на JS — между обновлениями плавное убывание времени.
-- Mobile-first layout — крупные кнопки, минимум скролла, чёткая иерархия.
-- Только чтение, без action-эндпоинтов.
+**Сделано:** read-only веб-dashboard с автообновлением. Открываешь URL на iPhone после прогулки — видишь свой статус-бар, активные таймеры, инвентарь и экипировку без ввода.
+
+**Реализация:**
+- `web/templates/dashboard.html` — главная страница (Pico.css + HTMX через CDN). Wrapper `<div id="status-bar" hx-get="/status" hx-trigger="every 15s" hx-swap="innerHTML">{% include "_status_fragment.html" %}</div>`.
+- `web/templates/_status_fragment.html` — общий фрагмент (Stats / Active sessions / Inventory / Equipment), ре-используется и в полной странице (через `include`), и в HTMX-полинге.
+- `web/main.py:_dashboard_context()` — собирает все данные для шаблонов в один dict (state + bonuses + char_level + active session timestamps как Unix float для JS-таймеров).
+- `GET /` — рендерит `dashboard.html`.
+- `GET /status` — рендерит `_status_fragment.html` (без `<html>` обёртки, для HTMX swap'а).
+- JS-таймер в dashboard.html — раз в секунду пересчитывает `data-end-ts="<unix_ts>"` элементы, плавно убывает время. После HTMX swap (`htmx:afterSwap`) — refresh.
+- Adventure после истечения end_ts: показываем "Adventure finished — return to game (CLI) to claim drop" — read-only слой не финализирует mutations. Финализация через web — задача 4.48.3.
+- Mobile-first via Pico.css defaults; точечные правки в `<style>` (крупные элементы, минимум скролла).
+
+**Технические нюансы:**
+- Starlette 1.0+ изменил сигнатуру `TemplateResponse(request, name, context)` — старый порядок `TemplateResponse(name, context)` ломается с криптической ошибкой "unhashable type: 'dict'" в LRUCache. Используем новую сигнатуру.
+- HTMX через CDN (`unpkg.com/htmx.org@1.9.10`), Pico.css через CDN (`@picocss/pico@2`). Локальные копии — на VPS-deploy если нужен offline.
+- `state.steps.can_use` НЕ пересчитывается на каждый polling (read-only). Live-recalc при day rollover — задача на будущее.
+
+**Версия:** `0.2.0e` → `0.2.0f`.
+
+**Тесты (`tests/test_web_main.py`):** 19 тестов всего — расширены с 5 (4.48.0). Покрывают: dashboard HTML + secret/HTMX/CDN markers; status fragment без `<html>` обёртки; active session rendering (training / work / adventure with `data-end-ts`); finished adventure shows warning not timer; empty inventory placeholder; filled inventory rendering; empty equipment slots; filled equipment slot details; location icon + name; no-active-sessions section omitted. Все 203 теста pass.
+
+**Smoke verified:** `uvicorn web.main:app` на ноуте; открытие в браузере iPhone через локальную сеть рендерит весь dashboard корректно.
+
+**Что НЕ сделано в 4.48.1 (отложено в подзадачи):**
+- Action endpoints (start training / work / adventure / sell / equip) — задачи 4.48.3–4.48.8.
+- Live recalc `steps.can_use` при day rollover — отдельной задачей при необходимости.
+- Auth — задача 4.55.
 
 #### 4.48.2. POST /api/steps `[H / S / todo (blocked by 4.48.0)]`
 
