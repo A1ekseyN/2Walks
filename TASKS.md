@@ -1635,9 +1635,9 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
   ```python
   import os
   WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
-  WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
+  WEB_PORT = int(os.getenv("WEB_PORT", "8008"))
   ```
-  - На ноуте при разработке — дефолт `127.0.0.1:8000` (только локально).
+  - На ноуте при разработке — дефолт `127.0.0.1:8008` (только локально).
   - На VPS — `WEB_HOST=0.0.0.0` через systemd `Environment=` (слушает на публичном IP).
   - Так же можно унести SPREADSHEET_ID и прочее в env, чтобы laptop и VPS не конфликтовали.
 
@@ -1649,17 +1649,37 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
 - **4.13 (Apps Script + iOS Shortcut)** — **deprecated by 4.48.2**. После работоспособности `/api/steps` — заменяет Apps Script, iOS Shortcut шлёт прямо в FastAPI.
 - **4.10 (Dashboard в Sheets)** — частично замещается 4.48.1.
 
-#### 4.48.0. Setup: FastAPI + deploy на VPS `[H / M / todo]`
+#### 4.48.0. Setup: FastAPI скелет + локальный запуск `[H / M / done (01.05.2026)]`
 
-- FastAPI скелет с роутингом, Jinja2 templates, HTMX для динамики.
-- Интеграция с gspread (тот же service account, что у game.py).
-- Конфиг через `config.py` + env vars (см. выше).
-- Deploy:
-  - VPS — один из существующих серверов пользователя (выбирается на момент реализации).
-  - `systemd` service для автозапуска `uvicorn`.
-  - Reverse proxy (nginx / caddy) — опционально на старте, можно сразу на uvicorn:port.
-  - Доступ через `http://VPS_IP:PORT` (без домена / без TLS в первой версии).
-- На ноуте: запуск `uvicorn main:app --host 127.0.0.1 --port 8000 --reload` для локального тестирования. Sheets ссылка та же (single source of truth работает на dev и prod).
+**Сделано:** FastAPI приложение готово к локальной разработке. VPS deploy — отдельная задача 4.48.0.1 (создана), делается когда понадобится publish.
+
+**Реализовано:**
+- Папка `web/` с `__init__.py` + `main.py`. `app = FastAPI(title='2Walks Web', version='0.2.0e', lifespan=lifespan)`.
+- `lifespan` async context manager → `init_game_state()` синхронно при startup. Idempotent — повторный вызов в тестах no-op.
+- Endpoint `GET /healthz` → JSON `{"status": "ok", "state_loaded": bool, "version": str}`.
+- Endpoint `GET /` → HTMLResponse-заглушка с версией и индикатором state_loaded. Полноценный dashboard будет в 4.48.1.
+- `config.py`: `WEB_HOST` / `WEB_PORT` через env vars (defaults `127.0.0.1` / `8008`). На VPS — `WEB_HOST=0.0.0.0`.
+- `requirements.txt`: добавлены `fastapi>=0.110`, `uvicorn[standard]>=0.27`, `jinja2>=3.1`, `httpx>=0.27` (httpx нужен для FastAPI TestClient).
+- `tests/test_web_main.py` — 5 тестов через `fastapi.testclient.TestClient` (healthz, root HTML, lifespan idempotency, 404 на unknown route).
+- Smoke test: `uvicorn web.main:app` стартует, `curl /healthz` возвращает корректный JSON, `curl /` отдаёт HTML.
+- `CLAUDE.md` обновлён с командой запуска web.
+
+**Запуск локально:**
+```bash
+uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
+```
+
+**Note:** CLI (`python game.py`) и web (`uvicorn web.main:app`) — отдельные процессы, у каждого свой `game.state`. В MVP запускаем что-то одно. Sync — задача 4.54.
+
+#### 4.48.0.1. Deploy FastAPI на VPS `[H / S / todo]`
+
+- Выбрать VPS (один из существующих серверов).
+- `systemd` сервис для автозапуска `uvicorn`.
+- Reverse proxy (nginx / caddy) — опционально на старте, можно сразу на uvicorn:port.
+- Конфиг через env (`WEB_HOST=0.0.0.0`).
+- Доступ через `http://VPS_IP:PORT` (без домена / без TLS в первой версии).
+- Sheets ссылка та же (single source of truth работает на dev и prod).
+- Делается когда web-функционал стабилен (после 4.48.1, минимум).
 
 #### 4.48.1. Dashboard (read-only HTML) `[H / M / todo (blocked by 4.48.0)]`
 

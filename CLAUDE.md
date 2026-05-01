@@ -17,8 +17,11 @@ A single runnable root:
 ## Common commands
 
 ```bash
-# Run the game
+# Run the game (CLI)
 python game.py
+
+# Run the web interface (FastAPI, dev mode). Requires venv active or call .venv/bin/uvicorn directly.
+source .venv/bin/activate && uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 
 # Show current Sheets game_state contents (debugging)
 python google_sheets_db.py
@@ -29,6 +32,8 @@ python migrate_sheets.py
 # Drop-rate Monte-Carlo simulation (10k×6 iterations)
 python drop_test_montecarlo.py
 ```
+
+CLI и web — отдельные процессы, у каждого свой `game.state`. В MVP запускаем только что-то одно за раз; sync resolution CLI ↔ Web — задача 4.54.
 
 Pytest is the test framework (config in `pytest.ini`, tests in `tests/`). Run all tests with `.venv/bin/pytest tests/`. There is no linter or CI configured. `drop_test_montecarlo.py` is a standalone Monte-Carlo drop simulator.
 
