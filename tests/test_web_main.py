@@ -281,3 +281,130 @@ def test_equipment_filled_slot_shows_item_details():
     assert "a-grade" in body
     assert "+3" in body
     assert "Stamina" in body
+
+
+# ----- Progress bars (active sessions) -----
+
+def test_active_work_renders_progress_bar():
+    """Work с известными start/end → <progress> с value в диапазоне 0-100."""
+    state = GameState.default_new_game()
+    state.work.active = True
+    state.work.work_type = "factory"
+    state.work.salary = 5
+    state.work.hours = 4
+    # Старт час назад, конец через час → ~50% прогресса.
+    state.work.start = datetime.now() - timedelta(hours=1)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert "<progress" in body
+    assert "data-progress-start-ts=" in body
+    assert "data-progress-end-ts=" in body
+    # Прогресс примерно 50% — допускаем разброс при флексе тестового запуска.
+    import re
+    # Берём только session-progress (с data-progress-start-ts), не Level.
+    match = re.search(r'<progress[^>]*data-progress-start-ts[^>]*value="([0-9]+\.[0-9]+)"', body)
+    assert match, "session <progress> not found"
+    pct = float(match.group(1))
+    assert 30 <= pct <= 70
+
+
+def test_active_training_renders_progress_bar():
+    state = GameState.default_new_game()
+    state.training.active = True
+    state.training.skill_name = "stamina"
+    state.training.timestamp = (datetime.now() - timedelta(minutes=5)).timestamp()
+    state.training.time_end = datetime.now() + timedelta(minutes=5)
+    state.gym.stamina = 4
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert "<progress" in body
+    # ~50% прогресса.
+    import re
+    match = re.search(r'<progress[^>]*data-progress-start-ts[^>]*value="([0-9]+\.[0-9]+)"', body)
+    assert match
+    pct = float(match.group(1))
+    assert 30 <= pct <= 70
+
+
+def test_active_adventure_renders_progress_bar():
+    state = GameState.default_new_game()
+    state.adventure.active = True
+    state.adventure.name = "walk_easy"
+    state.adventure.start_ts = (datetime.now() - timedelta(minutes=5)).timestamp()
+    state.adventure.end_ts = (datetime.now() + timedelta(minutes=5)).timestamp()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert "<progress" in body
+    assert "data-progress-start-ts=" in body
+    # Не помечено как finished, прогресс ~50%.
+    assert "✓ Завершено" not in body
+    import re
+    match = re.search(r'<progress[^>]*data-progress-start-ts[^>]*value="([0-9]+\.[0-9]+)"', body)
+    assert match
+    pct = float(match.group(1))
+    assert 30 <= pct <= 70
+
+
+def test_finished_work_progress_bar_at_100_with_done_marker():
+    """Work с end в прошлом → progress 100 + ✓ Завершено."""
+    state = GameState.default_new_game()
+    state.work.active = True
+    state.work.work_type = "factory"
+    state.work.salary = 5
+    state.work.hours = 4
+    state.work.start = datetime.now() - timedelta(hours=2)
+    state.work.end = datetime.now() - timedelta(seconds=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'value="100.00"' in body
+    assert "✓ Завершено" in body
+
+
+def test_finished_adventure_shows_progress_100_and_claim_warning():
+    """Adventure с end в прошлом → progress 100 + ✓ Завершено + warning о CLI claim."""
+    state = GameState.default_new_game()
+    state.adventure.active = True
+    state.adventure.name = "walk_easy"
+    state.adventure.start_ts = (datetime.now() - timedelta(hours=1)).timestamp()
+    state.adventure.end_ts = (datetime.now() - timedelta(seconds=1)).timestamp()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'value="100.00"' in body
+    assert "✓ Завершено" in body
+    assert "Adventure finished" in body
+    assert "claim drop" in body
+
+
+def test_no_active_session_renders_no_progress_bars():
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Прогресс-бары секции "Активные сессии" не рендерятся (Level прогресс — только обычный прогресс-бар).
+    assert "data-progress-start-ts=" not in body
+
+
+# ----- Section ordering -----
+
+def test_equipment_section_appears_before_inventory():
+    """Экипировка идёт раньше инвентаря на странице."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    eq_pos = body.find('id="equipment"')
+    inv_pos = body.find('id="inventory"')
+    assert eq_pos > 0 and inv_pos > 0
+    assert eq_pos < inv_pos

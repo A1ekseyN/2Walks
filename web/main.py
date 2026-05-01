@@ -56,10 +56,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="2Walks Web", version=VERSION, lifespan=lifespan)
 
 
+def _compute_progress_pct(start_ts, end_ts, now_ts) -> float:
+    """Процент выполнения активной сессии. Защита от деления на ноль / отрицательного.
+
+    Возвращает значение в диапазоне [0, 100]. Если start/end отсутствуют или
+    end <= start (не должно быть в нормальной игре, но edge case) — возвращает 0.
+    """
+    if start_ts is None or end_ts is None or end_ts <= start_ts:
+        return 0.0
+    return max(0.0, min(100.0, (now_ts - start_ts) / (end_ts - start_ts) * 100))
+
+
 def _dashboard_context(request: Request) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
-    ``request`` нужен Jinja2Templates для совместимости со стартовыми хелперами.
     Не пересчитываем ``state.steps.can_use`` (read-only, без mutations) — задача
     4.48.1 не вызывает ``save_game_date_last_enter``. Live-recalc — задача на будущее.
     """
@@ -68,19 +78,27 @@ def _dashboard_context(request: Request) -> dict:
         raise RuntimeError("game.state не инициализирован — должен быть вызван init_game_state() в lifespan.")
 
     char_level = CharLevel(state)
-
-    # Active sessions — конвертируем datetime в Unix timestamp для JS-таймера.
-    training_end_ts = state.training.time_end.timestamp() if state.training.active and state.training.time_end else None
-    work_end_ts = state.work.end.timestamp() if state.work.active and state.work.end else None
-
-    # Adventure end_ts уже хранится как float timestamp.
-    adv_end_ts = state.adventure.end_ts if state.adventure.active and state.adventure.end_ts else None
     now_ts = datetime.now().timestamp()
+
+    # Active sessions — конвертируем datetime в Unix timestamp для JS-таймера и progress-bar.
+    training_start_ts = state.training.timestamp if state.training.active and state.training.timestamp else None
+    training_end_ts = state.training.time_end.timestamp() if state.training.active and state.training.time_end else None
+    work_start_ts = state.work.start.timestamp() if state.work.active and state.work.start else None
+    work_end_ts = state.work.end.timestamp() if state.work.active and state.work.end else None
+    # Adventure start_ts/end_ts уже хранятся как float timestamps.
+    adv_start_ts = state.adventure.start_ts if state.adventure.active and state.adventure.start_ts else None
+    adv_end_ts = state.adventure.end_ts if state.adventure.active and state.adventure.end_ts else None
+
     adventure_finished = (
         state.adventure.active
         and adv_end_ts is not None
         and adv_end_ts <= now_ts
     )
+
+    # Initial server-side значения прогресс-баров (клиент будет двигать раз в секунду).
+    training_progress = _compute_progress_pct(training_start_ts, training_end_ts, now_ts)
+    work_progress = _compute_progress_pct(work_start_ts, work_end_ts, now_ts)
+    adv_progress = _compute_progress_pct(adv_start_ts, adv_end_ts, now_ts)
 
     # Уровень навыка для текущей тренировки — для отображения "до какого уровня".
     training_skill_target = None
@@ -113,10 +131,16 @@ def _dashboard_context(request: Request) -> dict:
         "char_level_progress": char_level.progress_to_next_level(),
         "char_level_up_skills": state.char_level.up_skills,
         # Active sessions
+        "training_start_ts": training_start_ts,
         "training_end_ts": training_end_ts,
+        "training_progress": training_progress,
         "training_skill_target": training_skill_target,
+        "work_start_ts": work_start_ts,
         "work_end_ts": work_end_ts,
+        "work_progress": work_progress,
+        "adv_start_ts": adv_start_ts,
         "adv_end_ts": adv_end_ts,
+        "adv_progress": adv_progress,
         "adventure_finished": adventure_finished,
         # Now (для server-side rendering первоначального countdown — клиент потом
         # пересчитывает на JS).

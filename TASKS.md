@@ -1706,6 +1706,10 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 
 **Smoke verified:** `uvicorn web.main:app` на ноуте; открытие в браузере iPhone через локальную сеть рендерит весь dashboard корректно.
 
+**Прогресс-бары активных сессий (доделано 01.05.2026):** для Work / Training / Adventure добавлены `<progress>` элементы (формат: 🕑 timer + bar + `XX.XX %` + `✓ Завершено` если pct≥100). Гибрид server-side initial render + client-side JS update раз в секунду через `data-progress-start-ts` / `data-progress-end-ts` атрибуты. Адвенчура с `end_ts < now` показывает progress=100 + ✓ Завершено + сохранённый warning "Adventure finished — return to game (CLI) to claim drop". 6 новых тестов в test_web_main.py.
+
+**UI tweak (01.05.2026):** секция Экипировки перемещена выше Инвентаря. Экипировка короче (7 слотов фиксировано) и меняется реже — "что надето сейчас" видно выше fold'а. Новый тест `test_equipment_section_appears_before_inventory` фиксирует порядок. Всего 210 тестов pass.
+
 **Что НЕ сделано в 4.48.1 (отложено в подзадачи):**
 - Action endpoints (start training / work / adventure / sell / equip) — задачи 4.48.3–4.48.8.
 - Live recalc `steps.can_use` при day rollover — отдельной задачей при необходимости.

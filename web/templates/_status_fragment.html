@@ -58,6 +58,10 @@
             {% else %}
                 —
             {% endif %}
+            {% if training_start_ts and training_end_ts %}
+                <progress data-progress-start-ts="{{ training_start_ts }}" data-progress-end-ts="{{ training_end_ts }}" value="{{ '%.2f' % training_progress }}" max="100"></progress>
+                <small><span data-progress-start-ts="{{ training_start_ts }}" data-progress-end-ts="{{ training_end_ts }}">{{ '%.2f' % training_progress }}</span> %{% if training_progress >= 100 %} ✓ Завершено{% endif %}</small>
+            {% endif %}
         </p>
         {% endif %}
 
@@ -72,6 +76,10 @@
             {% else %}
                 —
             {% endif %}
+            {% if work_start_ts and work_end_ts %}
+                <progress data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}" value="{{ '%.2f' % work_progress }}" max="100"></progress>
+                <small><span data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}">{{ '%.2f' % work_progress }}</span> %{% if work_progress >= 100 %} ✓ Завершено{% endif %}</small>
+            {% endif %}
         </p>
         {% endif %}
 
@@ -79,37 +87,26 @@
         <p>
             🗺️ Приключение: <strong>{{ state.adventure.name.title() if state.adventure.name else "?" }}</strong>
             <br>
+            🕑 До возвращения:
             {% if adventure_finished %}
-                <strong class="timer-finished">Adventure finished — return to game (CLI) to claim drop.</strong>
-                <br><small>Завершение через web появится в задаче 4.48.3.</small>
+                <strong class="timer-finished">Завершено</strong>
             {% elif adv_end_ts %}
-                🕑 До возвращения: <span data-end-ts="{{ adv_end_ts }}" class="timer-active">…</span>
+                <span data-end-ts="{{ adv_end_ts }}" class="timer-active">…</span>
             {% else %}
-                🕑 —
+                —
+            {% endif %}
+            {% if adv_start_ts and adv_end_ts %}
+                <progress data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}" value="{{ '%.2f' % adv_progress }}" max="100"></progress>
+                <small><span data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}">{{ '%.2f' % adv_progress }}</span> %{% if adv_progress >= 100 %} ✓ Завершено{% endif %}</small>
+            {% endif %}
+            {% if adventure_finished %}
+                <br><small>Adventure finished — return to game (CLI) to claim drop. Завершение через web появится в задаче 4.48.3.</small>
             {% endif %}
         </p>
         {% endif %}
     </article>
 </section>
 {% endif %}
-
-<section id="inventory">
-    <article>
-        <header><strong>🎒 Инвентарь</strong> ({{ state.inventory|length }})</header>
-        {% if state.inventory %}
-            {% for item in state.inventory %}
-                <div class="item-row">
-                    {{ loop.index }}. {{ item['item_type'][0].title() }} <em>{{ item['grade'][0] }}</em>
-                    +{{ item['bonus'][0] }} {{ item['characteristic'][0].title() }}
-                    {% if item['quality']|length %}(Q: {{ "%.1f"|format(item['quality'][0]) if item['quality'][0] is number else item['quality'][0] }}){% endif %}
-                    {% if item['price']|length %}— {{ item['price'][0] }} ${% endif %}
-                </div>
-            {% endfor %}
-        {% else %}
-            <small class="equipment-empty">— пусто —</small>
-        {% endif %}
-    </article>
-</section>
 
 <section id="equipment">
     <article>
@@ -139,6 +136,24 @@
             Bonuses: stamina +{{ equipment_stamina_bonus }} · energy_max +{{ equipment_energy_max_bonus }} ·
             speed +{{ equipment_speed_skill_bonus }} · luck +{{ equipment_luck_bonus }}
         </small>
+    </article>
+</section>
+
+<section id="inventory">
+    <article>
+        <header><strong>🎒 Инвентарь</strong> ({{ state.inventory|length }})</header>
+        {% if state.inventory %}
+            {% for item in state.inventory %}
+                <div class="item-row">
+                    {{ loop.index }}. {{ item['item_type'][0].title() }} <em>{{ item['grade'][0] }}</em>
+                    +{{ item['bonus'][0] }} {{ item['characteristic'][0].title() }}
+                    {% if item['quality']|length %}(Q: {{ "%.1f"|format(item['quality'][0]) if item['quality'][0] is number else item['quality'][0] }}){% endif %}
+                    {% if item['price']|length %}— {{ item['price'][0] }} ${% endif %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <small class="equipment-empty">— пусто —</small>
+        {% endif %}
     </article>
 </section>
 

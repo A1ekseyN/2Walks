@@ -55,6 +55,8 @@
 
     function tickTimers() {
         const now = Date.now() / 1000;
+
+        // Текстовые таймеры (HH:MM:SS до конца сессии).
         document.querySelectorAll("[data-end-ts]").forEach(el => {
             const endTs = parseFloat(el.dataset.endTs);
             const remaining = endTs - now;
@@ -65,6 +67,24 @@
             } else {
                 el.classList.add("timer-active");
                 el.classList.remove("timer-finished");
+            }
+        });
+
+        // Прогресс-бары и %-текст рядом. Один общий селектор —
+        // в зависимости от тега обновляем value (для <progress>) или textContent.
+        document.querySelectorAll("[data-progress-start-ts][data-progress-end-ts]").forEach(el => {
+            const start = parseFloat(el.dataset.progressStartTs);
+            const end = parseFloat(el.dataset.progressEndTs);
+            if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
+                return;
+            }
+            let pct = (now - start) / (end - start) * 100;
+            pct = Math.max(0, Math.min(100, pct));
+            const value = pct.toFixed(2);
+            if (el.tagName === "PROGRESS") {
+                el.value = value;
+            } else {
+                el.textContent = value;
             }
         });
     }
