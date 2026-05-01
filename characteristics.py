@@ -6,7 +6,7 @@ import json
 import ast
 
 from settings import debug_mode
-from google_sheets_db import load_char_characteristic_from_google_sheet
+from google_sheets_db import GameStateRepo
 from state import GameState
 
 
@@ -128,21 +128,18 @@ def load_characteristic():
 def load_data_from_google_sheet_or_csv():
     """Сначала пытается загрузить данные из Google Sheets, при неудаче — CSV."""
     try:
-        loaded_data_char_characteristic = load_char_characteristic_from_google_sheet()
-
-        if loaded_data_char_characteristic:
-            return loaded_data_char_characteristic
-        else:
-            print("Google Sheets пуст. Загружаем данные из CSV файла.")
-            loaded_data_char_characteristic = load_characteristic()
-            print("Loaded Data from CSV.")
-            return loaded_data_char_characteristic
-
+        loaded = GameStateRepo().load()
+        if loaded:
+            return loaded
+        print("Google Sheets пуст. Загружаем данные из CSV файла.")
+        loaded = load_characteristic()
+        print("Loaded Data from CSV.")
+        return loaded
     except Exception as error:
         print(f"Ошибка при загрузке данных из Google Sheets: {error}. Загружаем данные из CSV файла.")
-        loaded_data_char_characteristic = load_characteristic()
+        loaded = load_characteristic()
         print("Loaded Data from CSV.")
-        return loaded_data_char_characteristic
+        return loaded
 
 skill_training_table = {
     # Таблица стоимости изучения навыков.

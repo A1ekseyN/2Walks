@@ -2,6 +2,7 @@
 
 import os
 import sys
+from datetime import datetime
 
 from colorama import init
 
@@ -21,10 +22,7 @@ from functions import (
     energy_time_charge,
     status_bar,
 )
-from google_sheets_db import (
-    save_char_characteristic_to_google_sheet,
-    load_char_characteristic_from_google_sheet,
-)
+from google_sheets_db import GameStateRepo, StepsLogRepo
 from gym import skill_training_check_done
 from inventory import inventory_menu
 from level import CharLevel
@@ -64,20 +62,36 @@ def play():
                 elif can_reopen:
                     enter_fn()
 
+            def _sync_to_cloud():
+                """Save game_state в Sheets + лог замера шагов в steps_log.
+
+                Локальное сохранение (CSV/JSON) делаем всегда первым — оно гарантировано,
+                даже если Sheets-вызов ниже упадёт сетевой ошибкой. Это даёт offline-mode:
+                игрок может играть без сети, а синк в Sheets произойдёт в следующий save.
+                """
+                save_characteristic()  # local CSV/JSON всегда
+                GameStateRepo().save(state.to_dict())
+                # Append текущего snapshot шагов в steps_log с источником 'manual'
+                # (CLI — единственный канал ввода в этой задаче; web/auto канал
+                # будет писать сам в 4.48.2 / 4.13).
+                StepsLogRepo().append(
+                    ts=datetime.now().timestamp(),
+                    steps=state.steps.today,
+                    source='manual',
+                )
+
             def save_game_local_and_cloud():
-                save_characteristic()
-                save_char_characteristic_to_google_sheet()
+                _sync_to_cloud()
 
             def save_and_exit():
-                save_characteristic()
-                save_char_characteristic_to_google_sheet()
+                _sync_to_cloud()
                 print('🚪 Спасибо за игру. До встречи.')
                 sys.exit()
 
             def load_from_cloud():
                 # update_from_dict мутирует существующий state — все импортёры,
                 # удерживающие ссылку, видят новые данные без rebind.
-                state.update_from_dict(load_char_characteristic_from_google_sheet())
+                state.update_from_dict(GameStateRepo().load())
 
             def unknown_command():
                 print('\nНеизвестная команда. Попробуй ещё раз.')
@@ -171,7 +185,7 @@ def play():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.2.0c")
+    print(f"Version: 0.2.0d")
     os.system("chcp 65001")
     init()
 

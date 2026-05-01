@@ -24,21 +24,22 @@ python game.py
 
 ### Что происходит в момент запуска (до появления меню)
 
-Порядок выполнения опирается на то, что Python исполняет код модулей при первом импорте. Важно помнить: **значительная часть "инициализации игры" — это побочные эффекты импорта `characteristics.py`**, а не вызов функции `game()`.
+Порядок выполнения чёткий и явный: импорты модулей чистые (без сетевых вызовов после задачи 1.2), вся инициализация состояния происходит в `init_game_state()`, который вызывается из `__main__` перед `play()`.
 
-1. `game.py` выводит `Version: 0.2.0` и переключает codepage.
-2. Вызывается `game()`.
-3. На импортах модулей происходит:
-   - `characteristics.py` — `load_data_from_google_sheet_or_csv()` пытается скачать сейв с Google Sheets, при неудаче читает `characteristic.csv`.
-   - Из загруженного flat-dict собирается `game_state = GameState.from_dict(...)`. `timestamp_last_enter`, `loc='home'`, `steps.used` пересчитываются по сейву; к `energy_max` дописываются бонусы экипировки/навыков/уровня.
-   - `game_state` экспортируется из `characteristics.py` — все остальные модули принимают его как явный параметр.
-4. Создаётся `Adventure(adventure_data_table, state=game_state)` — нужен для меню приключений и предвычисленных бонусов с учётом текущей прокачки.
-5. Определяется внутренняя функция `location_selection()`. Главный цикл игры — именно она, не `game()`.
-6. Проверяется `game_state.loc` из сохранения и вызывается соответствующая локация (`home_location(state)`, `gym_location(state)`, `work_location(state)`, `adventure_location(adventure_instance)`, ...), после чего запускается `location_selection()`.
+1. `game.py:__main__` выводит `Version: 0.2.0d` и переключает codepage.
+2. Вызывается `init_game_state()`:
+   - `GameStateRepo().load()` тянет лист `game_state` из Google Sheets, при неудаче — читает `characteristic.csv`.
+   - Из загруженного flat-dict собирается `game.state = GameState.from_dict(...)`. `timestamp_last_enter`, `loc='home'`, `energy_max=50` + бонусы экипировки/навыков/уровня применяются как post-load fixups.
+   - `game.state` теперь живой instance, видимый всем модулям через `from characteristics import game; game.state`.
+3. Вызывается `play()`. Внутри:
+   - Локальная переменная `state = game.state` для удобства.
+   - Создаётся `Adventure(adventure_data_table, state=state)` — нужен для меню приключений и предвычисленных бонусов с учётом текущей прокачки.
+   - Определяется внутренняя функция `location_selection()`. Главный цикл игры — именно она.
+   - Проверяется `state.loc` из сохранения и вызывается соответствующая локация (`home_location(state)`, `gym_location(state)`, `work_location(state)`, `adventure_location(adventure_instance)`, ...), после чего запускается `location_selection()`.
 
 ### Игровое состояние: `GameState`
 
-Весь игровой процесс держится на одной структуре — `state.GameState` (dataclass с nested подклассами). Живой instance — `game_state`, экспортирован из `characteristics.py`. Каждая функция геймплея принимает `state: GameState` явно. Мутация поля в одном модуле мгновенно видна во всех — все держат ссылку на тот же `game_state`.
+Весь игровой процесс держится на одной структуре — `state.GameState` (dataclass с nested подклассами). Живой instance — `game.state` через container `game = _GameContainer()` в `characteristics.py`. Заполняется через `init_game_state()` (CLI вызывает в начале `__main__`, FastAPI — в startup hook). Каждая функция геймплея принимает `state: GameState` явно. Мутация поля в одном модуле мгновенно видна во всех — все держат ссылку на тот же объект через `game.state`.
 
 Группы полей и их адреса в state:
 
@@ -94,8 +95,8 @@ CSV / JSON / Google Sheets хранят flat-формат с прежними к
 | `e` / `у` | `Equipment.equipment_view()` — просмотр экипировки |
 | `c` / `с` | `char_info()` — подробные характеристики |
 | `u` / `г` | `CharLevel(state).menu_skill_point_allocation()` — распределение очков навыков |
-| `l` / `д` | Загрузка сейва из Google Sheets (обновляет `game_state` in-place через `update_from_dict()`) |
-| `s` / `ы` | Сохранение в CSV + Google Sheets |
+| `l` / `д` | Загрузка сейва из Google Sheets (обновляет `game.state` in-place через `update_from_dict()` от `GameStateRepo().load()`) |
+| `s` / `ы` | Сохранение: local CSV/JSON всегда, потом `GameStateRepo().save()` + `StepsLogRepo().append()` (источник `'manual'`) |
 | `q` / `й` | Сохранение и выход (`sys.exit()`) |
 | любое другое | Сообщение "Неизвестная команда. Попробуй ещё раз." |
 
@@ -111,11 +112,11 @@ CSV / JSON / Google Sheets хранят flat-формат с прежними к
 
 ```python
 def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
-    if game_state.loc != loc:
-        game_state.loc = loc
+    if state.loc != loc:
+        state.loc = loc
         enter_fn()
         if call_map_on_switch:
-            location_change_map(game_state)
+            location_change_map(state)
     elif can_reopen:
         enter_fn()
 ```
@@ -212,7 +213,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 Единственный способ ввести количество пройденных шагов — команда `+` в главном меню. Вызывает `steps_today_manual_entry(state)` (`functions.py`): спрашивает число, валидирует, и записывает `max(текущее, введённое)` в `state.steps.today`. Использование `max(...)` — защита от случайного ввода меньшего значения (Mi Fitness может отстать; ручные показания с браслета обычно свежее).
 
-Исторически существовал автообновлятор через Google Fit REST API (`api.py`, `get_token_fitnes_api.py`); удалён в задаче **4.16** (2026-04-27). Будущий конвейер iPhone → Google Sheets через iOS Shortcut запланирован в задачах **4.13–4.15**.
+Исторически существовал автообновлятор через Google Fit REST API (`api.py`, `get_token_fitnes_api.py`); удалён в задаче **4.16** (2026-04-27). Конвейер iPhone Shortcut → Sheets (задача **4.13**) был в плане, но отложен (01.05.2026) — ввод теперь идёт через CLI / Web / API (`POST /api/steps`, задача **4.48.2**). Max-merge для нескольких источников — задача **4.15**.
 
 ### 5.2 Агрегат `steps_can_use`
 
@@ -231,27 +232,38 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ## 6. Сохранение и загрузка
 
-Сейв существует в трёх местах. Загрузка приоритезирует Google Sheets, сохранение пишет везде.
+Сейв существует в трёх местах. Загрузка приоритезирует Google Sheets, сохранение пишет везде. Локальное (CSV/JSON) пишется всегда первым — даже если Sheets-вызов упадёт сетевой ошибкой, прогресс сохранён локально (offline-mode).
 
 ### 6.1 Локально (CSV + JSON)
 
-- `characteristic.csv` — плоский CSV, пишется `save_characteristic()` (`characteristics.py`) через `game_state.to_dict()`, читается `load_characteristic()` и затем `GameState.from_dict()`. Вложенные словари/списки сериализуются через `json.dumps` и читаются обратно через `ast.literal_eval`. Поля `skill_training_time_end`, `working_end`, `adventure_end_timestamp` специально парсятся как `datetime` в формате `%Y-%m-%d %H:%M:%S.%f`.
-- `characteristic.txt` — JSON-зеркало, используется `google_sheets_db.py` для выгрузки в облако.
+- `characteristic.csv` — плоский CSV, пишется `save_characteristic()` (`characteristics.py`) через `game.state.to_dict()`, читается `load_characteristic()` и затем `GameState.from_dict()`. Вложенные словари/списки сериализуются через `json.dumps` и читаются обратно через `ast.literal_eval`. Поля `skill_training_time_end`, `working_end`, `adventure_end_timestamp` специально парсятся как `datetime` в формате `%Y-%m-%d %H:%M:%S.%f`.
+- `characteristic.txt` — JSON-зеркало, тот же `to_dict()` формат.
 - `save.txt` — дата последнего входа в игру (одна строка).
 
 ### 6.2 Google Sheets
 
-`google_sheets_db.py` использует `gspread` и сервис-аккаунт:
+`google_sheets_db.py` использует `gspread` и сервис-аккаунт. После задачи **4.14** (01.05.2026) — два специализированных листа в одной таблице:
 
-- Spreadsheet ID: `1l1SfzodtHAAIVsmsQjZPK2YEltilVzu5psv0_2p4MLM`, sheet `Sheet1`.
+- Spreadsheet ID: `1l1SfzodtHAAIVsmsQjZPK2YEltilVzu5psv0_2p4MLM`.
+  - Лист `game_state` — snapshot состояния (Key/Value layout). Переименован из `Sheet1`.
+  - Лист `steps_log` — append-only лог замеров шагов. Колонки: `ts | user_id | steps | source`. `ts` — Unix timestamp (`float`), `source` — `'manual'` (CLI) / `'auto'` (отложено для iPhone) / `'web'` (будущий POST /api/steps).
 - Файл ключей: `credentials/2walks_service_account.json`.
-- `save_char_characteristic_to_google_sheet()` — читает `characteristic.txt` (JSON, который пишется из `game_state.to_dict()`), сериализует списки/словари/datetime и заливает в лист Key/Value.
-- `load_char_characteristic_from_google_sheet()` — читает лист, восстанавливает типы, отдельно парсит datetime-поля. Возвращает flat dict, который потом отдаётся в `GameState.from_dict()` или `state.update_from_dict()`.
+**API через классы:**
+- `GameStateRepo.save(state_dict)` — пишет flat-dict (от `state.to_dict()`) на лист `game_state`. Перед записью делает `clear()`, потом `update(rows)`.
+- `GameStateRepo.load() -> dict` — читает лист, восстанавливает типы (int/float/bool/None/list/dict/datetime), возвращает flat dict для `GameState.from_dict()` / `state.update_from_dict()`.
+- `StepsLogRepo.append(ts, steps, source, user_id='alex')` — добавляет одну строку в `steps_log` (через gspread `append_row`).
+- `StepsLogRepo.for_day(date_str, user_id='alex') -> list[dict]` — возвращает все записи за день для пользователя. Используется будущим max-merge (4.15).
+
+**Lazy singleton client:** `_get_client()` авторизует gspread один раз за процесс (вместо ~0.5 сек на каждый save/load). Все Repo-классы переиспользуют один client.
+
+**Migration:** при первом deploy на новое окружение — `python migrate_sheets.py` (idempotent: переименовывает `Sheet1`, создаёт `steps_log`).
+
+**Запись в `steps_log` идёт только при явном `s` / `q`** — не на каждый ввод `+N`. Это сохраняет offline-mode (можно ввести шаги, передумать и выйти без save). Для max-merge достаточно "одна актуальная строка за сессию".
 
 ### 6.3 Команды игрока
 
 - `s` — сохранить в CSV + Sheets.
-- `l` — загрузить из Sheets. Обновляет `game_state` через `update_from_dict(...)` — все модули, импортировавшие его, видят новые данные сразу, без рестарта (метод мутирует instance in-place, не пересоздаёт).
+- `l` — загрузить из Sheets. `GameStateRepo().load()` тянет лист `game_state`, потом `state.update_from_dict(...)` мутирует instance in-place — все модули, импортировавшие `game.state`, видят новые данные сразу, без рестарта.
 - `q` — то же, что `s`, плюс `sys.exit()`.
 - `Ctrl+C` / `Ctrl+D` — выход **без сохранения**. На верхнем уровне `game.py` обёрнут в `try/except (KeyboardInterrupt, EOFError):`, который печатает "Выход без сохранения. Пока!" и завершает процесс. Прогресс, не сохранённый через `s`/`q`, теряется — это сознательное поведение.
 
@@ -273,14 +285,14 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 ## 8. Где смотреть исходники
 
 - Игровой цикл и меню глобальной карты: `game.py` (функция `location_selection()`).
-- Структура состояния: `state.py` (GameState + nested dataclasses), live instance — `characteristics.game_state`.
+- Структура состояния: `state.py` (GameState + nested dataclasses), live instance — `characteristics.game.state` (через container `game = _GameContainer()`, заполняется `init_game_state()`).
 - Регенерация и статус-бар: `functions.py` (`energy_time_charge`, `status_bar`).
 - Навыки и тренировки: `gym.py` + таблицы `skill_training_table` / `get_energy_training_data` в `characteristics.py`.
 - Работа: `work.py`.
 - Приключения и дроп: `adventure.py`, `drop.py`, `adventure_data.py`.
 - Инвентарь и экипировка: `inventory.py`, `equipment.py`, `equipment_bonus.py`.
 - Уровень и очки: `level.py`.
-- Сохранение/загрузка: `characteristics.py` (`load_characteristic`, `save_characteristic`), `google_sheets_db.py`.
+- Сохранение/загрузка: `characteristics.py` (`load_characteristic`, `save_characteristic`, `init_game_state`), `google_sheets_db.py` (классы `GameStateRepo`, `StepsLogRepo`), `migrate_sheets.py` (one-shot миграция Sheets-листов).
 - Helper'ы для не-тривиальных мутаций: `actions.py` (`try_spend`, `start_work`, `start_training`, `start_adventure`).
 - Общие бонусы/формулы: `bonus.py`, `skill_bonus.py`.
 - Настройки: `settings.py` (`debug_mode = True` добавляет много диагностики в `status_bar`, `energy_time_charge` и т.д.).

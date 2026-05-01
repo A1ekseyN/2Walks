@@ -631,7 +631,9 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 ---
 
-### 4.13. Google Apps Script + iOS Shortcut для автоматической отправки шагов `[H / M / todo]`
+### 4.13. Google Apps Script + iOS Shortcut для автоматической отправки шагов `[H / M / todo (отложено)]`
+
+**⏸ Отложено (01.05.2026):** в текущей дорожной карте отказались от iPhone Shortcut в пользу прямого ввода через CLI / Web / API (4.48.2 `POST /api/steps`). Apps Script и Shortcut могут вернуться позже как альтернативный канал, если потребуется автономный фоновой синк без открытия игры.
 
 Конвейер, который раз в час отправляет шаги с iPhone в Google Sheet без участия игры.
 
@@ -651,19 +653,65 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 ---
 
-### 4.14. Разделить Google Sheets: `game_state` + `steps_log` `[H / S / todo]`
+### 4.14. Разделить Google Sheets: `game_state` + `steps_log` `[H / S / done (01.05.2026)]`
 
-Сейчас всё сохранение — в один лист `Sheet1` формата "ключ / значение". Для трекинга шагов нужен отдельный лист временных рядов.
+**Сделано:** один лист Key/Value заменён на два специализированных листа.
 
-**Структура:**
-- `game_state` (переименовать текущий `Sheet1`) — как есть, Key/Value-снимок `char_characteristic`.
-- `steps_log` — новый лист с колонками: `ts` (ISO-8601), `user_id` (string, пока `'alex'`), `steps` (int), `source` (`'auto'` | `'manual'`).
+**Структура (финальная):**
+- `game_state` — переименован из `Sheet1`. Snapshot текущего GameState через flat-dict от `state.to_dict()`.
+- `steps_log` — append-only лог замеров. Колонки: `ts` (Unix timestamp `float`) | `user_id` (string, дефолт `'alex'` из `config.DEFAULT_USER_ID`) | `steps` (int) | `source` (`'manual'` / `'auto'` / `'web'`).
 
-**В коде:** `google_sheets_db.py` разделить на два класса/набора функций: `GameStateRepo` и `StepsLogRepo`. Spreadsheet тот же.
+**Технические решения (01.05.2026):**
+- **`ts` как Unix timestamp**, не ISO-8601 — компактнее в Sheets, парсинг через `datetime.fromtimestamp()` тривиален. Форматирование в человекочитаемую дату — на UI-слое, не в логе.
+- **API через классы**: `GameStateRepo` (save/load) и `StepsLogRepo` (append/for_day) в `google_sheets_db.py`.
+- **Lazy singleton client** (`_get_client()`) — одна авторизация на весь процесс вместо ~0.5 сек на каждый save/load.
+- **Auto-create `steps_log` листа** в `StepsLogRepo._ensure_sheet()` — защитный fallback если миграция не прошла. Удаление в задаче **4.14.2**.
+- **Запись в `steps_log` — только при явном `s` (Save) или `q` (Save & Exit)**, не при каждом вводе `+N`. Промежуточные изменения теряются — для max-merge (4.15) важен только максимум за день. Это даёт offline-mode: ввёл шаги → сменил решение → выход без save → данные не уехали в Sheets.
+- **Локальный CSV/JSON save идёт первым**, потом Sheets. Если Sheets падает — игра продолжается оффлайн с актуальными local saves.
+- **iPhone Shortcut (4.13)** отложен — ввод теперь через CLI / Web / API (4.48.2 `POST /api/steps`).
+
+**Новый файл:** `migrate_sheets.py` (idempotent миграционный скрипт):
+- Переименовывает `Sheet1` → `game_state` если нужно.
+- Создаёт `steps_log` с заголовком если нет.
+- Запускается **вручную один раз**: `python migrate_sheets.py`.
+
+**Изменения в коде:**
+- `google_sheets_db.py` полностью переписан: классы `GameStateRepo` + `StepsLogRepo` + lazy `_get_client()` + pure helpers `_state_dict_to_rows` / `_rows_to_state_dict` / `_format_steps_entry`. Старые функции `save_char_characteristic_to_google_sheet` / `load_char_characteristic_from_google_sheet` удалены.
+- `characteristics.py` — `init_game_state()` использует `GameStateRepo().load()` вместо удалённой функции.
+- `game.py` — `_sync_to_cloud()` хелпер: local save (CSV/JSON) → `GameStateRepo().save(state.to_dict())` → `StepsLogRepo().append(...)`. `load_from_cloud` через `GameStateRepo().load()`.
+- `config.py` — `GAME_STATE_SHEET_NAME = "game_state"`, `STEPS_LOG_SHEET_NAME = "steps_log"`, `DEFAULT_USER_ID = "alex"`.
+
+**Тесты:** `tests/test_sheets_repo.py` — 21 тест (round-trip rows ↔ dict, format_steps_entry, GameStateRepo save/load с моком gspread, StepsLogRepo append/for_day с фильтрацией по user/date и malformed rows).
+
+**Разблокирует:** 4.15 (max-merge стратегия), 4.48.2 (POST /api/steps).
+
+#### 4.14.1. Pruning steps_log `[L / S / todo]`
+
+Лог append-only — за год набирается ~16 000 строк (один игрок, ввод раз в час 16 ч/день). Лимит Sheets — 10M ячеек, поэтому не критично, но в перспективе пригодится стратегия:
+- Rolling window: оставить только последние N дней (e.g. 90).
+- Архивный лист: `steps_log_archive` с старыми записями.
+- Compaction: один-агрегат-в-день вместо per-измерение (теряем источник, но компактно).
+
+Реализуется при первой реальной потребности (e.g. лог стал тормозить на чтении или приближается к лимиту).
+
+#### 4.14.2. Удалить auto-check `_ensure_sheet()` после миграции `[L / XS / todo]`
+
+Сейчас `StepsLogRepo._ensure_sheet()` создаёт лист если его нет — защитный fallback на случай, если кто-то клонирует код без запуска `migrate_sheets.py`. После того как миграция точно прошла на всех окружениях (laptop + VPS, когда появится), можно удалить эту ветку — `_worksheet()` будет просто бросать `WorksheetNotFound` и заставлять явно запустить миграцию.
+
+#### 4.14.3. Offline queue для steps_log `[M / S / todo]`
+
+Сейчас при сетевом сбое во время `Save & Exit` — Sheets-вызов кидает ошибку наверх. CSV/JSON уже сохранены, но запись в `steps_log` потеряна. Для надёжности при offline-сценариях:
+- Локальный JSON-файл `pending_steps_log.jsonl` с очередью записей.
+- При неудаче `StepsLogRepo.append()` — добавить в очередь.
+- При следующем успешном save — слить очередь в Sheets.
+
+Не критично для single-player MVP. Делается, если оффлайн станет регулярным.
 
 ---
 
-### 4.15. Merge-стратегия шагов: `max(все записи за сегодня)` `[H / S / todo / blocked by 4.14]`
+### 4.15. Merge-стратегия шагов: `max(все записи за сегодня)` `[H / S / todo]`
+
+После 4.14 (01.05.2026) разблокировано — `StepsLogRepo.for_day(date, user_id)` уже возвращает все записи за день. Осталось вызвать его в подходящем месте main loop'а / API и применять `max(steps)` к `state.steps.today`.
 
 Когда игра спрашивает "сколько шагов сегодня", читает все строки `steps_log` с `date(ts) == today` и `user_id == self` и возвращает **максимум** по полю `steps`.
 

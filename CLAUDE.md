@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project context
 
-2Walks is a step-counter RPG written in Python. Real-world steps (entered manually via the `+` command) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it. A Google Fit auto-sync existed historically but was removed on 2026-04-27 (task 4.16); a future iOS Shortcut → Google Sheets pipeline is planned (tasks 4.13–4.15).
+2Walks is a step-counter RPG written in Python. Real-world steps (entered manually via the `+` command) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it. A Google Fit auto-sync existed historically but was removed on 2026-04-27 (task 4.16); iPhone Shortcut pipeline (4.13) is currently отложено — entry will be via CLI / Web / API (task 4.48.2 `POST /api/steps`).
 
 **Primary interface:** CLI (`game.py`). **Secondary (planned):** Web interface via FastAPI backend on a VPS (task 4.48 — incremental rollout). CLI remains the primary path; web is supplementary and grows feature-by-feature. Single source of truth for both — Google Sheets.
 
@@ -20,8 +20,11 @@ A single runnable root:
 # Run the game
 python game.py
 
-# Manually sync the save to/from Google Sheets
+# Show current Sheets game_state contents (debugging)
 python google_sheets_db.py
+
+# One-time migration of Google Sheets layout (renames Sheet1 → game_state, creates steps_log)
+python migrate_sheets.py
 
 # Drop-rate Monte-Carlo simulation (10k×6 iterations)
 python drop_test_montecarlo.py
@@ -33,19 +36,25 @@ Pytest is the test framework (config in `pytest.ini`, tests in `tests/`). Run al
 
 ### Game state: `GameState` (state.py)
 
-The single source of game state is a `GameState` dataclass in `state.py` with nested subclasses (`StepsState`, `CharLevel`, `GymSkills`, `TrainingSession`, `WorkSession`, `AdventureSession`, `Equipment`). The live instance is `game_state` exported from `characteristics.py`. Almost every function in gameplay modules takes `state: GameState` as an explicit parameter — there is no implicit global. Mutate `state.<sub>.<field>` to communicate between systems.
+The single source of game state is a `GameState` dataclass in `state.py` with nested subclasses (`StepsState`, `CharLevel`, `GymSkills`, `TrainingSession`, `WorkSession`, `AdventureSession`, `Equipment`). The live instance is held by a container `game = _GameContainer()` in `characteristics.py` and accessed as `game.state` — populated by `init_game_state()` (task 1.2). Most gameplay modules take `state: GameState` as an explicit parameter — there is no implicit global. Mutate `state.<sub>.<field>` to communicate between systems.
 
-A historical legacy dict `char_characteristic` and proxy class were removed in version 0.2.0 (task 1.1). If you encounter that name in old commits or external docs, it referred to today's `game_state`.
+A historical legacy dict `char_characteristic` and proxy class were removed in version 0.2.0 (task 1.1). If you encounter that name in old commits or external docs, it referred to today's `game.state`.
 
-`characteristics.py` still loads the save at **import time** (`load_data_from_google_sheet_or_csv()` at module top level), so `import characteristics` can trigger network I/O to Google Sheets (with CSV fallback). Keep this in mind when adding tests or tools — task 1.2 will move this to lazy initialization.
+**Initialization is now lazy** (task 1.2, version 0.2.0c). Importing `characteristics` does NOT touch Google Sheets — only the call to `init_game_state()` does. CLI calls it from `__main__` before `play()`; FastAPI (task 4.48) will call it from a startup hook. Tests construct their own `GameState` and never need init at all, so the test suite runs in ~1 sec.
 
 ### Persistence layers (three of them)
 
 Saves are written to **all three** on save; loads prefer Google Sheets with CSV fallback:
 
-1. `characteristic.csv` — flat CSV. `save_characteristic()` writes `game_state.to_dict()`; `load_characteristic()` parses back via `ast.literal_eval` for nested dicts/lists. `from_dict()` then reconstructs `GameState`. Datetime keys (`skill_training_time_end`, `working_end`, `adventure_end_timestamp`) are parsed via `%Y-%m-%d %H:%M:%S.%f`.
+1. `characteristic.csv` — flat CSV. `save_characteristic()` writes `game.state.to_dict()`; `load_characteristic()` parses back via `ast.literal_eval` for nested dicts/lists. `GameState.from_dict()` then reconstructs the dataclass. Datetime keys (`skill_training_time_end`, `working_end`, `adventure_end_timestamp`) are parsed via `%Y-%m-%d %H:%M:%S.%f`.
 2. `characteristic.txt` — JSON mirror, same `to_dict()` format.
-3. Google Sheets — `google_sheets_db.py` uses gspread + a service-account key at `credentials/2walks_service_account.json`. Spreadsheet ID and sheet name are hardcoded in the function defaults.
+3. Google Sheets — two specialized worksheets in one spreadsheet (task 4.14, version 0.2.0d):
+    - `game_state` — full state snapshot (Key/Value layout). Renamed from legacy `Sheet1`.
+    - `steps_log` — append-only log of step measurements (`ts | user_id | steps | source`). `ts` is Unix timestamp (`float`); `source` is `'manual'` (CLI) / `'auto'` (future iPhone Shortcut, currently отложено) / `'web'` (future POST /api/steps). Used by max-merge (task 4.15) and as the source of truth for cross-channel input (CLI / Web / API).
+
+   Access via `google_sheets_db.GameStateRepo` (save/load) and `StepsLogRepo` (append/for_day) classes. A lazy singleton `_get_client()` keeps one authorized gspread client per process. New deployments need a one-time `python migrate_sheets.py` to rename `Sheet1` and create `steps_log`.
+
+   Steps_log writes happen only on explicit save (`s` or `q`) — not on every `+N` input — to keep offline-mode usable (player can enter wrong steps and exit without save).
 
 When adding new fields to `GameState`, update both `from_dict` and `to_dict` so the round-trip stays clean (the datetime special-case list in `_deser_datetime` / `json_serial` is the common trap).
 
@@ -74,7 +83,7 @@ Non-trivial mutations go through `actions.py` to keep invariants in one place:
 
 ### Tests
 
-`tests/` contains pytest suites for each module. Pure logic helpers (`_sort_inventory`, `_buy_item`, `_equip_from_inventory`, `try_spend`, formula functions) are tested directly with hand-built `GameState` instances. UI methods that use `input()`/`print()` are tested via `capsys` and `monkeypatch.setattr('builtins.input', ...)`. Tests do not depend on Google Sheets — `import` of test modules can still trigger I/O via `characteristics.py`, but tests themselves construct a fresh `GameState` per case.
+`tests/` contains pytest suites for each module. Pure logic helpers (`_sort_inventory`, `_buy_item`, `_equip_from_inventory`, `try_spend`, formula functions, `_state_dict_to_rows`, `_rows_to_state_dict`) are tested directly with hand-built `GameState` instances. UI methods that use `input()`/`print()` are tested via `capsys` and `monkeypatch.setattr('builtins.input', ...)`. Sheets repos (`GameStateRepo`, `StepsLogRepo`) are tested with mocked gspread (`unittest.mock.MagicMock`) — no real network. Tests do not depend on Google Sheets at all after task 1.2 (`import characteristics` is a pure operation), so the full suite runs in ~1 sec.
 
 ### Credentials and ignored files
 
