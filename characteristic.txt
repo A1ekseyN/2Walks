@@ -1,23 +1,23 @@
 {
-    "date_last_enter": "2025-06-14",
-    "timestamp_last_enter": 1749899713.261701,
-    "steps_today": 1594,
-    "steps_can_use": 807,
-    "steps_today_used": 1680,
-    "steps_yesterday": 780,
+    "date_last_enter": "2026-05-02",
+    "timestamp_last_enter": 1777730559.010077,
+    "steps_today": 2022,
+    "steps_can_use": 2478,
+    "steps_today_used": 672,
+    "steps_yesterday": 4587,
     "steps_daily_bonus": 0,
-    "steps_total_used": 1579100,
+    "steps_total_used": 1641932,
     "char_level": 9,
     "char_level_up_skills": 0,
     "lvl_up_skill_stamina": 9,
     "lvl_up_skill_energy_max": 0,
     "lvl_up_skill_speed": 0,
     "lvl_up_skill_luck": 0,
-    "loc": "work",
-    "energy": 45,
+    "loc": "home",
+    "energy": 62,
     "energy_max": 65,
-    "energy_time_stamp": 1749899713.322668,
-    "money": 1192,
+    "energy_time_stamp": 1777730530.0,
+    "money": 1952,
     "skill_training": false,
     "skill_training_name": null,
     "skill_training_timestamp": null,
@@ -32,12 +32,12 @@
     "move_optimization_adventure": 9,
     "move_optimization_gym": 13,
     "move_optimization_work": 16,
-    "work": "courier_foot",
-    "work_salary": 10,
+    "work": "watchman",
+    "work_salary": 2,
     "working": true,
-    "working_hours": 2,
-    "working_start": null,
-    "working_end": "2025-06-14 15:58:33.151023",
+    "working_hours": 4,
+    "working_start": "2026-05-02 16:51:07.098479",
+    "working_end": "2026-05-02 20:17:31.098479",
     "inventory": [
         {
             "item_name": [
@@ -102,7 +102,7 @@
                 3
             ],
             "quality": [
-                86.88889600000002
+                86.89
             ],
             "price": [
                 130
@@ -125,7 +125,7 @@
                 4
             ],
             "quality": [
-                58.773765399999945
+                58.77
             ],
             "price": [
                 117
@@ -217,7 +217,7 @@
                 5
             ],
             "quality": [
-                57.77171199999999
+                57.77
             ],
             "price": [
                 144
@@ -332,7 +332,7 @@
                 4
             ],
             "quality": [
-                32.348895999999996
+                32.35
             ],
             "price": [
                 64
@@ -447,7 +447,7 @@
                 4
             ],
             "quality": [
-                36.748895999999995
+                36.75
             ],
             "price": [
                 73
@@ -471,10 +471,10 @@
             5
         ],
         "quality": [
-            77.47618500000006
+            76.92954660000002
         ],
         "price": [
-            193
+            192
         ]
     },
     "equipment_neck": {
@@ -494,10 +494,10 @@
             4
         ],
         "quality": [
-            64.24490900000008
+            63.69827060000003
         ],
         "price": [
-            128
+            127
         ]
     },
     "equipment_torso": {
@@ -517,10 +517,10 @@
             5
         ],
         "quality": [
-            64.45407300000005
+            63.90743460000002
         ],
         "price": [
-            161
+            159
         ]
     },
     "equipment_finger_01": {
@@ -540,10 +540,10 @@
             5
         ],
         "quality": [
-            39.84079300000001
+            39.29415460000003
         ],
         "price": [
-            99
+            98
         ]
     },
     "equipment_finger_02": {
@@ -563,10 +563,10 @@
             5
         ],
         "quality": [
-            58.822361300000225
+            58.27572290000022
         ],
         "price": [
-            147
+            145
         ]
     },
     "equipment_legs": null,
@@ -587,10 +587,10 @@
             5
         ],
         "quality": [
-            95.81844499999998
+            95.27180659999995
         ],
         "price": [
-            239
+            238
         ]
     },
     "adventure": false,

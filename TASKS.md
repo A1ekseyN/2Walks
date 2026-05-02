@@ -1795,11 +1795,25 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 - `POST /api/gym/train` — старт обучения.
 - Локальный countdown до завершения тренировки.
 
-#### 4.48.5. Web: Work `[H / M / todo (blocked by 4.48.1)]`
+#### 4.48.5. Web: Work `[H / M / done (0.2.1a)]`
 
-- `GET /work` — выбор вакансии и часов.
-- `POST /api/work/start` — старт смены.
-- Прогресс смены, добавление часов через `POST /api/work/add_hours`.
+- `GET /work` — выбор вакансии и часов. **Реализовано как блок `id="work"` в `_status_fragment.html`**, без отдельного route'а — UI работы интегрирован в основной dashboard через `<details>`. Свёрнут по умолчанию в обоих состояниях (и когда работаешь, и когда нет) — чтобы Stats оставалась primary view, а игрок сам раскрывает Work при необходимости.
+- `POST /web/work/start` (Form) — старт смены, возвращает HTML-фрагмент.
+- `POST /web/work/add_hours` (Form) — добавить часы к активной смене (берёт `state.work.work_type` из state — UI не даёт сменить вакансию посреди смены, как в CLI).
+- `POST /api/work/start` (JSON) + `POST /api/work/add_hours` (JSON) — для curl / future iPhone Shortcut.
+- 4 вакансии (`watchman / factory / courier_foot / forwarder`) с кнопками часов 1..N (cap 8). N = `min(steps/req, energy/req, 8)`, считается в Python (`_max_work_hours`).
+- Auto-finalize смены: `work_check_done(state)` вызывается на каждый рендер `_dashboard_context()` — F5 / любой POST автоматически закроет смену, начислит зарплату и обнулит `state.work`. CLI не нужен для claim'а.
+- Известное ограничение: если игрок никогда не зайдёт на web после `state.work.end`, смена не финализируется до следующего захода (или CLI tick'а). Не критично, но см. 4.48.5.1 ниже.
+
+#### 4.48.5.1. Web: double-claim и periodic auto-save `[L / S / todo]`
+
+**Контекст:** auto-finalize Work через `work_check_done(state)` в `_dashboard_context()` зачисляет зарплату и пишет save_characteristic() сразу при истечении `state.work.end`. Но если в момент финализации Sheets недоступны (или игрок не сохранится через CLI), а потом игра перезапустится — Sheets'овский snapshot будет содержать active=True work, и при следующей загрузке (или reload через 4.54.0) `work_check_done` снова выполнит claim → двойная зарплата.
+
+**Почему не критично сейчас:** save_characteristic пишет и в CSV, и в Sheets (когда credentials есть). Single-user MVP — игрок обычно сразу видит claim и не перезапускает. Но это лазейка, которую закроет либо:
+1. Idempotent claim — пометить `state.work` как "claimed" с timestamp, чтобы повторный work_check_done был no-op.
+2. Periodic auto-save из web (раз в N минут или после каждого mutation endpoint) — гарантия, что Sheets всегда актуален.
+
+**Решить:** после внедрения 4.48.3 (Adventure auto-finalize) и 4.48.4 (training auto-finalize), когда станет понятно, какой паттерн обобщать. Возможно, идемпотентность важнее периодического сохранения.
 
 #### 4.48.6. Web: Inventory + Equipment `[M / M / todo (blocked by 4.48.1)]`
 

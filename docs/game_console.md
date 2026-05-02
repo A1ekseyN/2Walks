@@ -155,9 +155,11 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 - Если персонаж ещё не работает (`state.work.active` is False) — показывает вакансии (сторож, завод, курьер, экспедитор), каждая со своей стоимостью в шагах/энергии за час и почасовой зарплатой. Стоимость шагов модифицируется `apply_move_optimization_work(steps, state)` (бонус от скилла).
 - После выбора вакансии — `ask_hours(work)` рассчитывает максимум часов как `min(steps//req_steps, energy//req_energy, 8)` и спрашивает у игрока количество. `check_requirements` использует `try_spend` для списания и `actions.start_work(state, work_type, salary, hours, start, end)` — `state.work.end = now + hours*60s*speed_modifier`.
-- Если персонаж уже работает — позволяет добавить часы к текущей смене (`add_working_hours`).
+- Если персонаж уже работает — позволяет добавить часы к текущей смене (`add_working_hours`). Сменить вакансию посреди смены нельзя (ни в CLI, ни в web).
 
-Фактическое начисление денег происходит в `work_check_done(state)`, когда `state.work.end <= now`: `state.money += state.work.salary * state.work.hours`, сбрасываются поля `state.work.*`.
+Фактическое начисление денег происходит в `work_check_done(state)`, когда `state.work.end <= now`: `state.money += state.work.salary * state.work.hours`, сбрасываются поля `state.work.*`. CLI вызывает `work_check_done` на каждом тике main loop'а; web — на каждом рендере `_dashboard_context()` (любой GET/POST автоматически закроет смену).
+
+**Web (4.48.5):** тот же модуль работает через 4 endpoint'а в `web/main.py` — `POST /web/work/start` (Form), `POST /web/work/add_hours` (Form), `POST /api/work/start` (JSON), `POST /api/work/add_hours` (JSON). Все четыре проходят через общий helper `_validate_and_apply_work(state, work_type, hours)`, который под капотом дёргает тот же `Work.check_requirements()` + `Wear_Equipped_Items.decrease_durability()` что и CLI, и в конце вызывает `_persist_state_to_cloud()` (CSV+JSON+Sheets). Без последнего шага смена жила бы только в RAM uvicorn'а — баг был обнаружен и исправлен в 0.2.1a. UI: блок `<details id="work">` в dashboard, свёрнут по умолчанию в обоих состояниях; внутри — меню вакансий с кнопками `Nч` (cap 8) или форма `+Nч` для активной смены.
 
 ### 3.3 Adventure (Приключение) — `adventure.py`
 

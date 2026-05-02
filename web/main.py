@@ -31,7 +31,7 @@ from bonus import (
     equipment_bonus_stamina_steps,
     level_steps_bonus,
 )
-from characteristics import game, init_game_state
+from characteristics import game, init_game_state, save_characteristic
 from equipment_bonus import (
     equipment_energy_max_bonus,
     equipment_luck_bonus,
@@ -39,14 +39,97 @@ from equipment_bonus import (
     equipment_stamina_bonus,
 )
 from functions import bonus_percentage, total_bonus_steps
-from google_sheets_db import StepsLogRepo
+from google_sheets_db import GameStateRepo, StepsLogRepo
+from inventory import Wear_Equipped_Items
 from level import CharLevel
 from locations import icon_loc
 from skill_bonus import stamina_skill_bonus_def
 from web.sync import get_last_reload, try_reload_state
+from work import Work, work_check_done
 
 
-VERSION = "0.2.0m"
+VERSION = "0.2.1a"
+
+# UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
+_WORK_DISPLAY = {
+    "watchman":     {"title": "Сторож",     "icon": "🛡"},
+    "factory":      {"title": "Завод",      "icon": "🏭"},
+    "courier_foot": {"title": "Курьер",     "icon": "🚲"},
+    "forwarder":    {"title": "Экспедитор", "icon": "🚚"},
+}
+
+
+def _max_work_hours(state, requirements: dict) -> int:
+    """Сколько часов работы покрывают текущие ресурсы (cap 8)."""
+    steps_cap = state.steps.can_use // requirements['steps'] if requirements['steps'] > 0 else 0
+    energy_cap = state.energy // requirements['energy'] if requirements['energy'] > 0 else 0
+    return int(min(steps_cap, energy_cap, 8))
+
+
+def _build_work_vacancies(state) -> list:
+    """Собирает данные для меню выбора вакансии (не работаешь)."""
+    work_helper = Work(state)
+    vacancies = []
+    for key, req in work_helper.work_requirements.items():
+        meta = _WORK_DISPLAY.get(key, {"title": key.title(), "icon": "🏭"})
+        vacancies.append({
+            "key": key,
+            "title": meta["title"],
+            "icon": meta["icon"],
+            "steps_per_hour": req['steps'],
+            "energy_per_hour": req['energy'],
+            "salary_per_hour": req['salary'],
+            "max_hours": _max_work_hours(state, req),
+        })
+    return vacancies
+
+
+def _persist_state_to_cloud() -> None:
+    """Локальное сохранение (JSON+CSV) + push в Google Sheets.
+
+    Локальное всегда первым (гарантия offline-mode). Sheets — best-effort:
+    если упадёт сетевой, сообщение в лог uvicorn'а, но web-операция не
+    отвалится. Пользователь увидит данные на disk'е и при следующем
+    действии (или CLI save) Sheets синкнется.
+
+    Применяется после каждой мутирующей web-операции (start/add_hours
+    смены). Будущие training/adventure endpoint'ы будут звать тот же helper.
+    """
+    save_characteristic()
+    try:
+        GameStateRepo().save(game.state.to_dict())
+    except Exception as e:  # noqa: BLE001 — best-effort sync
+        print(f"[web] Sheets save failed (state cached locally): {e}")
+
+
+def _validate_and_apply_work(state, work_type: str, hours: int) -> Optional[str]:
+    """Валидирует work_type/hours, применяет смену через Work.check_requirements
+    + Wear_Equipped_Items.decrease_durability. На успехе синкает state в
+    Sheets+CSV+JSON через _persist_state_to_cloud(). Возвращает текст ошибки
+    или None.
+
+    Используется тремя endpoint'ами (web/api start + add_hours)."""
+    if work_type not in _WORK_DISPLAY:
+        return f"Неизвестная вакансия: {work_type}"
+    if not (1 <= hours <= 8):
+        return f"Часы должны быть в диапазоне 1-8 (было: {hours})"
+
+    work_helper = Work(state)
+    req = work_helper.work_requirements[work_type]
+    max_hours = _max_work_hours(state, req)
+    if hours > max_hours:
+        return (f"Не хватает ресурсов: максимум {max_hours} ч "
+                f"(нужно {hours * req['steps']} 🏃 + {hours * req['energy']} 🔋)")
+
+    # Work.check_requirements делает try_spend + start_work.
+    if not work_helper.check_requirements(work_type, hours):
+        return "Не удалось списать ресурсы (race condition?)"
+    # Износ экипировки — как в CLI (Work.ask_hours делает это после check_requirements).
+    Wear_Equipped_Items(state).decrease_durability(hours * req['steps'])
+    # Persist: state.work теперь active=True, но без записи в Sheets/CSV
+    # игрок потеряет смену при рестарте uvicorn'а или при reload через 4.54.0.
+    _persist_state_to_cloud()
+    return None
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -134,15 +217,26 @@ def _apply_new_steps(steps_value: int, source: str = "web",
 
 
 def _dashboard_context(request: Request, steps_error: Optional[str] = None,
-                       steps_form_open: bool = False) -> dict:
+                       steps_form_open: bool = False,
+                       work_error: Optional[str] = None) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
     при ошибке валидации/Sheets форма остаётся открытой с подсказкой.
+
+    `work_error` — текст ошибки от валидации Work-формы (показывается прямо
+    в блоке Work). При None — никаких сообщений.
     """
     state = game.state
     if state is None:
         raise RuntimeError("game.state не инициализирован — должен быть вызван init_game_state() в lifespan.")
+
+    # Auto-finalize работы по таймеру: каждый рендер dashboard'а / fragment'а
+    # проверяет state.work.end и если время вышло — начисляет зарплату и
+    # обнуляет смену. Так web-сценарий не требует отдельного "Claim"-клика
+    # (CLI делает то же самое в main loop'е). Аналогично появятся вызовы
+    # training_finalize / adventure_finalize в задачах 4.48.3 / 4.48.4.
+    work_check_done(state)
 
     char_level = CharLevel(state)
     now_ts = datetime.now().timestamp()
@@ -182,6 +276,18 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         state.equipment.legs, state.equipment.foots,
     ]
     equipment_worn = sum(1 for s in equipment_slots_list if s is not None)
+
+    # Work UI: либо меню вакансий (когда не работаешь), либо форма "+N часов"
+    # (когда уже работаешь). Расчёт max_hours делаем в Python — Jinja остаётся
+    # тонким слоем рендера. Cap = 8 часов (как в CLI Work.ask_hours).
+    if state.work.active and state.work.work_type:
+        work_vacancies = []
+        work_helper = Work(state)
+        cur_req = work_helper.work_requirements.get(state.work.work_type)
+        work_max_add_hours = _max_work_hours(state, cur_req) if cur_req else 0
+    else:
+        work_vacancies = _build_work_vacancies(state)
+        work_max_add_hours = 0
 
     return {
         "request": request,
@@ -228,6 +334,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # Steps form state (4.48.2): error message + open/closed flag.
         "steps_error": steps_error,
         "steps_form_open": steps_form_open,
+        # Work UI (4.48.5): меню вакансий или форма "+часы".
+        "work_vacancies": work_vacancies,
+        "work_max_add_hours": work_max_add_hours,
+        "work_error": work_error,
     }
 
 
@@ -333,3 +443,126 @@ async def web_steps(request: Request, steps: int = Form(...)):
         steps_form_open=not result.applied,
     )
     return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+# ----------------------------------------------------------------------------
+# Work — задача 4.48.5.
+#
+# Четыре endpoint'а с общим helper `_validate_and_apply_work()`:
+#  - POST /web/work/start (Form: work_type, hours) → HTML fragment.
+#  - POST /web/work/add_hours (Form: hours) → HTML fragment, work_type из state.
+#  - POST /api/work/start (JSON) — для curl / future iPhone Shortcut.
+#  - POST /api/work/add_hours (JSON) — то же, но через JSON.
+#
+# Финализация смены (зачисление зарплаты, очистка state.work) делается в
+# `_dashboard_context()` через `work_check_done(state)` — каждый GET / POST
+# проверит state.work.end и закроет смену, если время вышло.
+# ----------------------------------------------------------------------------
+
+
+class WorkStartRequest(BaseModel):
+    """Body для POST /api/work/start."""
+    work_type: str = Field(..., description="Ключ вакансии: watchman / factory / courier_foot / forwarder.")
+    hours: int = Field(..., ge=1, le=8, description="Кол-во рабочих часов (1-8).")
+
+
+class WorkAddHoursRequest(BaseModel):
+    """Body для POST /api/work/add_hours."""
+    hours: int = Field(..., ge=1, le=8, description="Сколько часов добавить (1-8).")
+
+
+def _work_state_snapshot(state) -> dict:
+    """Минимальный snapshot state.work для JSON-ответа."""
+    return {
+        "active": state.work.active,
+        "work_type": state.work.work_type,
+        "hours": state.work.hours,
+        "salary": state.work.salary,
+        "start_ts": state.work.start.timestamp() if state.work.start else None,
+        "end_ts": state.work.end.timestamp() if state.work.end else None,
+    }
+
+
+@app.post("/web/work/start", response_class=HTMLResponse)
+async def web_work_start(request: Request,
+                         work_type: str = Form(...),
+                         hours: int = Form(...)):
+    """Form-data старт смены. Возвращает обновлённый `_status_fragment.html`.
+
+    Если уже работаешь — игнорируем (нельзя сменить вакансию посреди смены,
+    как в CLI). Если ресурсов не хватает — фрагмент с work_error.
+    """
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+
+    if state.work.active:
+        # Стартовать новую смену поверх активной нельзя — UI должен был
+        # показать форму "+часы", но кто-то всё равно дёрнул POST /start.
+        context = _dashboard_context(
+            request,
+            work_error="Уже работаешь — заверши смену или используй форму 'Добавить часы'.",
+        )
+    else:
+        err = _validate_and_apply_work(state, work_type, hours)
+        context = _dashboard_context(request, work_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/work/add_hours", response_class=HTMLResponse)
+async def web_work_add_hours(request: Request, hours: int = Form(...)):
+    """Form-data добавление часов к активной смене. Берёт work_type из state."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+
+    if not state.work.active or not state.work.work_type:
+        context = _dashboard_context(
+            request,
+            work_error="Сейчас не работаешь — выбери вакансию.",
+        )
+    else:
+        err = _validate_and_apply_work(state, state.work.work_type, hours)
+        context = _dashboard_context(request, work_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/api/work/start")
+async def api_work_start(payload: WorkStartRequest):
+    """JSON старт смены. Возвращает 200+work snapshot или 422 с error."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+
+    # work_check_done вызывается ТОЛЬКО в _dashboard_context (не в API).
+    # JSON-клиент явно вызывает start — авто-финализация ему не нужна.
+    if state.work.active:
+        return JSONResponse(
+            {"ok": False, "error": "Already working — нельзя сменить вакансию посреди смены.",
+             "work": _work_state_snapshot(state)},
+            status_code=409,
+        )
+
+    err = _validate_and_apply_work(state, payload.work_type, payload.hours)
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "work": _work_state_snapshot(state)})
+
+
+@app.post("/api/work/add_hours")
+async def api_work_add_hours(payload: WorkAddHoursRequest):
+    """JSON добавление часов к активной смене."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+
+    if not state.work.active or not state.work.work_type:
+        return JSONResponse(
+            {"ok": False, "error": "Not working — нет активной смены."},
+            status_code=409,
+        )
+
+    err = _validate_and_apply_work(state, state.work.work_type, payload.hours)
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "work": _work_state_snapshot(state)})

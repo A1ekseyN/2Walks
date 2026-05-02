@@ -59,14 +59,15 @@ Saves are written to **all three** on save; loads prefer Google Sheets with CSV 
     - `game_state` — full state snapshot (Key/Value layout). Renamed from legacy `Sheet1`.
     - `steps_log` — append-only log of step measurements (`ts | user_id | steps | source`). `ts` is Unix timestamp (`float`); `source` is `'manual'` (CLI), `'web'` (web form / `POST /api/steps`), `'auto'` (future iPhone Shortcut, currently отложено). Used by max-merge (`apply_steps_log_max_merge`, task 4.15) — applied on every load (CLI start + web reload) so any input channel reflects on next start, even if the `game_state` snapshot is stale.
 
-Web dashboard refresh model (after 0.2.0j): no automatic HTMX polling. Numbers update on F5 / pull-to-refresh (full reload triggers `try_reload_state()` which fetches Sheets + applies max-merge) or after form submit (`POST /web/steps` returns updated fragment, HTMX swaps `#status-bar`). Active session timers (training / work / adventure) tick every second via JS without server roundtrips. The `GET /status` endpoint remains in code for future use (Refresh button — 4.54.0.1, action endpoints — 4.48.3+).
+Web dashboard refresh model (after 0.2.0j): no automatic HTMX polling. Numbers update on F5 / pull-to-refresh (full reload triggers `try_reload_state()` which fetches Sheets + applies max-merge) or after form submit (`POST /web/steps`, `POST /web/work/*` etc. — endpoints return updated fragment, HTMX swaps `#status-bar`). Active session timers (training / work / adventure) tick every second via JS without server roundtrips. The `GET /status` endpoint remains in code for future use (Refresh button — 4.54.0.1, action endpoints — 4.48.3+).
 
-Dashboard layout (compact / mobile-first): the always-visible Stats area shows only current numbers (Steps with click-to-input form, Energy, Money, Level + progress). Three sections are wrapped in native HTML5 `<details>` and collapsed by default — click summary to expand:
+Dashboard layout (compact / mobile-first): the always-visible Stats area shows only current numbers (Steps with click-to-input form, Energy, Money, Level + progress). Section order: Stats → 🏭 Работа → ⏱ Активные сессии (only if any active) → 📈 Бонусы → 🧥 Экипировка → 🎒 Инвентарь. Four sections are wrapped in native HTML5 `<details>` and collapsed by default — click summary to expand:
+- **🏭 Работа** — summary shows current shift inline (`watchman · 8 $ (4 ч)`) when active, or "выбери вакансию" otherwise. Inside: 4-vacancy menu with hour buttons (`1ч..Nч`, cap 8) when not working, or `+Nч` add-hours form when working. Collapsed in BOTH states (working and not) — Stats stays the primary view.
 - **📈 Бонусы** — Steps breakdown (stamina · equipment · daily · level + total/percent), Energy breakdown, Total used.
 - **🧥 Экипировка** — summary shows worn count `(N/7)` + non-zero equipment bonuses inline (zero values filtered); inside — slot-by-slot list.
 - **🎒 Инвентарь** — summary shows item count `(N)`; inside — sorted item list.
 
-Collapsed content stays in DOM (accessibility / search-friendly), only visually hidden by Pico.css default styles. After HTMX swap (`POST /web/steps`) sections close — by design (no state persistence between renders).
+Collapsed content stays in DOM (accessibility / search-friendly), only visually hidden by Pico.css default styles. After HTMX swap (any `POST /web/*` endpoint) sections close — by design (no state persistence between renders).
 
    Access via `google_sheets_db.GameStateRepo` (save/load) and `StepsLogRepo` (append/for_day) classes. A lazy singleton `_get_client()` keeps one authorized gspread client per process. New deployments need a one-time `python migrate_sheets.py` to rename `Sheet1` and create `steps_log`.
 
@@ -84,6 +85,18 @@ When adding new fields to `GameState`, update both `from_dict` and `to_dict` so 
 All three write a row to the `steps_log` Sheet; web/API additionally update `state.steps.today` in memory immediately. The `apply_steps_log_max_merge()` helper (task 4.15) runs on every load (CLI start via `init_game_state`, web reload via `web.sync.try_reload_state`) and bumps `state.steps.today` to the maximum of all log entries for today — so input from any channel becomes visible on next start even if the `game_state` snapshot in Sheets is stale.
 
 On date change (`save_game_date_last_enter(state)`), `today` and `used` reset to `0` so the new day starts fresh; the player re-enters the bracelet reading via any channel. The single source of truth for day rollover is `state.date_last_enter` (compared against `datetime.now().date()`); legacy `save.txt` was removed in 0.2.0k (task 2.1).
+
+### Web mutation endpoints (4.48.5+)
+
+Web actions that change state (currently Work — start shift / add hours; later training and adventure) follow a common pattern:
+
+1. **Validate + apply via shared helper.** Each subsystem has a `_validate_and_apply_<thing>(state, ...) -> Optional[str]` helper in `web/main.py` that does range/resource checks first, then calls the existing CLI mutation path (`Work.check_requirements()` for Work — which under the hood does `actions.try_spend` + `actions.start_work`), and finally calls `_persist_state_to_cloud()` on success. Returns error text or None.
+2. **Persist after every successful mutation.** `_persist_state_to_cloud()` runs `save_characteristic()` (CSV+JSON, guaranteed) followed by `GameStateRepo().save(state.to_dict())` (Sheets, best-effort — Sheets failure is logged but does not block the endpoint). Without this step, mutations would live only in uvicorn RAM and be lost on restart / invisible to CLI. Steps (`_apply_new_steps`) are the exception — they write to the append-only `steps_log` and rely on max-merge for resync, so they don't need a full snapshot save.
+3. **Two endpoints per action: Form + JSON.** `POST /web/<action>` accepts form-data and returns the rendered `_status_fragment.html` for HTMX swap. `POST /api/<action>` accepts JSON via Pydantic models (e.g. `WorkStartRequest`, `WorkAddHoursRequest`) and returns JSON `{ok, work: {...}}` or `{ok: false, error}`. Both share the same validate/apply helper.
+4. **Auto-finalize timer-based sessions.** Finalizers like `work_check_done(state)` (and future training / adventure analogs) are called at the top of `_dashboard_context()` so any GET / POST to web automatically closes finished sessions and credits rewards — no separate "Claim" click needed in web. CLI still calls these in its main loop tick.
+5. **No mid-session vacancy switch.** Work is intentionally locked to the chosen vacancy until the shift ends (matches CLI). `add_hours` uses `state.work.work_type` from state rather than accepting it from the request.
+
+Known follow-up: double-claim race on stale Sheets state — see TASKS.md `4.48.5.1`.
 
 ### Mutation helpers: `actions.py`
 

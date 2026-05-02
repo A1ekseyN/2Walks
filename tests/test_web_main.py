@@ -23,20 +23,35 @@ from web.main import VERSION, app
 
 @pytest.fixture(autouse=True)
 def patch_sheets_load(monkeypatch):
-    """Мокает GameStateRepo.load и StepsLogRepo.for_day — чтобы тесты не ходили
-    в реальный Sheets во время reload + max-merge (4.15). Тесты, которые хотят
-    assert call count или симулировать ошибку, переопределяют patch внутри тела
-    теста."""
+    """Мокает GameStateRepo.load/save, StepsLogRepo.for_day и save_characteristic
+    — чтобы тесты не ходили в реальный Sheets и не писали JSON/CSV на диск во
+    время reload + max-merge (4.15) и mutating endpoint'ов (4.48.5+). Тесты,
+    которые хотят assert call count или симулировать ошибку, переопределяют
+    patch внутри тела теста."""
     from google_sheets_db import GameStateRepo, StepsLogRepo
 
     def fake_load(self):
         return game.state.to_dict() if game.state is not None else {}
 
+    def fake_save(self, data, user_id=None):
+        return None
+
     def fake_for_day(self, date_str, user_id=None):
         return []  # пустой лог = max-merge no-op
 
     monkeypatch.setattr(GameStateRepo, "load", fake_load)
+    monkeypatch.setattr(GameStateRepo, "save", fake_save)
     monkeypatch.setattr(StepsLogRepo, "for_day", fake_for_day)
+    # Локальный CSV/JSON save_characteristic — патчим прямо в характеристиках
+    # И в work (там import-time copy в work_check_done).
+    import characteristics as _ch
+    import work as _wm
+    monkeypatch.setattr(_ch, "save_characteristic", lambda: None)
+    monkeypatch.setattr(_wm, "save_characteristic", lambda: None)
+    # И в web.main (где import характеристик идёт через `from … import save_characteristic`,
+    # т.е. ссылка скопирована в namespace модуля).
+    import web.main as _wm_main
+    monkeypatch.setattr(_wm_main, "save_characteristic", lambda: None)
     # Сброс кэша last_reload между тестами — чтобы badge от предыдущих
     # тестов не протекал в текущий.
     web_sync._reset_for_tests()
@@ -197,7 +212,9 @@ def test_active_work_renders_with_data_end_ts():
     state.work.work_type = "factory"
     state.work.salary = 5
     state.work.hours = 4
-    state.work.end = datetime(2026, 5, 1, 19, 0, 0)
+    # end в будущем — work_check_done не должна закрывать смену.
+    state.work.end = datetime.now() + timedelta(hours=1)
+    state.work.start = datetime.now() - timedelta(hours=1)
     _setup_state(state)
     with TestClient(app) as client:
         response = client.get("/status")
@@ -388,8 +405,10 @@ def test_active_adventure_renders_progress_bar():
     assert 30 <= pct <= 70
 
 
-def test_finished_work_progress_bar_at_100_with_done_marker():
-    """Work с end в прошлом → progress 100 + ✓ Завершено."""
+def test_finished_work_auto_finalized_in_dashboard_context():
+    """Work с end в прошлом → auto-finalize в _dashboard_context: зарплата
+    зачислена, work очищен, прогресс-бар работы НЕ рендерится. См. также
+    test_dashboard_auto_finalizes_expired_work_session ниже."""
     state = GameState.default_new_game()
     state.work.active = True
     state.work.work_type = "factory"
@@ -397,12 +416,18 @@ def test_finished_work_progress_bar_at_100_with_done_marker():
     state.work.hours = 4
     state.work.start = datetime.now() - timedelta(hours=2)
     state.work.end = datetime.now() - timedelta(seconds=1)
+    pre_money = state.money
     _setup_state(state)
+
     with TestClient(app) as client:
         response = client.get("/status")
+
     body = response.text
-    assert 'value="100.00"' in body
-    assert "✓ Завершено" in body
+    # Зарплата зачислена.
+    assert state.money == pre_money + 20  # 5 * 4
+    # Work очищен — нет завершённого progress bar.
+    assert state.work.active is False
+    assert "✓ Завершено" not in body
 
 
 def test_finished_adventure_shows_progress_100_and_claim_warning():
@@ -989,3 +1014,494 @@ def test_inventory_items_still_in_dom_when_collapsed():
     assert "Ring" in body
     assert "s-grade" in body
     assert "+4" in body
+
+
+# ----- Work UI (task 4.48.5) -----
+
+def _state_for_work(steps_can_use=8000, energy=80):
+    """Подготовленный state с достаточными ресурсами для всех вакансий
+    (factory @500/7 = 16 ч / 11 ч; cap 8 → 8 ч). Для forwarder (@5000/30)
+    хватит на 1 ч (8000/5000=1, 80/30=2 → min 1)."""
+    state = GameState.default_new_game()
+    state.steps.today = steps_can_use
+    state.steps.can_use = steps_can_use
+    state.energy = energy
+    return state
+
+
+def test_web_work_section_renders_in_status_fragment():
+    """В фрагменте присутствует секция id='work' с обёрткой <details>."""
+    state = _state_for_work()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'id="work"' in body
+    work_pos = body.find('id="work"')
+    work_section = body[work_pos:work_pos + 4000]
+    assert "<details" in work_section
+    assert "<summary>" in work_section
+
+
+def test_web_work_section_collapsed_when_not_active():
+    """Не работаешь → блок Work свёрнут (нет open атрибута)."""
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    work_pos = body.find('id="work"')
+    work_section = body[work_pos:work_pos + 4000]
+    # <details> без open (Jinja может оставить пробел после имени тега).
+    assert "<details" in work_section
+    assert "<details open" not in work_section
+
+
+def test_web_work_section_collapsed_even_when_active():
+    """Работаешь → блок Work всё равно свёрнут по умолчанию. Игрок сам
+    разворачивает, чтобы увидеть форму '+часов' и не путать со step-формой."""
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 3
+    state.work.start = datetime.now() - timedelta(hours=1)
+    state.work.end = datetime.now() + timedelta(hours=2)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    work_pos = body.find('id="work"')
+    work_section = body[work_pos:work_pos + 4000]
+    assert "<details open" not in work_section
+    # Но контент формы add_hours всё равно в DOM (для accessibility).
+    assert 'hx-post="/web/work/add_hours"' in work_section
+
+
+def test_web_work_renders_all_4_vacancies_when_not_active():
+    """Меню вакансий: 4 формы старта смены, по одной на каждую вакансию."""
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Все 4 названия вакансий присутствуют.
+    assert "Сторож" in body
+    assert "Завод" in body
+    assert "Курьер" in body
+    assert "Экспедитор" in body
+    # И 4 формы со старт-ендпоинтом.
+    assert body.count('hx-post="/web/work/start"') == 4
+
+
+def test_web_work_renders_add_hours_form_when_active():
+    """Уже работаешь → нет меню вакансий, есть форма '+часов'."""
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "factory"
+    state.work.salary = 5
+    state.work.hours = 2
+    state.work.start = datetime.now() - timedelta(hours=1)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'hx-post="/web/work/add_hours"' in body
+    # И нет старта смены — посреди смены нельзя сменить вакансию.
+    assert 'hx-post="/web/work/start"' not in body
+
+
+def test_web_work_max_hours_button_count_caps_at_8():
+    """Cap = 8 кнопок даже если ресурсов хватает на 100 часов."""
+    state = _state_for_work(steps_can_use=10_000_000, energy=10000)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # У watchman (@200 шагов/4 эн) с такими ресурсами max должно быть >> 8 — но cap 8.
+    # Считаем кнопки в первой watchman-форме: hidden input value="watchman" + 8 hours-button'ов.
+    work_pos = body.find('id="work"')
+    work_section = body[work_pos:work_pos + 8000]
+    # Найти watchman article (hidden input value="watchman")
+    watchman_form_start = work_section.find('value="watchman"')
+    assert watchman_form_start > 0
+    # До </form>
+    form_end = work_section.find('</form>', watchman_form_start)
+    watchman_form = work_section[watchman_form_start:form_end]
+    # Кнопки 1ч..8ч — ровно 8 штук, не больше.
+    import re
+    btns = re.findall(r'name="hours" value="(\d+)"', watchman_form)
+    assert btns == ["1", "2", "3", "4", "5", "6", "7", "8"]
+
+
+def test_web_work_no_button_when_not_enough_resources():
+    """Forwarder требует 5000 шагов/30 эн в час. Если шагов/энергии впритык на 0
+    часов — нет ни одной кнопки запуска для forwarder."""
+    state = _state_for_work(steps_can_use=100, energy=10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Forwarder в DOM, но без кнопок.
+    work_pos = body.find('id="work"')
+    work_section = body[work_pos:work_pos + 8000]
+    forwarder_pos = work_section.find('Экспедитор')
+    assert forwarder_pos > 0
+    # До конца article (или следующего article).
+    article_end = work_section.find('</article>', forwarder_pos)
+    forwarder_block = work_section[forwarder_pos:article_end]
+    # Нет hidden input forwarder → форма не сгенерирована (max_hours=0).
+    assert 'value="forwarder"' not in forwarder_block
+    assert "не хватает" in forwarder_block
+
+
+def test_web_work_start_with_valid_params_starts_session():
+    state = _state_for_work()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/work/start", data={"work_type": "watchman", "hours": "2"})
+    assert response.status_code == 200
+    # state.work.active теперь True.
+    assert state.work.active is True
+    assert state.work.work_type == "watchman"
+    assert state.work.hours == 2
+    # И фрагмент содержит форму add_hours (т.к. работаем).
+    body = response.text
+    assert 'hx-post="/web/work/add_hours"' in body
+
+
+def test_web_work_start_with_insufficient_resources_returns_error():
+    """Forwarder требует 5000 шагов/30 эн в час; на 2 часа = 10к шагов/60 эн.
+    State.steps=8000 — не хватает."""
+    state = _state_for_work(steps_can_use=8000, energy=80)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/work/start", data={"work_type": "forwarder", "hours": "2"})
+    assert response.status_code == 200  # фрагмент с error
+    assert state.work.active is False  # не запустилось
+    body = response.text
+    assert "❌" in body
+    assert "Не хватает ресурсов" in body
+
+
+def test_web_work_start_with_invalid_work_type_returns_error():
+    state = _state_for_work()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/work/start", data={"work_type": "ceo", "hours": "1"})
+    assert response.status_code == 200
+    assert state.work.active is False
+    body = response.text
+    assert "Неизвестная вакансия" in body
+
+
+def test_web_work_start_when_already_working_rejects():
+    """Старт новой смены поверх активной — отвергается."""
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 1
+    state.work.start = datetime.now() - timedelta(minutes=30)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/work/start", data={"work_type": "factory", "hours": "1"})
+    assert response.status_code == 200
+    # work_type не сменился.
+    assert state.work.work_type == "watchman"
+    body = response.text
+    assert "Уже работаешь" in body
+
+
+def test_web_work_add_hours_when_active_extends_session():
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 1
+    state.work.start = datetime.now() - timedelta(minutes=30)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+    pre_hours = state.work.hours
+    with TestClient(app) as client:
+        response = client.post("/web/work/add_hours", data={"hours": "2"})
+    assert response.status_code == 200
+    # Часы увеличились.
+    assert state.work.hours == pre_hours + 2
+
+
+def test_web_work_add_hours_when_not_active_returns_error():
+    state = _state_for_work()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/work/add_hours", data={"hours": "1"})
+    assert response.status_code == 200
+    body = response.text
+    assert "не работаешь" in body.lower()
+    assert state.work.active is False
+
+
+# ----- /api/work/* (JSON) -----
+
+def test_api_work_start_with_valid_params():
+    state = _state_for_work()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/work/start", json={"work_type": "watchman", "hours": 2})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["work"]["active"] is True
+    assert body["work"]["work_type"] == "watchman"
+    assert body["work"]["hours"] == 2
+    assert body["work"]["salary"] == 2
+    assert body["work"]["start_ts"] is not None
+    assert body["work"]["end_ts"] is not None
+
+
+def test_api_work_start_with_invalid_hours_pydantic_422():
+    """Pydantic ловит hours=0/9 до того, как доходит до handler'а."""
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        r1 = client.post("/api/work/start", json={"work_type": "watchman", "hours": 0})
+        r2 = client.post("/api/work/start", json={"work_type": "watchman", "hours": 9})
+    assert r1.status_code == 422
+    assert r2.status_code == 422
+
+
+def test_api_work_start_with_unknown_work_type_returns_422():
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.post("/api/work/start", json={"work_type": "ceo", "hours": 1})
+    assert response.status_code == 422
+    body = response.json()
+    assert body["ok"] is False
+    assert "Неизвестная вакансия" in body["error"]
+
+
+def test_api_work_start_with_insufficient_resources_returns_422():
+    state = _state_for_work(steps_can_use=8000, energy=80)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/work/start", json={"work_type": "forwarder", "hours": 2})
+    assert response.status_code == 422
+    body = response.json()
+    assert body["ok"] is False
+    assert "Не хватает ресурсов" in body["error"]
+
+
+def test_api_work_start_when_already_working_returns_409():
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 1
+    state.work.start = datetime.now() - timedelta(minutes=30)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/work/start", json={"work_type": "factory", "hours": 1})
+    assert response.status_code == 409
+    body = response.json()
+    assert body["ok"] is False
+    assert body["work"]["work_type"] == "watchman"
+
+
+def test_api_work_add_hours_when_active():
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 1
+    state.work.start = datetime.now() - timedelta(minutes=30)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/work/add_hours", json={"hours": 2})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["work"]["hours"] == 3
+
+
+def test_api_work_add_hours_when_not_active_returns_409():
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.post("/api/work/add_hours", json={"hours": 2})
+    assert response.status_code == 409
+    body = response.json()
+    assert body["ok"] is False
+
+
+# ----- Auto-finalize (work_check_done в _dashboard_context) -----
+
+def test_dashboard_auto_finalizes_expired_work_session():
+    """Если state.work.end в прошлом, заход на /status (или GET /) должен
+    автоматически закрыть смену через work_check_done() и зачислить зарплату."""
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 4
+    state.work.start = datetime.now() - timedelta(hours=2)
+    state.work.end = datetime.now() - timedelta(seconds=1)
+    pre_money = state.money
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/status")
+
+    assert response.status_code == 200
+    # Зарплата зачислена: 2 $ × 4 ч = 8 $.
+    assert state.money == pre_money + 8
+    # Смена очищена.
+    assert state.work.active is False
+    assert state.work.work_type is None
+    assert state.work.hours == 0
+
+
+def test_dashboard_does_not_finalize_active_unfinished_work():
+    """Если work.end в будущем — work_check_done не трогает state."""
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 4
+    state.work.start = datetime.now() - timedelta(minutes=10)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    pre_money = state.money
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/status")
+
+    assert response.status_code == 200
+    assert state.work.active is True
+    assert state.money == pre_money  # ничего не зачислено
+
+
+# ----- Section ordering for Work -----
+
+def test_web_work_start_persists_state_to_cloud(monkeypatch):
+    """REGRESSION: после успешного /web/work/start state должен попасть в
+    Sheets+CSV+JSON. Иначе (как было до фикса) у игрока в браузере крутится
+    таймер, но при рестарте uvicorn'а или CLI-чтении смены нет."""
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    saved_locally = []
+
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+    import web.main as wm
+    monkeypatch.setattr(wm, "save_characteristic", lambda: saved_locally.append(1))
+
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.post("/web/work/start", data={"work_type": "watchman", "hours": "1"})
+
+    assert response.status_code == 200
+    assert len(saved_locally) == 1, "save_characteristic (CSV+JSON) должен быть вызван"
+    assert len(saved_to_sheets) == 1, "GameStateRepo.save (Sheets) должен быть вызван"
+    # И snapshot (плоский legacy-формат) содержит активную смену.
+    snapshot = saved_to_sheets[0]
+    assert snapshot["working"] is True
+    assert snapshot["work"] == "watchman"
+
+
+def test_web_work_add_hours_persists_state_to_cloud(monkeypatch):
+    """REGRESSION: успешный add_hours тоже должен синкать state в облако."""
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+
+    state = _state_for_work()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 1
+    state.work.start = datetime.now() - timedelta(minutes=30)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/web/work/add_hours", data={"hours": "1"})
+
+    assert response.status_code == 200
+    assert len(saved_to_sheets) == 1
+    assert saved_to_sheets[0]["working_hours"] == 2
+
+
+def test_api_work_start_persists_state_to_cloud(monkeypatch):
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.post("/api/work/start", json={"work_type": "watchman", "hours": 1})
+
+    assert response.status_code == 200
+    assert len(saved_to_sheets) == 1
+    assert saved_to_sheets[0]["working"] is True
+
+
+def test_web_work_failed_validation_does_not_persist(monkeypatch):
+    """Если ресурсов не хватает / unknown work_type → state не мутирован,
+    persist НЕ вызван (нет смысла писать неизменённый state в Sheets)."""
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+    import web.main as wm
+    saved_locally = []
+    monkeypatch.setattr(wm, "save_characteristic", lambda: saved_locally.append(1))
+
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        # Unknown work_type → 422-валидация Python.
+        client.post("/web/work/start", data={"work_type": "ceo", "hours": "1"})
+
+    assert saved_to_sheets == []
+    assert saved_locally == []
+
+
+def test_web_work_persists_even_if_sheets_save_fails(monkeypatch, capsys):
+    """Sheets save fail → не блокирует endpoint, state остаётся мутирован
+    локально (CSV/JSON синкнулся первым), uvicorn пишет в лог про fail."""
+    from google_sheets_db import GameStateRepo
+    def failing_save(self, data, user_id=None):
+        raise RuntimeError("Sheets API quota exceeded")
+    monkeypatch.setattr(GameStateRepo, "save", failing_save)
+
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.post("/web/work/start", data={"work_type": "watchman", "hours": "1"})
+
+    # Endpoint всё равно отвечает 200.
+    assert response.status_code == 200
+    # State в RAM мутирован — смена активна.
+    assert game.state.work.active is True
+    # В лог записано про Sheets-fail.
+    captured = capsys.readouterr()
+    assert "Sheets save failed" in captured.out
+
+
+def test_work_section_appears_between_stats_and_active_sessions():
+    """Order: Stats → Work → (Active sessions if active) → Бонусы → ..."""
+    state = _state_for_work()
+    # Чтобы Active sessions точно отрисовалась, добавим тренировку.
+    state.training.active = True
+    state.training.skill_name = "stamina"
+    state.training.timestamp = (datetime.now() - timedelta(minutes=5)).timestamp()
+    state.training.time_end = datetime.now() + timedelta(minutes=5)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    stats_pos = body.find('id="stats"')
+    work_pos = body.find('id="work"')
+    active_pos = body.find('id="active-sessions"')
+    bonuses_pos = body.find('id="bonuses"')
+    assert 0 < stats_pos < work_pos < active_pos < bonuses_pos
