@@ -732,3 +732,260 @@ def test_equipment_section_appears_before_inventory():
     inv_pos = body.find('id="inventory"')
     assert eq_pos > 0 and inv_pos > 0
     assert eq_pos < inv_pos
+
+
+# ----- Collapsible sections (0.2.0j follow-up) -----
+
+def test_inventory_uses_details_element():
+    """Инвентарь обёрнут в <details><summary>, по умолчанию свёрнут."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Внутри #inventory есть <details> и <summary>.
+    inv_start = body.find('id="inventory"')
+    inv_section = body[inv_start:inv_start + 2000]
+    assert "<details>" in inv_section
+    assert "<summary>" in inv_section
+    # Свернут по умолчанию (нет open атрибута).
+    assert "<details open" not in inv_section
+
+
+def test_equipment_uses_details_element():
+    """Экипировка обёрнута в <details><summary>, по умолчанию свёрнута."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    eq_start = body.find('id="equipment"')
+    eq_section = body[eq_start:eq_start + 2000]
+    assert "<details>" in eq_section
+    assert "<summary>" in eq_section
+    assert "<details open" not in eq_section
+
+
+def test_inventory_summary_shows_count():
+    """Summary инвентаря показывает счётчик (N)."""
+    state = GameState.default_new_game()
+    state.inventory = [
+        {"item_name": ["x"], "item_type": ["ring"], "grade": ["a-grade"],
+         "characteristic": ["luck"], "bonus": [3], "quality": [80.0], "price": [120]},
+        {"item_name": ["y"], "item_type": ["helmet"], "grade": ["b-grade"],
+         "characteristic": ["stamina"], "bonus": [2], "quality": [70.0], "price": [70]},
+    ]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Summary содержит "(2)" сразу после "Инвентарь</strong>".
+    assert "Инвентарь</strong> (2)" in body
+
+
+def test_equipment_summary_shows_worn_count():
+    """Summary экипировки показывает (N/7)."""
+    state = GameState.default_new_game()
+    state.equipment.head = {
+        "item_name": ["helmet"], "item_type": ["helmet"], "grade": ["a-grade"],
+        "characteristic": ["stamina"], "bonus": [3], "quality": [80.0], "price": [120],
+    }
+    state.equipment.neck = {
+        "item_name": ["necklace"], "item_type": ["necklace"], "grade": ["b-grade"],
+        "characteristic": ["luck"], "bonus": [2], "quality": [70.0], "price": [70],
+    }
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # 2 надетых из 7 → "(2/7)".
+    assert "(2/7)" in body
+
+
+def test_equipment_summary_shows_only_nonzero_bonuses():
+    """Summary экипировки показывает только не-нулевые бонусы (stamina выше 0
+    видно, energy_max/speed/luck с +0 — спрятаны)."""
+    state = GameState.default_new_game()
+    state.equipment.head = {
+        "item_name": ["helmet"], "item_type": ["helmet"], "grade": ["a-grade"],
+        "characteristic": ["stamina"], "bonus": [5], "quality": [80.0], "price": [120],
+    }
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Найдём summary блока экипировки.
+    eq_start = body.find('id="equipment"')
+    summary_start = body.find("<summary>", eq_start)
+    summary_end = body.find("</summary>", summary_start)
+    summary = body[summary_start:summary_end]
+    # stamina ненулевой → отображается с +5.
+    assert "stamina +5" in summary
+    # Остальные нулевые → скрыты.
+    assert "energy_max" not in summary
+    assert "speed" not in summary
+    assert "luck" not in summary
+
+
+def test_equipment_summary_no_bonuses_block_when_all_zero():
+    """Если ни одного бонуса нет — <small> с "·" префиксом не рендерится в summary."""
+    state = GameState.default_new_game()
+    # Никакой экипировки → все 4 бонуса = 0.
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Найдём summary блока экипировки.
+    eq_start = body.find('id="equipment"')
+    summary_start = body.find("<summary>", eq_start)
+    summary_end = body.find("</summary>", summary_start)
+    summary = body[summary_start:summary_end]
+    assert "stamina" not in summary
+    assert "energy_max" not in summary
+    assert "speed" not in summary
+    assert "luck" not in summary
+    assert "·" not in summary  # никаких разделителей не осталось
+
+
+def test_equipment_summary_shows_multiple_nonzero_bonuses():
+    """При нескольких ненулевых — все они показаны в summary."""
+    state = GameState.default_new_game()
+    state.equipment.head = {
+        "item_name": ["helmet"], "item_type": ["helmet"], "grade": ["a-grade"],
+        "characteristic": ["stamina"], "bonus": [3], "quality": [80.0], "price": [120],
+    }
+    state.equipment.neck = {
+        "item_name": ["necklace"], "item_type": ["necklace"], "grade": ["a-grade"],
+        "characteristic": ["luck"], "bonus": [4], "quality": [80.0], "price": [120],
+    }
+    state.equipment.foots = {
+        "item_name": ["shoes"], "item_type": ["shoes"], "grade": ["b-grade"],
+        "characteristic": ["speed_skill"], "bonus": [2], "quality": [70.0], "price": [70],
+    }
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    eq_start = body.find('id="equipment"')
+    summary_start = body.find("<summary>", eq_start)
+    summary_end = body.find("</summary>", summary_start)
+    summary = body[summary_start:summary_end]
+    assert "stamina +3" in summary
+    assert "luck +4" in summary
+    assert "speed +2" in summary
+    # energy_max нулевой → скрыт.
+    assert "energy_max" not in summary
+
+
+def test_bonuses_section_uses_details_collapsed_by_default():
+    """Бонусы Steps + Energy перенесены в отдельный <details> блок, свёрнут."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    bon_start = body.find('id="bonuses"')
+    assert bon_start > 0, "section id=bonuses missing"
+    bon_section = body[bon_start:bon_start + 2000]
+    assert "<details>" in bon_section
+    assert "<summary>" in bon_section
+    assert "<details open" not in bon_section
+
+
+def test_bonuses_section_contains_steps_breakdown():
+    state = GameState.default_new_game()
+    state.steps.today = 10000
+    state.gym.stamina = 5
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    bon_start = body.find('id="bonuses"')
+    bon_section = body[bon_start:bon_start + 2000]
+    # Внутри секции бонусов: stamina/equipment/daily/level + всего/percent.
+    assert "stamina" in bon_section
+    assert "equipment" in bon_section
+    assert "daily" in bon_section
+    assert "level" in bon_section
+    assert "Всего:" in bon_section
+    assert "%" in bon_section
+
+
+def test_bonuses_section_contains_energy_breakdown():
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    bon_start = body.find('id="bonuses"')
+    bon_section = body[bon_start:bon_start + 2000]
+    # Energy block внутри секции бонусов.
+    assert "🔋" in bon_section
+    assert "Energy" in bon_section
+
+
+def test_total_used_moved_into_bonuses_section():
+    """`Total used: N шагов` перенесено из Stats в свёрнутый блок Бонусы."""
+    state = GameState.default_new_game()
+    state.steps.total_used = 123456
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Total used должен быть только внутри секции id="bonuses".
+    bon_start = body.find('id="bonuses"')
+    assert bon_start > 0
+    bon_end = body.find('</section>', bon_start)
+    bon_section = body[bon_start:bon_end]
+    assert "Total used: 123,456" in bon_section
+    # И НЕ должен быть ранее по странице (например, в Stats).
+    pre_bonuses = body[:bon_start]
+    assert "Total used:" not in pre_bonuses
+
+
+def test_steps_section_no_longer_inline_bonus_line():
+    """После переноса в <details> — старая строка 'Bonus 🏃: ...' удалена из стартового
+    блока Steps в Stats."""
+    state = GameState.default_new_game()
+    state.steps.today = 5000
+    state.gym.stamina = 5
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Inline-бонус "Bonus 🏃: stamina +X · equipment +Y..." больше не появляется
+    # вне details. Внутри details строка ещё есть (там детали показаны).
+    # Проверяем по уникальной фразе "Bonus 🏃" — она была в исходной inline-строке.
+    assert "Bonus 🏃:" not in body
+
+
+def test_energy_section_no_longer_inline_bonus_line():
+    """После переноса в <details> — строка 'Equipment +X · daily +Y · level +Z'
+    под Energy больше не отображается inline."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Извлекаем кусок между Energy stat-row и Money stat-row — там не должно
+    # быть отдельной "Equipment +N · daily +M · level +K" строки.
+    energy_pos = body.find("🔋")
+    money_pos = body.find("💰")
+    assert 0 < energy_pos < money_pos
+    between = body[energy_pos:money_pos]
+    # В этом куске нет полного шаблона строки бонусов (она перенесена в <details>).
+    import re
+    assert not re.search(r"Equipment\s*\+\d+\s*·\s*daily\s*\+\d+\s*·\s*level\s*\+\d+", between)
+
+
+def test_inventory_items_still_in_dom_when_collapsed():
+    """Содержимое <details> остаётся в DOM даже когда блок свёрнут — это
+    важно для accessibility и поиска. Браузер только скрывает визуально."""
+    state = GameState.default_new_game()
+    state.inventory = [{
+        "item_name": ["uniqitem"], "item_type": ["ring"], "grade": ["s-grade"],
+        "characteristic": ["luck"], "bonus": [4], "quality": [85.0], "price": [170],
+    }]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Item в DOM несмотря на свёрнутость.
+    assert "Ring" in body
+    assert "s-grade" in body
+    assert "+4" in body

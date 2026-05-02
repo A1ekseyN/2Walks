@@ -13,14 +13,6 @@
                     <span class="stat-label">🏃 Steps</span>
                     <span>{{ "{:,}".format(state.steps.can_use) }} / {{ "{:,}".format(max_steps) }}</span>
                 </div>
-                <small>
-                    Bonus 🏃: stamina +{{ stamina_bonus_steps }} ·
-                    equipment +{{ equipment_stamina_steps }} ·
-                    daily +{{ daily_steps_bonus }} ·
-                    level +{{ level_steps_bonus }}
-                    (всего +{{ total_bonus_steps }}, {{ "%.2f"|format(bonus_pct) }} %)
-                </small>
-                <br><small>Total used: {{ "{:,}".format(state.steps.total_used) }} шагов</small>
             </div>
 
             <div class="steps-form-container">
@@ -48,11 +40,6 @@
             <span class="stat-label">🔋 Energy</span>
             <span>{{ state.energy }} / {{ state.energy_max }}</span>
         </div>
-        <small>
-            Equipment +{{ equipment_energy_max_bonus }} ·
-            daily +{{ state.steps.daily_bonus }} ·
-            level +{{ state.char_level.skill_energy_max }}
-        </small>
 
         <div class="stat-row" style="margin-top: 0.5rem;">
             <span class="stat-label">💰 Money</span>
@@ -66,6 +53,30 @@
         <progress value="{{ char_level_progress }}" max="100"></progress>
         <small>Прогресс до следующего уровня: {{ "%.2f"|format(char_level_progress) }} %</small>
     </article>
+</section>
+
+{# Бонусы Steps + Energy в свёрнутом блоке — детали редко нужны игроку. #}
+<section id="bonuses">
+    <details>
+        <summary>📈 <strong>Бонусы</strong></summary>
+        <p>
+            🏃 <strong>Steps</strong>:
+            stamina +{{ stamina_bonus_steps }} ·
+            equipment +{{ equipment_stamina_steps }} ·
+            daily +{{ daily_steps_bonus }} ·
+            level +{{ level_steps_bonus }}
+            <br>
+            <small>Всего: +{{ total_bonus_steps }} ({{ "%.2f"|format(bonus_pct) }} %)</small>
+            <br>
+            <small>Total used: {{ "{:,}".format(state.steps.total_used) }} шагов</small>
+        </p>
+        <p>
+            🔋 <strong>Energy</strong>:
+            equipment +{{ equipment_energy_max_bonus }} ·
+            daily +{{ state.steps.daily_bonus }} ·
+            level +{{ state.char_level.skill_energy_max }}
+        </p>
+    </details>
 </section>
 
 {# Активные сессии — показываем только если активны. #}
@@ -136,8 +147,19 @@
 {% endif %}
 
 <section id="equipment">
-    <article>
-        <header><strong>🧥 Экипировка</strong></header>
+    <details>
+        <summary>
+            🧥 <strong>Экипировка</strong>
+            ({{ equipment_worn }}/{{ equipment_total_slots }})
+            {% if equipment_stamina_bonus != 0 or equipment_energy_max_bonus != 0 or equipment_speed_skill_bonus != 0 or equipment_luck_bonus != 0 %}
+            <small>
+                {%- if equipment_stamina_bonus != 0 %} · stamina {{ "%+d"|format(equipment_stamina_bonus) }}{% endif -%}
+                {%- if equipment_energy_max_bonus != 0 %} · energy_max {{ "%+d"|format(equipment_energy_max_bonus) }}{% endif -%}
+                {%- if equipment_speed_skill_bonus != 0 %} · speed {{ "%+d"|format(equipment_speed_skill_bonus) }}{% endif -%}
+                {%- if equipment_luck_bonus != 0 %} · luck {{ "%+d"|format(equipment_luck_bonus) }}{% endif -%}
+            </small>
+            {% endif %}
+        </summary>
         {% set slots = [
             ('Голова', state.equipment.head),
             ('Шея', state.equipment.neck),
@@ -159,16 +181,12 @@
                 {% endif %}
             </div>
         {% endfor %}
-        <small style="margin-top: 0.5rem; display: block;">
-            Bonuses: stamina +{{ equipment_stamina_bonus }} · energy_max +{{ equipment_energy_max_bonus }} ·
-            speed +{{ equipment_speed_skill_bonus }} · luck +{{ equipment_luck_bonus }}
-        </small>
-    </article>
+    </details>
 </section>
 
 <section id="inventory">
-    <article>
-        <header><strong>🎒 Инвентарь</strong> ({{ state.inventory|length }})</header>
+    <details>
+        <summary>🎒 <strong>Инвентарь</strong> ({{ state.inventory|length }})</summary>
         {% if state.inventory %}
             {% for item in state.inventory %}
                 <div class="item-row">
@@ -181,6 +199,6 @@
         {% else %}
             <small class="equipment-empty">— пусто —</small>
         {% endif %}
-    </article>
+    </details>
 </section>
 

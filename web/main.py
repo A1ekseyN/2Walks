@@ -175,6 +175,14 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         except AttributeError:
             training_skill_target = None
 
+    # Кол-во занятых слотов экипировки (для summary `(N/7)`).
+    equipment_slots_list = [
+        state.equipment.head, state.equipment.neck, state.equipment.torso,
+        state.equipment.finger_01, state.equipment.finger_02,
+        state.equipment.legs, state.equipment.foots,
+    ]
+    equipment_worn = sum(1 for s in equipment_slots_list if s is not None)
+
     return {
         "request": request,
         "version": VERSION,
@@ -182,6 +190,9 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "icon_loc": icon_loc(state),
         # Last reload status — UI показывает badge при ok=False (4.54.0).
         "last_reload": get_last_reload(),
+        # Equipment counters (для свёрнутого summary блока).
+        "equipment_worn": equipment_worn,
+        "equipment_total_slots": 7,
         # Steps + bonuses
         "stamina_bonus_steps": stamina_skill_bonus_def(state),
         "equipment_stamina_steps": equipment_bonus_stamina_steps(state),

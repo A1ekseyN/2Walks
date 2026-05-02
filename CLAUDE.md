@@ -61,6 +61,13 @@ Saves are written to **all three** on save; loads prefer Google Sheets with CSV 
 
 Web dashboard refresh model (after 0.2.0j): no automatic HTMX polling. Numbers update on F5 / pull-to-refresh (full reload triggers `try_reload_state()` which fetches Sheets + applies max-merge) or after form submit (`POST /web/steps` returns updated fragment, HTMX swaps `#status-bar`). Active session timers (training / work / adventure) tick every second via JS without server roundtrips. The `GET /status` endpoint remains in code for future use (Refresh button — 4.54.0.1, action endpoints — 4.48.3+).
 
+Dashboard layout (compact / mobile-first): the always-visible Stats area shows only current numbers (Steps with click-to-input form, Energy, Money, Level + progress). Three sections are wrapped in native HTML5 `<details>` and collapsed by default — click summary to expand:
+- **📈 Бонусы** — Steps breakdown (stamina · equipment · daily · level + total/percent), Energy breakdown, Total used.
+- **🧥 Экипировка** — summary shows worn count `(N/7)` + non-zero equipment bonuses inline (zero values filtered); inside — slot-by-slot list.
+- **🎒 Инвентарь** — summary shows item count `(N)`; inside — sorted item list.
+
+Collapsed content stays in DOM (accessibility / search-friendly), only visually hidden by Pico.css default styles. After HTMX swap (`POST /web/steps`) sections close — by design (no state persistence between renders).
+
    Access via `google_sheets_db.GameStateRepo` (save/load) and `StepsLogRepo` (append/for_day) classes. A lazy singleton `_get_client()` keeps one authorized gspread client per process. New deployments need a one-time `python migrate_sheets.py` to rename `Sheet1` and create `steps_log`.
 
    Steps_log writes happen only on explicit save (`s` or `q`) — not on every `+N` input — to keep offline-mode usable (player can enter wrong steps and exit without save).
