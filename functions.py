@@ -103,6 +103,30 @@ def status_bar(state: GameState):
         Adventure.adventure_check_done(self=None, state=state)
 
 
+def _max_merge_today_from_log(state: GameState, date_str: str) -> None:
+    """Поднимает `state.steps.today` до максимума записей в `steps_log` за
+    указанную дату. Используется в `save_game_date_last_enter` перед
+    rollover'ом дня (задача 2.4) — гарантирует, что `yesterday` получит
+    максимально полную информацию о пройденных шагах за тот день, даже если
+    `state.steps.today` был stale (web/API ввод не зафиксирован в game_state
+    snapshot перед rollover'ом).
+
+    Silent-fail при сетевой ошибке: оставляем state как есть.
+    """
+    # Lazy import — google_sheets_db тянет gspread, не нужен в большинстве
+    # тестов functions.py.
+    from google_sheets_db import StepsLogRepo
+    try:
+        entries = StepsLogRepo().for_day(date_str)
+    except Exception:
+        return
+    if not entries:
+        return
+    max_in_log = max(e['steps'] for e in entries)
+    if max_in_log > state.steps.today:
+        state.steps.today = max_in_log
+
+
 def save_game_date_last_enter(state: GameState):
     """Проверка смены игрового дня. На новый день — сброс счётчиков и перенос
     steps_today в steps_yesterday. В обоих случаях — пересчёт steps_can_use."""
@@ -111,6 +135,14 @@ def save_game_date_last_enter(state: GameState):
 
     if str(now_date) != str(last_enter_date_char):
         print(f"\nNew Day: {now_date}. Обновляем шаги и бонусы.")
+
+        # 2.4: max-merge state.steps.today из steps_log за день, который "уходит"
+        # перед переносом в yesterday. Защита от случая "stale state.steps.today
+        # на момент rollover" — если игрок ввёл шаги через web/API но не сохранил
+        # game_state в Sheets, лог был обновлён, а snapshot — нет. Без max-merge
+        # daily_bonus незаслуженно сбрасывался.
+        if last_enter_date_char:
+            _max_merge_today_from_log(state, str(last_enter_date_char))
 
         today_steps_to_yesterday_steps(state)
 

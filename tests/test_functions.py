@@ -254,6 +254,97 @@ def test_save_game_date_last_enter_new_day_resets(tmp_path, monkeypatch):
     assert state.date_last_enter == str(datetime.now().date())
 
 
+def test_daily_bonus_increments_when_log_has_10k_yesterday(tmp_path, monkeypatch):
+    """2.4: state.steps.today был частичный (5000), но в steps_log за вчера
+    лежит 12000 — max-merge должен поднять today до 12000 перед rollover,
+    чтобы yesterday>=10k и daily_bonus +=1."""
+    from google_sheets_db import StepsLogRepo
+    monkeypatch.chdir(tmp_path)
+
+    state = GameState.default_new_game()
+    state.date_last_enter = '2026-05-01'  # вчера
+    state.steps.today = 5000  # частичный (web ввод не сохранён в game_state)
+    state.steps.daily_bonus = 3
+
+    # Mock: steps_log за вчера содержит 12000 (web ввод).
+    monkeypatch.setattr(
+        StepsLogRepo, "for_day",
+        lambda self, d, user_id=None: [
+            {"ts": 1.0, "user_id": "alex", "steps": 12000, "source": "web"}
+        ] if d == '2026-05-01' else []
+    )
+
+    save_game_date_last_enter(state)
+
+    # После rollover: yesterday = 12000 (из лога), daily_bonus +=1.
+    assert state.steps.yesterday == 12000
+    assert state.steps.daily_bonus == 4
+
+
+def test_daily_bonus_resets_when_yesterday_no_log(tmp_path, monkeypatch):
+    """2.4: лог пустой за вчера, today=5000 → yesterday=5000 → daily_bonus=0."""
+    from google_sheets_db import StepsLogRepo
+    monkeypatch.chdir(tmp_path)
+
+    state = GameState.default_new_game()
+    state.date_last_enter = '2026-05-01'
+    state.steps.today = 5000
+    state.steps.daily_bonus = 7
+
+    monkeypatch.setattr(StepsLogRepo, "for_day",
+                        lambda self, d, user_id=None: [])
+
+    save_game_date_last_enter(state)
+
+    assert state.steps.yesterday == 5000
+    assert state.steps.daily_bonus == 0
+
+
+def test_daily_bonus_resets_when_log_yesterday_under_10k(tmp_path, monkeypatch):
+    """2.4: в логе за вчера лежит 8000 (<10k), today=5000 → max=8000 → yesterday<10k → bonus=0."""
+    from google_sheets_db import StepsLogRepo
+    monkeypatch.chdir(tmp_path)
+
+    state = GameState.default_new_game()
+    state.date_last_enter = '2026-05-01'
+    state.steps.today = 5000
+    state.steps.daily_bonus = 5
+
+    monkeypatch.setattr(
+        StepsLogRepo, "for_day",
+        lambda self, d, user_id=None: [
+            {"ts": 1.0, "user_id": "alex", "steps": 8000, "source": "web"}
+        ]
+    )
+
+    save_game_date_last_enter(state)
+
+    assert state.steps.yesterday == 8000
+    assert state.steps.daily_bonus == 0
+
+
+def test_daily_bonus_max_merge_silent_fail_on_sheets_error(tmp_path, monkeypatch):
+    """2.4: ошибка в Sheets во время max-merge не должна ломать rollover."""
+    from google_sheets_db import StepsLogRepo
+    monkeypatch.chdir(tmp_path)
+
+    state = GameState.default_new_game()
+    state.date_last_enter = '2026-05-01'
+    state.steps.today = 12000  # уже на >10k
+    state.steps.daily_bonus = 2
+
+    def failing(self, d, user_id=None):
+        raise RuntimeError("Network down")
+    monkeypatch.setattr(StepsLogRepo, "for_day", failing)
+
+    save_game_date_last_enter(state)
+
+    # state.steps.today=12000 → yesterday=12000 → bonus +=1.
+    # Sheets-ошибка не привела к падению, просто пропустили max-merge.
+    assert state.steps.yesterday == 12000
+    assert state.steps.daily_bonus == 3
+
+
 def test_save_game_date_last_enter_does_not_create_save_txt(tmp_path, monkeypatch):
     """save.txt больше не пишется (задача 2.1, версия 0.2.0k) — единственный
     источник правды для day rollover теперь state.date_last_enter."""
