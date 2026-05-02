@@ -176,6 +176,33 @@ def test_energy_time_charge_below_max_adds_points():
     assert state.energy == 33
 
 
+def test_no_free_energy_after_spend_from_max():
+    """Conformance-тест на баг "бесплатная энергия после максимума" (bugs.txt,
+    задача 2.2.3, исправлено в 0.2.0l).
+
+    Сценарий: игрок 1000 секунд назад был на full (стамп = now-1000), потом
+    через actions.try_spend потратил 10 энергии (стамп должен синкнуться к now),
+    потом сразу же energy_time_charge → не должно начислиться 16 единиц
+    "накопленных" из прошлого."""
+    from actions import try_spend
+    state = GameState.default_new_game()
+    state.energy = 50
+    state.energy_max = 50
+    state.energy_time_stamp = timestamp_now() - 1000  # давно был на full
+
+    # Трата через try_spend (как делают gym/work/adventure).
+    assert try_spend(state, energy=10) is True
+    assert state.energy == 40  # списали
+
+    # Сразу после — тик регенерации.
+    energy_time_charge(state)
+
+    # Не должно быть начисления "накопленной" энергии.
+    # При корректном поведении 2.2.3 — стамп = now → elapsed=0 → energy=40.
+    # При багованном поведении (без 2.2.3) — energy ≈ 50 (накатило 10).
+    assert state.energy == 40
+
+
 def test_energy_time_charge_clamps_to_max():
     """Не превышает energy_max."""
     state = GameState.default_new_game()

@@ -24,6 +24,14 @@ def try_spend(state: GameState, steps: int = 0, energy: int = 0, money: int = 0)
     Списание шагов:
     - state.steps.can_use уменьшается на `steps`
     - state.steps.used и state.steps.total_used увеличиваются на `steps`
+
+    Энергия (задача 2.2.3 — фикс "бесплатной энергии после максимума"):
+    если перед тратой энергия была на максимуме (`state.energy == state.energy_max`),
+    то после списания `state.energy_time_stamp` синкается к `now`. Это закрывает
+    эксплоит, когда стамп ушёл далеко в прошлое (на full-энергии), потом игрок
+    тратит — и при следующем тике `energy_time_charge()` начисляет "накопленную"
+    энергию назад. При не-full состоянии стамп не двигается, чтобы не штрафовать
+    игрока за частичный прогресс к +1.
     """
     if state.steps.can_use < steps:
         return False
@@ -37,7 +45,10 @@ def try_spend(state: GameState, steps: int = 0, energy: int = 0, money: int = 0)
         state.steps.used += steps
         state.steps.total_used += steps
     if energy:
+        was_full = state.energy >= state.energy_max
         state.energy -= energy
+        if was_full:
+            state.energy_time_stamp = datetime.now().timestamp()
     if money:
         state.money -= money
     return True
