@@ -83,7 +83,7 @@ When adding new fields to `GameState`, update both `from_dict` and `to_dict` so 
 
 All three write a row to the `steps_log` Sheet; web/API additionally update `state.steps.today` in memory immediately. The `apply_steps_log_max_merge()` helper (task 4.15) runs on every load (CLI start via `init_game_state`, web reload via `web.sync.try_reload_state`) and bumps `state.steps.today` to the maximum of all log entries for today — so input from any channel becomes visible on next start even if the `game_state` snapshot in Sheets is stale.
 
-On date change (`save_game_date_last_enter(state)`), `today` and `used` reset to `0` so the new day starts fresh; the player re-enters the bracelet reading via any channel. `save.txt` holds the last-enter date used for the day-rollover check (legacy, removal tracked as task 2.1).
+On date change (`save_game_date_last_enter(state)`), `today` and `used` reset to `0` so the new day starts fresh; the player re-enters the bracelet reading via any channel. The single source of truth for day rollover is `state.date_last_enter` (compared against `datetime.now().date()`); legacy `save.txt` was removed in 0.2.0k (task 2.1).
 
 ### Mutation helpers: `actions.py`
 

@@ -219,7 +219,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 `save_game_date_last_enter(state)` (`functions.py`) на каждом тике:
 
-1. **На новый день** (`now_date != date_last_enter`): пишет дату в `save.txt`, переносит `steps_today → steps_yesterday`, увеличивает `steps_daily_bonus` если `steps_yesterday >= 10k` (иначе обнуляет), сбрасывает `steps_today_used = 0`, сбрасывает `steps_today = 0` (игрок вводит фактическое значение через `+`), обновляет `date_last_enter`.
+1. **На новый день** (`now_date != date_last_enter`): переносит `steps_today → steps_yesterday`, увеличивает `steps_daily_bonus` если `steps_yesterday >= 10k` (иначе обнуляет), сбрасывает `steps_today_used = 0`, сбрасывает `steps_today = 0` (игрок вводит фактическое значение через `+`), обновляет `date_last_enter`. Legacy `save.txt` удалён в 0.2.0k (задача 2.1) — теперь единственный источник правды для day rollover это `state.date_last_enter`.
 2. **Всегда** (в обеих ветках) пересчитывает `steps_can_use = steps_today - steps_today_used + stamina_skill_bonus + equipment_bonus_stamina_steps + daily_steps_bonus + level_steps_bonus`. Это нужно, чтобы первый кадр статус-бара после смены даты не показывал stale-значение из сейва (баг 2.9, закрыт 2026-04-27).
 
 Функция вызывается неявно через `steps()` (`functions.py`), когда `status_bar()` и локации спрашивают "сколько шагов осталось".
@@ -238,7 +238,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 - `characteristic.csv` — плоский CSV, пишется `save_characteristic()` (`characteristics.py`) через `game.state.to_dict()`, читается `load_characteristic()` и затем `GameState.from_dict()`. Вложенные словари/списки сериализуются через `json.dumps` и читаются обратно через `ast.literal_eval`. Поля `skill_training_time_end`, `working_end`, `adventure_end_timestamp` специально парсятся как `datetime` в формате `%Y-%m-%d %H:%M:%S.%f`.
 - `characteristic.txt` — JSON-зеркало, тот же `to_dict()` формат.
-- `save.txt` — дата последнего входа в игру (одна строка).
+- ~~`save.txt` — дата последнего входа~~ — удалён в 0.2.0k (задача 2.1). Источник правды для day rollover — `state.date_last_enter`.
 
 ### 6.2 Google Sheets
 

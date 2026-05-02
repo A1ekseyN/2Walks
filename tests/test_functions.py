@@ -210,7 +210,7 @@ def test_save_game_date_last_enter_same_day_recalcs_can_use():
 
 
 def test_save_game_date_last_enter_new_day_resets(tmp_path, monkeypatch):
-    """Новый день — сбрасывает today/used, переносит в yesterday, пишет save.txt."""
+    """Новый день — сбрасывает today/used, переносит в yesterday."""
     monkeypatch.chdir(tmp_path)
     state = GameState.default_new_game()
     state.date_last_enter = '2020-01-01'  # точно не сегодня
@@ -225,10 +225,19 @@ def test_save_game_date_last_enter_new_day_resets(tmp_path, monkeypatch):
     assert state.steps.yesterday == 12000
     assert state.steps.daily_bonus == 2  # +1 за >=10k шагов
     assert state.date_last_enter == str(datetime.now().date())
-    # save.txt записан
+
+
+def test_save_game_date_last_enter_does_not_create_save_txt(tmp_path, monkeypatch):
+    """save.txt больше не пишется (задача 2.1, версия 0.2.0k) — единственный
+    источник правды для day rollover теперь state.date_last_enter."""
+    monkeypatch.chdir(tmp_path)
+    state = GameState.default_new_game()
+    state.date_last_enter = '2020-01-01'
+
+    save_game_date_last_enter(state)
+
     save_file = tmp_path / 'save.txt'
-    assert save_file.exists()
-    assert save_file.read_text() == str(datetime.now().date())
+    assert not save_file.exists(), "save.txt должен не создаваться после 2.1"
 
 
 # ----- steps() helper -----

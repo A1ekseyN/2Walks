@@ -57,9 +57,9 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # - timestamp_last_enter всегда обновляется до текущего момента при загрузке.
     # - loc всегда сбрасывается в 'home' (загруженное значение игнорируется).
     # - energy_max начинается с 50, потом добавляются бонусы.
-    # NB: дубликат date-check через save.txt убран — единая точка проверки
-    # дня живёт в functions.save_game_date_last_enter() и срабатывает на первом
-    # тике main loop. Полное удаление save.txt — задача 2.1.
+    # Day rollover detection — единственная точка в functions.save_game_date_last_enter()
+    # на первом тике main loop, через state.date_last_enter (legacy save.txt
+    # удалён в задаче 2.1, версия 0.2.0k).
     s.timestamp_last_enter = datetime.now().timestamp()
     s.loc = 'home'
     s.energy_max = 50  # сброс перед добавлением бонусов

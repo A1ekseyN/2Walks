@@ -46,7 +46,7 @@ from skill_bonus import stamina_skill_bonus_def
 from web.sync import get_last_reload, try_reload_state
 
 
-VERSION = "0.2.0j"
+VERSION = "0.2.0k"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 

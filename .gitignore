@@ -2,3 +2,7 @@ tasks.txt
 
 /credentials/
 tests/__pycache__/
+
+# Legacy day-rollover marker (removed in 0.2.0k, task 2.1).
+# May still be created by older code revisions — keep gitignored.
+save.txt

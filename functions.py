@@ -112,9 +112,6 @@ def save_game_date_last_enter(state: GameState):
     if str(now_date) != str(last_enter_date_char):
         print(f"\nNew Day: {now_date}. Обновляем шаги и бонусы.")
 
-        with open('save.txt', 'w') as save_file:
-            save_file.write(str(now_date))
-
         today_steps_to_yesterday_steps(state)
 
         # Сброс шагов на новый день. Игрок вводит фактическое значение через команду `+`.
