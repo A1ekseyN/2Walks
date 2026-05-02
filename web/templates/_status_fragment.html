@@ -1,5 +1,6 @@
-{# Status fragment — обновляется HTMX каждые 15 секунд.
-   Без <html>/<body> обёрток: HTMX вставляет это innerHTML в #status-bar. #}
+{# Status fragment. Без <html>/<body> обёрток — рендерится в #status-bar
+   при первом GET /, при submit POST /web/steps (HTMX swap), и через GET /status
+   (endpoint оставлен для будущих action endpoints / кнопки Refresh). #}
 
 <section id="stats">
     <article>
@@ -183,6 +184,3 @@
     </article>
 </section>
 
-<footer>
-    <small>Обновляется каждые 60 секунд (только из памяти). Свежие данные из Sheets — F5 / pull-to-refresh. Действия (тренировка / работа / приключение) — через CLI пока. Web-actions — задача 4.48.3+.</small>
-</footer>

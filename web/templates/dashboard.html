@@ -43,10 +43,13 @@
     </article>
     {% endif %}
 
-    <div id="status-bar"
-         hx-get="/status"
-         hx-trigger="every 60s"
-         hx-swap="innerHTML">
+    {# HTMX-полинг намеренно отключён (0.2.0j). Цифры обновляются при F5 /
+       pull-to-refresh / submit формы (POST /web/steps возвращает фрагмент и
+       HTMX делает swap #status-bar). Таймеры активных сессий двигает JS на
+       клиенте раз в секунду без серверных запросов. Endpoint GET /status
+       оставлен для будущего использования (кнопка Refresh — 4.54.0.1, или
+       action endpoints — 4.48.3+). #}
+    <div id="status-bar">
         {% include "_status_fragment.html" %}
     </div>
 </main>

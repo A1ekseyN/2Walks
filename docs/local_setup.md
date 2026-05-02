@@ -88,7 +88,7 @@ http://192.168.0.201:8008
 
 - `GET /` — dashboard (статус, активные сессии, инвентарь, экипировка). При заходе/F5 подтягивает свежий state из Sheets.
 - `GET /healthz` — `{"status": "ok", "state_loaded": true, "version": "..."}`.
-- `GET /status` — HTML-фрагмент для HTMX-полинга (обновляется автоматически каждые 60 сек, не дёргает Sheets).
+- `GET /status` — HTML-фрагмент того же контента, что dashboard (без `<html>` обёртки). Используется будущими action endpoints / кнопкой Refresh. Авто-полинг отключён в 0.2.0j; цифры обновляются при F5 / submit формы. Таймеры активных сессий идут на JS без серверных запросов.
 - `POST /api/steps` (JSON) — ввод шагов через API. Body: `{"steps": int, "ts"?: float, "source"?: str}`. Применяет max-merge: значение должно быть строго больше текущего `state.steps.today`. Возвращает `{ok, applied, steps_today, steps_can_use, logged}` или 422/503 при ошибке.
 - `POST /web/steps` (form-data) — то же, но для HTMX-формы на dashboard'е. Возвращает HTML-фрагмент.
 

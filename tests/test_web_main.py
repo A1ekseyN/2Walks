@@ -102,13 +102,22 @@ def test_dashboard_contains_main_sections():
     assert "Экипировка" in body
 
 
-def test_dashboard_includes_htmx_polling_attributes():
+def test_dashboard_does_not_have_htmx_polling_on_status_bar():
+    """HTMX polling намеренно отключён в 0.2.0j — цифры обновляются только при
+    F5 / submit формы. Таймеры активных сессий двигаются JS на клиенте.
+    Endpoint GET /status оставлен для будущего использования (4.54.0.1)."""
     _setup_state()
     with TestClient(app) as client:
         response = client.get("/")
     body = response.text
-    assert 'hx-get="/status"' in body
-    assert 'hx-trigger="every 60s"' in body
+    # Извлекаем wrapper #status-bar и проверяем что у него нет HTMX-атрибутов
+    # для авто-полинга.
+    import re
+    match = re.search(r'<div id="status-bar"([^>]*)>', body)
+    assert match, '#status-bar wrapper not found'
+    attrs = match.group(1)
+    assert 'hx-get' not in attrs
+    assert 'hx-trigger' not in attrs
 
 
 def test_dashboard_loads_pico_and_htmx_cdn():
@@ -502,14 +511,18 @@ def test_status_fragment_does_not_show_reload_badge():
     assert "Cloud sync failed" not in response.text
 
 
-def test_dashboard_polling_interval_is_60_seconds():
-    """HTMX polling интервал должен быть 60s (4.54.0), не 15s."""
+def test_dashboard_no_polling_intervals_present():
+    """Полная защита от регрессии: ни 15s, ни 60s polling интервалов на
+    странице (HTMX-полинг отключён в 0.2.0j)."""
     _setup_state()
     with TestClient(app) as client:
         response = client.get("/")
     body = response.text
-    assert 'hx-trigger="every 60s"' in body
     assert 'hx-trigger="every 15s"' not in body
+    assert 'hx-trigger="every 60s"' not in body
+    # Любой "every Ns" pattern.
+    import re
+    assert not re.search(r'hx-trigger="every \d+s"', body)
 
 
 # ----- Steps input (task 4.48.2) -----

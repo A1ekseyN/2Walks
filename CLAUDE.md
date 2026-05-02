@@ -59,6 +59,8 @@ Saves are written to **all three** on save; loads prefer Google Sheets with CSV 
     - `game_state` — full state snapshot (Key/Value layout). Renamed from legacy `Sheet1`.
     - `steps_log` — append-only log of step measurements (`ts | user_id | steps | source`). `ts` is Unix timestamp (`float`); `source` is `'manual'` (CLI), `'web'` (web form / `POST /api/steps`), `'auto'` (future iPhone Shortcut, currently отложено). Used by max-merge (`apply_steps_log_max_merge`, task 4.15) — applied on every load (CLI start + web reload) so any input channel reflects on next start, even if the `game_state` snapshot is stale.
 
+Web dashboard refresh model (after 0.2.0j): no automatic HTMX polling. Numbers update on F5 / pull-to-refresh (full reload triggers `try_reload_state()` which fetches Sheets + applies max-merge) or after form submit (`POST /web/steps` returns updated fragment, HTMX swaps `#status-bar`). Active session timers (training / work / adventure) tick every second via JS without server roundtrips. The `GET /status` endpoint remains in code for future use (Refresh button — 4.54.0.1, action endpoints — 4.48.3+).
+
    Access via `google_sheets_db.GameStateRepo` (save/load) and `StepsLogRepo` (append/for_day) classes. A lazy singleton `_get_client()` keeps one authorized gspread client per process. New deployments need a one-time `python migrate_sheets.py` to rename `Sheet1` and create `steps_log`.
 
    Steps_log writes happen only on explicit save (`s` or `q`) — not on every `+N` input — to keep offline-mode usable (player can enter wrong steps and exit without save).
