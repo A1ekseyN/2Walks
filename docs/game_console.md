@@ -207,6 +207,8 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 `CharLevel(state)` (`level.py`) считает уровень персонажа по `state.steps.total_used` (формула в `update_level`), рисует прогресс-бар через `progress_bar()`, и при `state.char_level.up_skills > 0` даёт пункт `menu_skill_point_allocation()` — распределить очки на один из: `state.char_level.{skill_stamina, skill_energy_max, skill_speed, skill_luck}`.
 
+**Web (4.48.8 / 0.2.1d):** тот же модуль работает через 2 endpoint'а в `web/main.py` — `POST /web/level/allocate` (Form → HTML fragment), `POST /api/level/allocate` (JSON через `SkillAllocateRequest`). Общий helper `_validate_and_apply_skill_allocation(state, skill)` валидирует skill name и наличие очков, мутирует `state.char_level.{skill_<X>, up_skills}` и зовёт `persist_state_to_cloud()`. UI: `<section id="skills">` рендерится только если `up_skills > 0` (или есть `skill_error` для race condition'а), свёрнута по умолчанию. 4 кнопки с подтверждением через нативный browser confirm (HTMX `hx-confirm` атрибут) — игрок подтверждает каждый клик до отправки запроса. Без отмены (как в CLI). Важный prerequisite-фикс: `_dashboard_context` теперь зовёт `CharLevel(state).update_level()` на каждом рендере с persist'ом при фактическом level-up — до 0.2.1d web-only игрок никогда не апал уровень и не получал очков.
+
 ---
 
 ## 5. Шаги — откуда берутся и как тратятся

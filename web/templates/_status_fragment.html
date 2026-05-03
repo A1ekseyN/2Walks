@@ -61,6 +61,42 @@
     </article>
 </section>
 
+{# Skill allocation (4.48.8). Видим когда есть нераспределённые очки или
+   когда нужно показать ошибку валидации (race condition — игрок отправил
+   распределение последнего очка дважды). Свёрнут по умолчанию.
+   Каждый клик по навыку = +1, подтверждение через hx-confirm. #}
+{% if state.char_level.up_skills > 0 or skill_error %}
+<section id="skills">
+    <details {% if skill_error %}open{% endif %}>
+        <summary>
+            ⭐ <strong>Прокачка навыков</strong>
+            <small>· доступно: {{ state.char_level.up_skills }}</small>
+        </summary>
+
+        {% if skill_error %}
+        <small style="color: var(--pico-color-pumpkin-600, #b45309);">❌ {{ skill_error }}</small>
+        {% endif %}
+
+        {% if state.char_level.up_skills > 0 %}
+        <p style="margin-top: 0.5rem;">
+            <small>Выбери навык — каждое нажатие +1. Отменить нельзя.</small>
+        </p>
+        <form hx-post="/web/level/allocate" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-disabled-elt="this"
+              style="display: flex; flex-direction: column; gap: 0.25rem; margin: 0;">
+            {% for skill in skill_options %}
+            <button type="submit" name="skill" value="{{ skill.key }}"
+                    class="outline" style="margin: 0; text-align: center;"
+                    hx-confirm="Прокачать {{ skill.title }} (+1 → {{ skill.current + 1 }})? Отменить нельзя.">
+                {{ skill.icon }} {{ skill.title }} (текущий: +{{ skill.current }}) · {{ skill.effect }}
+            </button>
+            {% endfor %}
+        </form>
+        {% endif %}
+    </details>
+</section>
+{% endif %}
+
 {# Активные сессии — показываем только если активны. #}
 {% if state.training.active or state.work.active or state.adventure.active %}
 <section id="active-sessions">

@@ -49,7 +49,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.1c"
+VERSION = "0.2.1d"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -152,6 +152,51 @@ def _validate_and_apply_work(state, work_type: str, hours: int) -> Optional[str]
     # игрок потеряет смену при рестарте uvicorn'а или при reload через 4.54.0.
     persist_state_to_cloud()
     return None
+
+
+# Skill allocation (4.48.8) — отображаемые навыки и эффект.
+_SKILL_DISPLAY = {
+    "stamina":    {"title": "Stamina",    "icon": "🏃", "effect": "+1 % к общему количеству шагов"},
+    "energy_max": {"title": "Energy Max", "icon": "🔋", "effect": "+1 ед. к общему запасу энергии"},
+    "speed":      {"title": "Speed",      "icon": "⚡", "effect": "+1 % к скорости активностей"},
+    "luck":       {"title": "Luck",       "icon": "🍀", "effect": "+1 % к удаче дропа"},
+}
+
+
+def _validate_and_apply_skill_allocation(state, skill: str) -> Optional[str]:
+    """Валидирует skill, инкрементирует выбранный char_level.skill_<X> на +1
+    и декрементирует up_skills. На успехе persist. Возвращает текст ошибки
+    или None.
+
+    Используется двумя endpoint'ами (web/api allocate)."""
+    if skill not in _SKILL_DISPLAY:
+        return f"Неизвестный навык: {skill}"
+    if state.char_level.up_skills < 1:
+        return "Нет доступных очков навыков для распределения."
+
+    # Атрибут в state.char_level именуется `skill_<key>` для всех 4.
+    attr = f"skill_{skill}"
+    setattr(state.char_level, attr, getattr(state.char_level, attr) + 1)
+    state.char_level.up_skills -= 1
+    persist_state_to_cloud()
+    return None
+
+
+def _build_skill_options(state) -> list:
+    """Pre-computed данные для UI распределения навыков. Каждая запись — dict
+    `{key, title, icon, effect, current}` где current = state.char_level.skill_<key>."""
+    return [
+        {
+            "key": key,
+            "title": meta["title"],
+            "icon": meta["icon"],
+            "effect": meta["effect"],
+            "current": getattr(state.char_level, f"skill_{key}"),
+        }
+        for key, meta in _SKILL_DISPLAY.items()
+    ]
+
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -253,7 +298,8 @@ def _apply_new_steps(steps_value: int, source: str = "web",
 
 def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        steps_form_open: bool = False,
-                       work_error: Optional[str] = None) -> dict:
+                       work_error: Optional[str] = None,
+                       skill_error: Optional[str] = None) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -261,6 +307,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
 
     `work_error` — текст ошибки от валидации Work-формы (показывается прямо
     в блоке Work). При None — никаких сообщений.
+
+    `skill_error` — аналогично для блока Skills (4.48.8).
     """
     state = game.state
     if state is None:
@@ -282,6 +330,18 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # рендер energy_time_charge досчитает прирост за пропущенное время.
     energy_time_charge(state)
 
+    # Level-up detection (0.2.1d / 4.48.8). В CLI update_level() вызывается
+    # из status_bar на каждом тике; в web без этой проверки уровень не
+    # апается даже после прохождения порога total_used. Web-only игрок
+    # никогда не увидел бы очков навыков. Persist если level фактически
+    # изменился — иначе CLI после рестарта не увидит новый level (и start_*
+    # mutation тоже подхватит, но это требует от игрока что-то сделать).
+    char_level = CharLevel(state)
+    pre_level = state.char_level.level
+    char_level.update_level()
+    if state.char_level.level != pre_level:
+        persist_state_to_cloud()
+
     # Auto-finalize работы по таймеру: каждый рендер dashboard'а / fragment'а
     # проверяет state.work.end и если время вышло — начисляет зарплату и
     # обнуляет смену. Так web-сценарий не требует отдельного "Claim"-клика
@@ -293,7 +353,7 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # JS раз в 60 сек обновляет цифру, считая `min(energy + floor((now-stamp)/interval), max)`.
     energy_interval_sec = speed_skill_equipment_and_level_bonus(60, state)
 
-    char_level = CharLevel(state)
+    # char_level уже создан выше (для update_level call) — переиспользуем.
     now_ts = datetime.now().timestamp()
 
     # Active sessions — конвертируем datetime в Unix timestamp для JS-таймера и progress-bar.
@@ -331,6 +391,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         state.equipment.legs, state.equipment.foots,
     ]
     equipment_worn = sum(1 for s in equipment_slots_list if s is not None)
+
+    # Skill allocation (4.48.8): pre-computed список навыков для UI.
+    # Блок видим только если up_skills > 0 (управляется в шаблоне).
+    skill_options = _build_skill_options(state)
 
     # Work UI: либо меню вакансий (когда не работаешь), либо форма "+N часов"
     # (когда уже работаешь). Расчёт max_hours и pre-computed hour_options
@@ -394,6 +458,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # Energy regen (0.2.1c) — параметры для JS-таймера на клиенте.
         "energy_time_stamp": state.energy_time_stamp,
         "energy_interval_sec": energy_interval_sec,
+        # Skill allocation (4.48.8): список навыков с current-значениями.
+        # Блок рендерится только если up_skills > 0 (state.char_level.up_skills).
+        "skill_options": skill_options,
+        "skill_error": skill_error,
         # Work UI (4.48.5): меню вакансий или форма "+часы".
         "work_vacancies": work_vacancies,
         "work_max_add_hours": work_max_add_hours,
@@ -627,3 +695,56 @@ async def api_work_add_hours(payload: WorkAddHoursRequest):
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "work": _work_state_snapshot(state)})
+
+
+# ----------------------------------------------------------------------------
+# Skill allocation — задача 4.48.8.
+#
+# 2 endpoint'а: POST /web/level/allocate (Form → HTML fragment) и
+# POST /api/level/allocate (JSON). Подтверждение делается на клиенте
+# через `hx-confirm` HTMX-атрибут (нативный browser confirm) — игрок
+# подтверждает каждый клик прежде чем уходит запрос на сервер.
+# ----------------------------------------------------------------------------
+
+
+class SkillAllocateRequest(BaseModel):
+    """Body для POST /api/level/allocate."""
+    skill: str = Field(..., description="stamina / energy_max / speed / luck")
+
+
+def _char_level_snapshot(state) -> dict:
+    """Минимальный snapshot char_level для JSON-ответа."""
+    cl = state.char_level
+    return {
+        "level": cl.level,
+        "up_skills": cl.up_skills,
+        "skill_stamina": cl.skill_stamina,
+        "skill_energy_max": cl.skill_energy_max,
+        "skill_speed": cl.skill_speed,
+        "skill_luck": cl.skill_luck,
+    }
+
+
+@app.post("/web/level/allocate", response_class=HTMLResponse)
+async def web_level_allocate(request: Request, skill: str = Form(...)):
+    """Form-data распределение +1 очка на выбранный навык."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+
+    err = _validate_and_apply_skill_allocation(state, skill)
+    context = _dashboard_context(request, skill_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/api/level/allocate")
+async def api_level_allocate(payload: SkillAllocateRequest):
+    """JSON распределение +1 очка."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+
+    err = _validate_and_apply_skill_allocation(state, payload.skill)
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "char_level": _char_level_snapshot(state)})

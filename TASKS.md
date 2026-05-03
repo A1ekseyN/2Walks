@@ -1825,9 +1825,11 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 - После доделывания Shop в CLI (4.7).
 - Food / Clothes / Equipment / Sell — те же категории, что и в CLI.
 
-#### 4.48.8. Web: Level + skill point allocation `[M / S / todo (blocked by 4.48.1)]`
+#### 4.48.8. Web: Level + skill point allocation `[M / S / done (0.2.1d)]`
 
-- Меню распределения `char_level_up_skills`.
+- Меню распределения `state.char_level.up_skills` между 4 навыками (Stamina / Energy Max / Speed / Luck) реализовано как новая `<section id="skills">` в `_status_fragment.html`, видимая только когда `up_skills > 0`. Свёрнута по умолчанию. Каждый клик = +1 к навыку, подтверждение через `hx-confirm` (нативный browser confirm). Без возможности отмены — соответствует CLI (`level.menu_skill_point_allocation`).
+- 2 endpoint'а: `POST /web/level/allocate` (Form → HTML fragment) и `POST /api/level/allocate` (JSON через Pydantic `SkillAllocateRequest`). Общий helper `_validate_and_apply_skill_allocation(state, skill)` валидирует skill name + наличие очков, мутирует state, зовёт `persist_state_to_cloud`.
+- **Prerequisite-фикс:** `_dashboard_context` теперь зовёт `CharLevel(state).update_level()` на каждом рендере. До 0.2.1d web-игрок никогда не апал level и не получал очков навыков (метод вызывался только из CLI `level_status_bar`). Persist делается только при фактическом level-up.
 
 ---
 

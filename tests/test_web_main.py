@@ -1925,6 +1925,267 @@ def test_format_real_time_helper():
     assert _format_real_time(480) == "8h"
 
 
+# ----- Skill allocation (task 4.48.8 / 0.2.1d) -----
+
+def test_skills_section_hidden_when_no_points():
+    """Если up_skills=0, секция id='skills' не рендерится в фрагменте."""
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 0
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'id="skills"' not in body
+
+
+def test_skills_section_visible_when_points_available():
+    """up_skills > 0 → секция id='skills' с 4 кнопками навыков."""
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 2
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'id="skills"' in body
+    # 4 кнопки.
+    assert 'value="stamina"' in body
+    assert 'value="energy_max"' in body
+    assert 'value="speed"' in body
+    assert 'value="luck"' in body
+    # Счётчик доступных очков.
+    assert "доступно: 2" in body
+    # hx-confirm на каждой кнопке (защита от misclick).
+    assert 'hx-confirm=' in body
+    # Свёрнут по умолчанию.
+    skills_pos = body.find('id="skills"')
+    skills_section = body[skills_pos:skills_pos + 4000]
+    assert "<details>" in skills_section
+    assert "<details open" not in skills_section
+
+
+def test_skills_section_shows_current_skill_levels():
+    """Каждая кнопка показывает текущий уровень навыка `(текущий: +N)`."""
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    state.char_level.skill_stamina = 5
+    state.char_level.skill_speed = 3
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert "Stamina (текущий: +5)" in body
+    assert "Speed (текущий: +3)" in body
+    # Energy / Luck = 0.
+    assert "Energy Max (текущий: +0)" in body
+    assert "Luck (текущий: +0)" in body
+
+
+def test_skills_section_appears_between_stats_and_active_sessions():
+    """Order: Stats → Skills → Active sessions → Работа → Бонусы → ..."""
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    state.training.active = True
+    state.training.skill_name = "stamina"
+    state.training.timestamp = (datetime.now() - timedelta(minutes=5)).timestamp()
+    state.training.time_end = datetime.now() + timedelta(minutes=5)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    stats_pos = body.find('id="stats"')
+    skills_pos = body.find('id="skills"')
+    active_pos = body.find('id="active-sessions"')
+    work_pos = body.find('id="work"')
+    assert 0 < stats_pos < skills_pos < active_pos < work_pos
+
+
+# ----- /web/level/allocate (Form) -----
+
+def test_web_level_allocate_with_valid_skill_decrements_points():
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 3
+    state.char_level.skill_stamina = 2
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/level/allocate", data={"skill": "stamina"})
+    assert response.status_code == 200
+    assert state.char_level.up_skills == 2
+    assert state.char_level.skill_stamina == 3
+
+
+def test_web_level_allocate_with_unknown_skill_returns_error():
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/level/allocate", data={"skill": "ceo"})
+    assert response.status_code == 200
+    body = response.text
+    assert "Неизвестный навык" in body
+    assert state.char_level.up_skills == 1  # state не мутирован
+
+
+def test_web_level_allocate_when_no_points_returns_error():
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 0
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/level/allocate", data={"skill": "stamina"})
+    assert response.status_code == 200
+    body = response.text
+    assert "Нет доступных очков" in body
+    assert state.char_level.skill_stamina == 0
+
+
+def test_web_level_allocate_persists_state(monkeypatch):
+    """Каждое распределение очка → persist (CSV+JSON+Sheets), как для work."""
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    _setup_state(state)
+    with TestClient(app) as client:
+        client.post("/web/level/allocate", data={"skill": "luck"})
+    assert len(saved_to_sheets) == 1
+    assert saved_to_sheets[0]["lvl_up_skill_luck"] == 1
+    assert saved_to_sheets[0]["char_level_up_skills"] == 0
+
+
+def test_web_level_allocate_invalid_skill_does_not_persist(monkeypatch):
+    """Невалидный skill → state не мутирован, persist не вызван."""
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    _setup_state(state)
+    with TestClient(app) as client:
+        client.post("/web/level/allocate", data={"skill": "ceo"})
+    assert saved_to_sheets == []
+
+
+# ----- /api/level/allocate (JSON) -----
+
+def test_api_level_allocate_with_valid_skill():
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 2
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/level/allocate", json={"skill": "speed"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["char_level"]["up_skills"] == 1
+    assert body["char_level"]["skill_speed"] == 1
+
+
+def test_api_level_allocate_unknown_skill_returns_422():
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/level/allocate", json={"skill": "ceo"})
+    assert response.status_code == 422
+    body = response.json()
+    assert body["ok"] is False
+
+
+def test_api_level_allocate_no_points_returns_422():
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 0
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/level/allocate", json={"skill": "stamina"})
+    assert response.status_code == 422
+    body = response.json()
+    assert body["ok"] is False
+    assert "Нет доступных очков" in body["error"]
+
+
+# ----- _validate_and_apply_skill_allocation helper -----
+
+def test_validate_skill_allocation_success():
+    from web.main import _validate_and_apply_skill_allocation
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    state.char_level.skill_stamina = 4
+    err = _validate_and_apply_skill_allocation(state, "stamina")
+    assert err is None
+    assert state.char_level.skill_stamina == 5
+    assert state.char_level.up_skills == 0
+
+
+def test_validate_skill_allocation_no_points():
+    from web.main import _validate_and_apply_skill_allocation
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 0
+    err = _validate_and_apply_skill_allocation(state, "stamina")
+    assert err is not None
+    assert "Нет доступных" in err
+
+
+def test_validate_skill_allocation_unknown_skill():
+    from web.main import _validate_and_apply_skill_allocation
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    err = _validate_and_apply_skill_allocation(state, "ceo")
+    assert err is not None
+    assert "Неизвестный навык" in err
+    assert state.char_level.up_skills == 1  # не тронут
+
+
+# ----- Level-up auto-detection in _dashboard_context (4.48.8 prerequisite) -----
+
+def test_dashboard_context_triggers_level_up_when_threshold_crossed(monkeypatch):
+    """Web должен сам апать уровень при прохождении порога total_used_steps —
+    иначе web-only игрок никогда не получит up_skills."""
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+
+    state = GameState.default_new_game()
+    state.char_level.level = 0
+    state.char_level.up_skills = 0
+    state.steps.total_used = 15000  # выше первого порога 10000 → level=1
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    # Level апнулся, +1 очко.
+    assert state.char_level.level == 1
+    assert state.char_level.up_skills == 1
+    # Persist вызван (level изменился).
+    assert len(saved_to_sheets) == 1
+
+
+def test_dashboard_context_no_level_up_no_persist(monkeypatch):
+    """Если total_used не пересекает порог — level не апается, persist не зовётся."""
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+
+    state = GameState.default_new_game()
+    state.char_level.level = 1
+    state.char_level.up_skills = 0
+    state.steps.total_used = 15000  # уже учтено в level=1
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    assert state.char_level.level == 1
+    assert state.char_level.up_skills == 0
+    assert saved_to_sheets == []
+
+
 def test_dashboard_context_provides_work_add_hour_options_when_active():
     """В _dashboard_context'е при активной смене work_add_hour_options
     содержит pre-computed данные для текущей вакансии."""
