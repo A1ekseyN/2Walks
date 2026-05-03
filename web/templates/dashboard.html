@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="light">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
     <title>2Walks — версия {{ version }}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
@@ -17,6 +18,41 @@
         .item-row { font-size: 0.9em; }
         .equipment-empty { color: var(--pico-muted-color); font-style: italic; }
         section { margin-bottom: 1.25rem; }
+
+        /* Card shadow — единообразный elevation для всех "карточных" блоков
+           (Stats article, Active sessions article, collapsible <details>
+           секций Work/Bonuses/Equipment/Inventory, vacancy-articles внутри
+           Work). Material elevation 1 — мягкая, не отвлекает. */
+        section > article,
+        section > details {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+            border-radius: var(--pico-border-radius, 0.25rem);
+        }
+        /* Vacancy-карточки внутри Work — чуть слабее, чтобы не конкурировать
+           с родительским <details>. */
+        section#work article {
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.10);
+        }
+        /* <details> по умолчанию не имеет фона/padding — добавим, чтобы тень
+           отрисовалась корректно. */
+        section > details {
+            background: var(--pico-card-background-color, #fff);
+            padding: 0.75rem 1rem;
+        }
+        section > details > summary {
+            margin: 0;
+        }
+
+        /* Active sessions — убираем лишнее пустое пространство ниже текста.
+           1) Последний <p> в article теряет нижний margin (~16px).
+           2) Сам article поджимает padding-bottom (~10px).
+           Сверху не трогаем — header не должен липнуть к рамке. */
+        section#active-sessions article > p:last-child {
+            margin-bottom: 0;
+        }
+        section#active-sessions article {
+            padding-bottom: 0.5rem;
+        }
 
         /* Steps inline form (4.48.2): toggle через JS, по клику на .steps-clickable. */
         .steps-form-container { display: none; }
@@ -73,6 +109,32 @@
         return `${sign}${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
     }
 
+    function tickEnergy() {
+        // Energy auto-regen на клиенте (0.2.1c).
+        // Сервер отдаёт data-energy (текущее), data-energy-max, data-energy-stamp
+        // (Unix timestamp последнего тика регена) и data-energy-interval (sec на +1).
+        // Формула совпадает с functions.energy_time_charge: каждые interval сек +1
+        // до max. JS только обновляет textContent — никаких запросов на сервер.
+        const now = Date.now() / 1000;
+        document.querySelectorAll("[data-energy]").forEach(el => {
+            const energy = parseInt(el.dataset.energy, 10);
+            const max = parseInt(el.dataset.energyMax, 10);
+            const stamp = parseFloat(el.dataset.energyStamp);
+            const interval = parseFloat(el.dataset.energyInterval);
+            if (Number.isNaN(energy) || Number.isNaN(max) || Number.isNaN(stamp) || !interval) {
+                return;
+            }
+            if (energy >= max) {
+                el.textContent = max;
+                return;
+            }
+            const elapsed = now - stamp;
+            const points = Math.max(0, Math.floor(elapsed / interval));
+            const updated = Math.min(energy + points, max);
+            el.textContent = updated;
+        });
+    }
+
     function tickTimers() {
         const now = Date.now() / 1000;
 
@@ -113,6 +175,12 @@
     setInterval(tickTimers, 1000);
     document.addEventListener("DOMContentLoaded", tickTimers);
     document.body.addEventListener("htmx:afterSwap", tickTimers);
+
+    // Energy — реже (раз в минуту достаточно: +1 эн каждые ~60 сек).
+    // Первый тик сразу + после каждого HTMX swap.
+    setInterval(tickEnergy, 60 * 1000);
+    document.addEventListener("DOMContentLoaded", tickEnergy);
+    document.body.addEventListener("htmx:afterSwap", tickEnergy);
 
     /* Steps form toggle (4.48.2). Используем event delegation на body, чтобы
        обработчики работали и после HTMX swap (фрагмент перерисовывается). */

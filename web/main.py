@@ -38,17 +38,18 @@ from equipment_bonus import (
     equipment_speed_skill_bonus,
     equipment_stamina_bonus,
 )
-from functions import bonus_percentage, save_game_date_last_enter, total_bonus_steps
+from functions import bonus_percentage, energy_time_charge, save_game_date_last_enter, total_bonus_steps
+from skill_bonus import speed_skill_equipment_and_level_bonus
 from google_sheets_db import StepsLogRepo
 from inventory import Wear_Equipped_Items
 from level import CharLevel
 from locations import icon_loc
 from skill_bonus import stamina_skill_bonus_def
 from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
-from work import Work, work_check_done
+from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.1b"
+VERSION = "0.2.1c"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -66,12 +67,50 @@ def _max_work_hours(state, requirements: dict) -> int:
     return int(min(steps_cap, energy_cap, 8))
 
 
+def _format_real_time(minutes: int) -> str:
+    """Форматирует целое число минут в `Xh Ym` / `Xh` / `Ym`.
+
+    Примеры: 60 → "1h", 90 → "1h 30m", 45 → "45m", 0 → "0m"."""
+    h_part, m_part = divmod(int(minutes), 60)
+    if h_part == 0:
+        return f"{m_part}m"
+    if m_part == 0:
+        return f"{h_part}h"
+    return f"{h_part}h {m_part}m"
+
+
+def _build_hour_options(state, req: dict, max_hours: int) -> list:
+    """Список pre-computed данных для кнопок выбора часов работы.
+
+    Каждая запись — dict `{h, steps, energy, salary, real_time}` где
+    steps/energy/salary уже умножены на h, а `real_time` — реальное
+    время смены с учётом speed-бонуса (как в work.py:check_requirements:
+    `raw_duration - raw_duration * speed_bonus_pct / 100`).
+
+    Шаблон рендерит формат
+    `{h}h 🕑 {real_time} · 🏃 -{steps} · 🔋 -{energy} · 💰 +{salary}` без
+    арифметики в Jinja (4.48.5 follow-up — pre-compute в Python).
+    """
+    speed_bonus_pct = _speed_bonus_pct(state)
+    return [
+        {
+            "h": h,
+            "steps": h * req['steps'],
+            "energy": h * req['energy'],
+            "salary": h * req['salary'],
+            "real_time": _format_real_time(round(h * 60 * (1 - speed_bonus_pct / 100))),
+        }
+        for h in range(1, max_hours + 1)
+    ]
+
+
 def _build_work_vacancies(state) -> list:
     """Собирает данные для меню выбора вакансии (не работаешь)."""
     work_helper = Work(state)
     vacancies = []
     for key, req in work_helper.work_requirements.items():
         meta = _WORK_DISPLAY.get(key, {"title": key.title(), "icon": "🏭"})
+        max_hours = _max_work_hours(state, req)
         vacancies.append({
             "key": key,
             "title": meta["title"],
@@ -79,7 +118,8 @@ def _build_work_vacancies(state) -> list:
             "steps_per_hour": req['steps'],
             "energy_per_hour": req['energy'],
             "salary_per_hour": req['salary'],
-            "max_hours": _max_work_hours(state, req),
+            "max_hours": max_hours,
+            "hour_options": _build_hour_options(state, req, max_hours),
         })
     return vacancies
 
@@ -233,12 +273,25 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # save_game_date_last_enter idempotent: на тот же день no-op.
     save_game_date_last_enter(state)
 
+    # Energy regen (0.2.1c follow-up). Каждый рендер пересчитываем энергию
+    # по той же формуле, что в CLI (functions.energy_time_charge). Persist
+    # в Sheets/CSV не делаем — энергия меняется часто, дёргать Sheets на
+    # каждый F5 бессмысленно. При следующей mutation (work start / steps)
+    # persist подтянет актуальный state. Если uvicorn рестартанётся —
+    # state.energy_time_stamp из Sheets всё ещё валидный, на первый
+    # рендер energy_time_charge досчитает прирост за пропущенное время.
+    energy_time_charge(state)
+
     # Auto-finalize работы по таймеру: каждый рендер dashboard'а / fragment'а
     # проверяет state.work.end и если время вышло — начисляет зарплату и
     # обнуляет смену. Так web-сценарий не требует отдельного "Claim"-клика
     # (CLI делает то же самое в main loop'е). Аналогично появятся вызовы
     # training_finalize / adventure_finalize в задачах 4.48.3 / 4.48.4.
     work_check_done(state)
+
+    # Параметры для JS-таймера энергии в _status_fragment.html (data-attrs).
+    # JS раз в 60 сек обновляет цифру, считая `min(energy + floor((now-stamp)/interval), max)`.
+    energy_interval_sec = speed_skill_equipment_and_level_bonus(60, state)
 
     char_level = CharLevel(state)
     now_ts = datetime.now().timestamp()
@@ -259,8 +312,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     )
 
     # Initial server-side значения прогресс-баров (клиент будет двигать раз в секунду).
+    # Work — без progress (0.2.1c follow-up): таймер достаточен, % перегружал блок.
     training_progress = _compute_progress_pct(training_start_ts, training_end_ts, now_ts)
-    work_progress = _compute_progress_pct(work_start_ts, work_end_ts, now_ts)
     adv_progress = _compute_progress_pct(adv_start_ts, adv_end_ts, now_ts)
 
     # Уровень навыка для текущей тренировки — для отображения "до какого уровня".
@@ -280,16 +333,19 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     equipment_worn = sum(1 for s in equipment_slots_list if s is not None)
 
     # Work UI: либо меню вакансий (когда не работаешь), либо форма "+N часов"
-    # (когда уже работаешь). Расчёт max_hours делаем в Python — Jinja остаётся
-    # тонким слоем рендера. Cap = 8 часов (как в CLI Work.ask_hours).
+    # (когда уже работаешь). Расчёт max_hours и pre-computed hour_options
+    # делаем в Python — Jinja остаётся тонким слоем рендера. Cap = 8 часов
+    # (как в CLI Work.ask_hours).
     if state.work.active and state.work.work_type:
         work_vacancies = []
         work_helper = Work(state)
         cur_req = work_helper.work_requirements.get(state.work.work_type)
         work_max_add_hours = _max_work_hours(state, cur_req) if cur_req else 0
+        work_add_hour_options = _build_hour_options(state, cur_req, work_max_add_hours) if cur_req else []
     else:
         work_vacancies = _build_work_vacancies(state)
         work_max_add_hours = 0
+        work_add_hour_options = []
 
     return {
         "request": request,
@@ -325,7 +381,6 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "training_skill_target": training_skill_target,
         "work_start_ts": work_start_ts,
         "work_end_ts": work_end_ts,
-        "work_progress": work_progress,
         "adv_start_ts": adv_start_ts,
         "adv_end_ts": adv_end_ts,
         "adv_progress": adv_progress,
@@ -336,9 +391,13 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # Steps form state (4.48.2): error message + open/closed flag.
         "steps_error": steps_error,
         "steps_form_open": steps_form_open,
+        # Energy regen (0.2.1c) — параметры для JS-таймера на клиенте.
+        "energy_time_stamp": state.energy_time_stamp,
+        "energy_interval_sec": energy_interval_sec,
         # Work UI (4.48.5): меню вакансий или форма "+часы".
         "work_vacancies": work_vacancies,
         "work_max_add_hours": work_max_add_hours,
+        "work_add_hour_options": work_add_hour_options,
         "work_error": work_error,
     }
 

@@ -38,7 +38,13 @@
 
         <div class="stat-row" style="margin-top: 0.5rem;">
             <span class="stat-label">🔋 Energy</span>
-            <span>{{ state.energy }} / {{ state.energy_max }}</span>
+            <span>
+                <span data-energy="{{ state.energy }}"
+                      data-energy-max="{{ state.energy_max }}"
+                      data-energy-stamp="{{ energy_time_stamp }}"
+                      data-energy-interval="{{ energy_interval_sec }}">{{ state.energy }}</span>
+                / {{ state.energy_max }}
+            </span>
         </div>
 
         <div class="stat-row" style="margin-top: 0.5rem;">
@@ -53,72 +59,6 @@
         <progress value="{{ char_level_progress }}" max="100"></progress>
         <small>Прогресс до следующего уровня: {{ "%.2f"|format(char_level_progress) }} %</small>
     </article>
-</section>
-
-{# Work — старт смены / добавить часы. Свёрнут по умолчанию (и когда работаешь,
-   и когда нет) — игрок сам разворачивает блок при необходимости. #}
-<section id="work">
-    <details>
-        <summary>
-            🏭 <strong>Работа</strong>
-            {%- if state.work.active and state.work.work_type %}
-                · {{ state.work.work_type.title() }}
-                <small>· {{ state.work.salary * state.work.hours }} $ ({{ state.work.hours }} ч)</small>
-            {%- else %}
-                <small>· выбери вакансию</small>
-            {%- endif %}
-        </summary>
-
-        {% if work_error %}
-        <small style="color: var(--pico-color-pumpkin-600, #b45309);">❌ {{ work_error }}</small>
-        {% endif %}
-
-        {% if state.work.active and state.work.work_type %}
-            {# Уже работаешь — форма "Добавить часы". Кнопки 1..work_max_add_hours. #}
-            <p style="margin-top: 0.5rem;">
-                <small>Добавить часы к смене (зарплата {{ state.work.salary }} $/ч):</small>
-            </p>
-            {% if work_max_add_hours > 0 %}
-            <form hx-post="/web/work/add_hours" hx-target="#status-bar" hx-swap="innerHTML"
-                  hx-disabled-elt="this"
-                  style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin: 0;">
-                {% for h in range(1, work_max_add_hours + 1) %}
-                <button type="submit" name="hours" value="{{ h }}"
-                        class="outline" style="margin: 0; flex: 0 0 auto; min-width: 3rem;">
-                    +{{ h }}ч
-                </button>
-                {% endfor %}
-            </form>
-            {% else %}
-            <small class="equipment-empty">Не хватает ресурсов на +1 час.</small>
-            {% endif %}
-        {% else %}
-            {# Не работаешь — список вакансий с кнопками выбора часов. #}
-            {% for vacancy in work_vacancies %}
-            <article style="padding: 0.5rem 0.75rem; margin: 0.5rem 0;">
-                <div>
-                    <strong>{{ vacancy.icon }} {{ vacancy.title }}</strong>
-                    <small>· {{ vacancy.salary_per_hour }} $/ч · 🏃 {{ vacancy.steps_per_hour }}/ч · 🔋 {{ vacancy.energy_per_hour }}/ч</small>
-                </div>
-                {% if vacancy.max_hours > 0 %}
-                <form hx-post="/web/work/start" hx-target="#status-bar" hx-swap="innerHTML"
-                      hx-disabled-elt="this"
-                      style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin: 0.25rem 0 0 0;">
-                    <input type="hidden" name="work_type" value="{{ vacancy.key }}">
-                    {% for h in range(1, vacancy.max_hours + 1) %}
-                    <button type="submit" name="hours" value="{{ h }}"
-                            class="outline" style="margin: 0; flex: 0 0 auto; min-width: 3rem;">
-                        {{ h }}ч
-                    </button>
-                    {% endfor %}
-                </form>
-                {% else %}
-                <small class="equipment-empty">— не хватает 🏃 / 🔋 —</small>
-                {% endif %}
-            </article>
-            {% endfor %}
-        {% endif %}
-    </details>
 </section>
 
 {# Активные сессии — показываем только если активны. #}
@@ -156,10 +96,6 @@
             {% else %}
                 —
             {% endif %}
-            {% if work_start_ts and work_end_ts %}
-                <progress data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}" value="{{ '%.2f' % work_progress }}" max="100"></progress>
-                <small><span data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}">{{ '%.2f' % work_progress }}</span> %{% if work_progress >= 100 %} ✓ Завершено{% endif %}</small>
-            {% endif %}
         </p>
         {% endif %}
 
@@ -187,6 +123,72 @@
     </article>
 </section>
 {% endif %}
+
+{# Work — старт смены / добавить часы. Свёрнут по умолчанию (и когда работаешь,
+   и когда нет) — игрок сам разворачивает блок при необходимости. #}
+<section id="work">
+    <details>
+        <summary>
+            🏭 <strong>Работа</strong>
+            {%- if state.work.active and state.work.work_type %}
+                · {{ state.work.work_type.title() }}
+                <small>· {{ state.work.salary * state.work.hours }} $ ({{ state.work.hours }} ч)</small>
+            {%- else %}
+                <small>· выбери вакансию</small>
+            {%- endif %}
+        </summary>
+
+        {% if work_error %}
+        <small style="color: var(--pico-color-pumpkin-600, #b45309);">❌ {{ work_error }}</small>
+        {% endif %}
+
+        {% if state.work.active and state.work.work_type %}
+            {# Уже работаешь — форма "Добавить часы". Кнопки 1..work_max_add_hours. #}
+            <p style="margin-top: 0.5rem;">
+                <small>Добавить часы к смене (зарплата {{ state.work.salary }} $/ч):</small>
+            </p>
+            {% if work_max_add_hours > 0 %}
+            <form hx-post="/web/work/add_hours" hx-target="#status-bar" hx-swap="innerHTML"
+                  hx-disabled-elt="this"
+                  style="display: flex; flex-direction: column; gap: 0.25rem; margin: 0;">
+                {% for opt in work_add_hour_options %}
+                <button type="submit" name="hours" value="{{ opt.h }}"
+                        class="outline" style="margin: 0; text-align: center;">
+                    +{{ opt.h }}h 🕑 {{ opt.real_time }} · 🏃 -{{ opt.steps }} · 🔋 -{{ opt.energy }} · 💰 +{{ opt.salary }}
+                </button>
+                {% endfor %}
+            </form>
+            {% else %}
+            <small class="equipment-empty">Не хватает ресурсов на +1 час.</small>
+            {% endif %}
+        {% else %}
+            {# Не работаешь — список вакансий с кнопками выбора часов. #}
+            {% for vacancy in work_vacancies %}
+            <article style="padding: 0.5rem 0.75rem; margin: 0.5rem 0;">
+                <div>
+                    <strong>{{ vacancy.icon }} {{ vacancy.title }}</strong>
+                    <small>· {{ vacancy.salary_per_hour }} $/ч · 🏃 {{ vacancy.steps_per_hour }}/ч · 🔋 {{ vacancy.energy_per_hour }}/ч</small>
+                </div>
+                {% if vacancy.max_hours > 0 %}
+                <form hx-post="/web/work/start" hx-target="#status-bar" hx-swap="innerHTML"
+                      hx-disabled-elt="this"
+                      style="display: flex; flex-direction: column; gap: 0.25rem; margin: 0.25rem 0 0 0;">
+                    <input type="hidden" name="work_type" value="{{ vacancy.key }}">
+                    {% for opt in vacancy.hour_options %}
+                    <button type="submit" name="hours" value="{{ opt.h }}"
+                            class="outline" style="margin: 0; text-align: center;">
+                        {{ opt.h }}h 🕑 {{ opt.real_time }} · 🏃 -{{ opt.steps }} · 🔋 -{{ opt.energy }} · 💰 +{{ opt.salary }}
+                    </button>
+                    {% endfor %}
+                </form>
+                {% else %}
+                <small class="equipment-empty">— не хватает 🏃 / 🔋 —</small>
+                {% endif %}
+            </article>
+            {% endfor %}
+        {% endif %}
+    </details>
+</section>
 
 {# Бонусы Steps + Energy в свёрнутом блоке — детали редко нужны игроку. #}
 <section id="bonuses">

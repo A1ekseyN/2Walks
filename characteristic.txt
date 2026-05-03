@@ -1,12 +1,12 @@
 {
     "date_last_enter": "2026-05-03",
-    "timestamp_last_enter": 1777788953.871814,
-    "steps_today": 0,
-    "steps_can_use": 0,
-    "steps_today_used": 0,
+    "timestamp_last_enter": 1777788954.0,
+    "steps_today": 500,
+    "steps_can_use": 444,
+    "steps_today_used": 336,
     "steps_yesterday": 4839,
     "steps_daily_bonus": 0,
-    "steps_total_used": 1647140,
+    "steps_total_used": 1647476,
     "char_level": 9,
     "char_level_up_skills": 0,
     "lvl_up_skill_stamina": 9,
@@ -14,10 +14,10 @@
     "lvl_up_skill_speed": 0,
     "lvl_up_skill_luck": 0,
     "loc": "home",
-    "energy": 65,
+    "energy": 61,
     "energy_max": 65,
-    "energy_time_stamp": 1777788955.934177,
-    "money": 2022,
+    "energy_time_stamp": 1777802156.141466,
+    "money": 2024,
     "skill_training": false,
     "skill_training_name": null,
     "skill_training_timestamp": null,
@@ -32,12 +32,12 @@
     "move_optimization_adventure": 9,
     "move_optimization_gym": 13,
     "move_optimization_work": 16,
-    "work": null,
-    "work_salary": 0,
-    "working": false,
-    "working_hours": 0,
-    "working_start": null,
-    "working_end": null,
+    "work": "watchman",
+    "work_salary": 2,
+    "working": true,
+    "working_hours": 1,
+    "working_start": "2026-05-03 12:55:56.141475",
+    "working_end": "2026-05-03 13:47:32.141475",
     "inventory": [
         {
             "item_name": [
@@ -471,7 +471,7 @@
             5
         ],
         "quality": [
-            76.88423700000003
+            76.8813138
         ],
         "price": [
             192
@@ -494,7 +494,7 @@
             4
         ],
         "quality": [
-            63.65296100000003
+            63.65003780000003
         ],
         "price": [
             127
@@ -517,7 +517,7 @@
             5
         ],
         "quality": [
-            63.86212500000003
+            63.85920180000002
         ],
         "price": [
             159
@@ -540,7 +540,7 @@
             5
         ],
         "quality": [
-            39.24884500000003
+            39.245921800000026
         ],
         "price": [
             98
@@ -563,7 +563,7 @@
             5
         ],
         "quality": [
-            58.23041330000023
+            58.227490100000225
         ],
         "price": [
             145
@@ -587,7 +587,7 @@
             5
         ],
         "quality": [
-            95.22649699999994
+            95.22357379999994
         ],
         "price": [
             238

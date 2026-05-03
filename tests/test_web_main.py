@@ -349,30 +349,27 @@ def test_equipment_filled_slot_shows_item_details():
 
 # ----- Progress bars (active sessions) -----
 
-def test_active_work_renders_progress_bar():
-    """Work с известными start/end → <progress> с value в диапазоне 0-100."""
+def test_active_work_does_not_render_progress_bar():
+    """Work — только таймер до конца смены, без progress bar и без % текста
+    (0.2.1c follow-up — упрощение UI)."""
     state = GameState.default_new_game()
     state.work.active = True
     state.work.work_type = "factory"
     state.work.salary = 5
     state.work.hours = 4
-    # Старт час назад, конец через час → ~50% прогресса.
     state.work.start = datetime.now() - timedelta(hours=1)
     state.work.end = datetime.now() + timedelta(hours=1)
     _setup_state(state)
     with TestClient(app) as client:
         response = client.get("/status")
     body = response.text
-    assert "<progress" in body
-    assert "data-progress-start-ts=" in body
-    assert "data-progress-end-ts=" in body
-    # Прогресс примерно 50% — допускаем разброс при флексе тестового запуска.
-    import re
-    # Берём только session-progress (с data-progress-start-ts), не Level.
-    match = re.search(r'<progress[^>]*data-progress-start-ts[^>]*value="([0-9]+\.[0-9]+)"', body)
-    assert match, "session <progress> not found"
-    pct = float(match.group(1))
-    assert 30 <= pct <= 70
+    # Таймер на месте.
+    assert "data-end-ts=" in body
+    # Прогресс-бар работы убран — но adventure/training-прогресс может ещё быть,
+    # так что проверяем что внутри Work-блока нет <progress>. Adventure/training
+    # не активны — секции для них не рендерятся.
+    # Считаем что весь "data-progress-start-ts" должен отсутствовать.
+    assert "data-progress-start-ts=" not in body
 
 
 def test_active_training_renders_progress_bar():
@@ -1499,8 +1496,11 @@ def test_web_work_persists_even_if_sheets_save_fails(monkeypatch, capsys):
     assert "Sheets save failed" in captured.out
 
 
-def test_work_section_appears_between_stats_and_active_sessions():
-    """Order: Stats → Work → (Active sessions if active) → Бонусы → ..."""
+def test_work_section_appears_after_active_sessions():
+    """Order: Stats → (Active sessions if active) → Work → Бонусы → ...
+
+    Исторически Work был выше Active sessions, но в 0.2.1c follow-up
+    переставлены — игроку важнее видеть текущий таймер прямо под Stats."""
     state = _state_for_work()
     # Чтобы Active sessions точно отрисовалась, добавим тренировку.
     state.training.active = True
@@ -1512,10 +1512,10 @@ def test_work_section_appears_between_stats_and_active_sessions():
         response = client.get("/status")
     body = response.text
     stats_pos = body.find('id="stats"')
-    work_pos = body.find('id="work"')
     active_pos = body.find('id="active-sessions"')
+    work_pos = body.find('id="work"')
     bonuses_pos = body.find('id="bonuses"')
-    assert 0 < stats_pos < work_pos < active_pos < bonuses_pos
+    assert 0 < stats_pos < active_pos < work_pos < bonuses_pos
 
 
 # ----- Day rollover в web (task 4.54.0.2) -----
@@ -1699,3 +1699,249 @@ def test_rollover_does_not_clear_active_work_session():
     assert state.work.active is True
     assert state.work.work_type == "watchman"
     assert state.work.hours == 4
+
+
+# ----- Hour buttons content (0.2.1c) -----
+# Кнопки выбора часов должны содержать pre-computed totals по формуле
+# `Nh · 🏃 N*steps · 🔋 N*energy · 💰 N*salary`. Расчёт в Python через
+# _build_hour_options.
+
+def test_hour_buttons_show_pre_computed_totals_for_watchman():
+    """Watchman: 200 шагов/ч, 4 эн/ч, 2 $/ч. Кнопка 1h → 200/4/2; кнопка 2h → 400/8/4."""
+    state = _state_for_work(steps_can_use=8000, energy=80)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Найдём watchman-форму.
+    work_pos = body.find('id="work"')
+    work_section = body[work_pos:work_pos + 12000]
+    watchman_pos = work_section.find('value="watchman"')
+    assert watchman_pos > 0
+    form_end = work_section.find('</form>', watchman_pos)
+    form = work_section[watchman_pos:form_end]
+    # Кнопка 1h: "1h · 🏃 200 · 🔋 4 · 💰 2"
+    # Default state без speed-бонусов → real_time = h * 60 минут.
+    assert "1h 🕑 1h · 🏃 -200 · 🔋 -4 · 💰 +2" in form
+    # Кнопка 2h: умножается на 2.
+    assert "2h 🕑 2h · 🏃 -400 · 🔋 -8 · 💰 +4" in form
+    # Кнопка 3h.
+    assert "3h 🕑 3h · 🏃 -600 · 🔋 -12 · 💰 +6" in form
+
+
+def test_hour_buttons_show_pre_computed_totals_for_factory():
+    """Factory: 500 шагов/ч, 7 эн/ч, 5 $/ч."""
+    state = _state_for_work(steps_can_use=8000, energy=80)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    work_pos = body.find('id="work"')
+    work_section = body[work_pos:work_pos + 12000]
+    factory_pos = work_section.find('value="factory"')
+    assert factory_pos > 0
+    form_end = work_section.find('</form>', factory_pos)
+    form = work_section[factory_pos:form_end]
+    assert "1h 🕑 1h · 🏃 -500 · 🔋 -7 · 💰 +5" in form
+    assert "2h 🕑 2h · 🏃 -1000 · 🔋 -14 · 💰 +10" in form
+
+
+def test_add_hours_buttons_show_pre_computed_totals():
+    """Когда уже работаешь — кнопки add_hours тоже показывают полную формулу
+    относительно текущей вакансии."""
+    state = _state_for_work(steps_can_use=8000, energy=80)
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 1
+    state.work.start = datetime.now() - timedelta(minutes=30)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Меню вакансий не показывается.
+    assert 'hx-post="/web/work/start"' not in body
+    # А add_hours форма содержит формулу.
+    assert "+1h 🕑 1h · 🏃 -200 · 🔋 -4 · 💰 +2" in body
+    assert "+2h 🕑 2h · 🏃 -400 · 🔋 -8 · 💰 +4" in body
+
+
+def test_hour_options_python_helper_zero_max_hours_returns_empty():
+    """_build_hour_options(state, req, 0) → пустой список (нет кнопок при
+    нулевых ресурсах)."""
+    from web.main import _build_hour_options
+    req = {'steps': 200, 'energy': 4, 'salary': 2}
+    state = GameState.default_new_game()
+    assert _build_hour_options(state, req, 0) == []
+
+
+def test_hour_options_python_helper_max_8():
+    """_build_hour_options(state, req, 8) → 8 записей с правильно умноженными
+    значениями + real_time с учётом speed-бонусов."""
+    from web.main import _build_hour_options
+    req = {'steps': 1000, 'energy': 10, 'salary': 10}
+    state = GameState.default_new_game()  # без бонусов → real_time = h*60 мин
+    options = _build_hour_options(state, req, 8)
+    assert len(options) == 8
+    # Первая запись.
+    assert options[0] == {"h": 1, "steps": 1000, "energy": 10, "salary": 10, "real_time": "1h"}
+    # Восьмая.
+    assert options[7] == {"h": 8, "steps": 8000, "energy": 80, "salary": 80, "real_time": "8h"}
+
+
+def test_hour_options_real_time_with_speed_bonus():
+    """Speed-бонус 25% (gym.speed_skill=25) → 1h работы = 45 минут реальных."""
+    from web.main import _build_hour_options
+    req = {'steps': 200, 'energy': 4, 'salary': 2}
+    state = GameState.default_new_game()
+    state.gym.speed_skill = 25  # 25% бонус
+    options = _build_hour_options(state, req, 3)
+    # 1h * 60 * (1 - 0.25) = 45 мин → "45m"
+    assert options[0]["real_time"] == "45m"
+    # 2h * 60 * 0.75 = 90 мин → "1h 30m"
+    assert options[1]["real_time"] == "1h 30m"
+    # 3h * 60 * 0.75 = 135 мин → "2h 15m"
+    assert options[2]["real_time"] == "2h 15m"
+
+
+def test_hour_options_real_time_with_full_speed_bonus():
+    """100% speed-бонус → real_time = 0 минут (edge case, нереалистично, но
+    логика должна обрабатывать корректно: 0m)."""
+    from web.main import _build_hour_options
+    req = {'steps': 200, 'energy': 4, 'salary': 2}
+    state = GameState.default_new_game()
+    state.gym.speed_skill = 100
+    options = _build_hour_options(state, req, 1)
+    assert options[0]["real_time"] == "0m"
+
+
+def test_energy_regenerates_in_dashboard_context():
+    """Energy с устаревшим stamp → после GET /status energy выросла на 1+
+    и stamp обновлён. Без бонусов interval=60s."""
+    state = GameState.default_new_game()
+    state.energy = 30
+    state.energy_max = 65
+    # Stamp 3 минуты назад → +3 единицы при interval=60s.
+    state.energy_time_stamp = datetime.now().timestamp() - 180
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    # 30 + 3 = 33, не больше max=65.
+    assert state.energy == 33
+    # Stamp синкнут: остаток = 0 (180 % 60 == 0) → stamp = now.
+    assert abs(state.energy_time_stamp - datetime.now().timestamp()) < 2
+
+
+def test_energy_clamped_to_max_in_dashboard_context():
+    """Energy уже на max → state не растёт, stamp синкается к now (защита
+    от баг 2.2.2 — бесплатной энергии после максимума)."""
+    state = GameState.default_new_game()
+    state.energy = 65
+    state.energy_max = 65
+    state.energy_time_stamp = datetime.now().timestamp() - 1000  # давно
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    assert state.energy == 65
+    # Stamp подтянулся к now.
+    assert abs(state.energy_time_stamp - datetime.now().timestamp()) < 2
+
+
+def test_energy_data_attrs_in_dom():
+    """В DOM-фрагменте есть все 4 data-атрибута для JS-таймера."""
+    state = GameState.default_new_game()
+    state.energy = 30
+    state.energy_max = 65
+    state.energy_time_stamp = datetime.now().timestamp()
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+
+    assert 'data-energy="30"' in body
+    assert 'data-energy-max="65"' in body
+    assert 'data-energy-stamp=' in body
+    assert 'data-energy-interval=' in body
+
+
+def test_energy_regen_does_not_trigger_persist(monkeypatch):
+    """Регенерация энергии не должна писать в Sheets/CSV — иначе каждый
+    F5 будет триггерить persist (дорого, без необходимости). Persist'ится
+    только при rollover/work-mutation."""
+    from web import sync as web_sync_mod
+
+    persist_calls = []
+    monkeypatch.setattr(web_sync_mod, "persist_state_to_cloud",
+                        lambda: persist_calls.append(1))
+
+    state = GameState.default_new_game()
+    state.energy = 30
+    state.energy_max = 65
+    state.energy_time_stamp = datetime.now().timestamp() - 180
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    # Energy выросла, но persist не вызывался.
+    assert state.energy == 33
+    assert persist_calls == []
+
+
+def test_energy_interval_with_speed_bonus():
+    """Speed-бонус 25% → interval = 60 * 0.75 = 45 сек на +1 энергии."""
+    state = GameState.default_new_game()
+    state.energy = 30
+    state.energy_max = 65
+    state.gym.speed_skill = 25  # 25% бонус
+    # Stamp 90 сек назад → 90 // 45 = 2 → +2 энергии.
+    state.energy_time_stamp = datetime.now().timestamp() - 90
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/status")
+
+    assert state.energy == 32
+    # И data-energy-interval = 45 в DOM.
+    body = response.text
+    assert 'data-energy-interval="45"' in body
+
+
+def test_format_real_time_helper():
+    """_format_real_time правильно выводит часы / минуты / комбинацию."""
+    from web.main import _format_real_time
+    assert _format_real_time(0) == "0m"
+    assert _format_real_time(45) == "45m"
+    assert _format_real_time(60) == "1h"
+    assert _format_real_time(90) == "1h 30m"
+    assert _format_real_time(120) == "2h"
+    assert _format_real_time(135) == "2h 15m"
+    assert _format_real_time(480) == "8h"
+
+
+def test_dashboard_context_provides_work_add_hour_options_when_active():
+    """В _dashboard_context'е при активной смене work_add_hour_options
+    содержит pre-computed данные для текущей вакансии."""
+    state = _state_for_work(steps_can_use=4000, energy=40)
+    state.work.active = True
+    state.work.work_type = "watchman"  # 200 ш/ч, 4 эн/ч, 2 $/ч
+    state.work.salary = 2
+    state.work.hours = 1
+    state.work.start = datetime.now() - timedelta(minutes=30)
+    state.work.end = datetime.now() + timedelta(hours=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # max_hours = min(4000/200, 40/4, 8) = min(20, 10, 8) = 8 → 8 кнопок.
+    import re
+    btns = re.findall(r'name="hours" value="(\d+)"', body)
+    assert btns == ["1", "2", "3", "4", "5", "6", "7", "8"]
+    # Последняя кнопка — 8h, формула *8.
+    assert "+8h 🕑 8h · 🏃 -1600 · 🔋 -32 · 💰 +16" in body
