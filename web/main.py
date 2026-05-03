@@ -31,24 +31,24 @@ from bonus import (
     equipment_bonus_stamina_steps,
     level_steps_bonus,
 )
-from characteristics import game, init_game_state, save_characteristic
+from characteristics import game, init_game_state
 from equipment_bonus import (
     equipment_energy_max_bonus,
     equipment_luck_bonus,
     equipment_speed_skill_bonus,
     equipment_stamina_bonus,
 )
-from functions import bonus_percentage, total_bonus_steps
-from google_sheets_db import GameStateRepo, StepsLogRepo
+from functions import bonus_percentage, save_game_date_last_enter, total_bonus_steps
+from google_sheets_db import StepsLogRepo
 from inventory import Wear_Equipped_Items
 from level import CharLevel
 from locations import icon_loc
 from skill_bonus import stamina_skill_bonus_def
-from web.sync import get_last_reload, try_reload_state
+from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, work_check_done
 
 
-VERSION = "0.2.1a"
+VERSION = "0.2.1b"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -84,24 +84,6 @@ def _build_work_vacancies(state) -> list:
     return vacancies
 
 
-def _persist_state_to_cloud() -> None:
-    """Локальное сохранение (JSON+CSV) + push в Google Sheets.
-
-    Локальное всегда первым (гарантия offline-mode). Sheets — best-effort:
-    если упадёт сетевой, сообщение в лог uvicorn'а, но web-операция не
-    отвалится. Пользователь увидит данные на disk'е и при следующем
-    действии (или CLI save) Sheets синкнется.
-
-    Применяется после каждой мутирующей web-операции (start/add_hours
-    смены). Будущие training/adventure endpoint'ы будут звать тот же helper.
-    """
-    save_characteristic()
-    try:
-        GameStateRepo().save(game.state.to_dict())
-    except Exception as e:  # noqa: BLE001 — best-effort sync
-        print(f"[web] Sheets save failed (state cached locally): {e}")
-
-
 def _validate_and_apply_work(state, work_type: str, hours: int) -> Optional[str]:
     """Валидирует work_type/hours, применяет смену через Work.check_requirements
     + Wear_Equipped_Items.decrease_durability. На успехе синкает state в
@@ -128,7 +110,7 @@ def _validate_and_apply_work(state, work_type: str, hours: int) -> Optional[str]
     Wear_Equipped_Items(state).decrease_durability(hours * req['steps'])
     # Persist: state.work теперь active=True, но без записи в Sheets/CSV
     # игрок потеряет смену при рестарте uvicorn'а или при reload через 4.54.0.
-    _persist_state_to_cloud()
+    persist_state_to_cloud()
     return None
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -174,13 +156,26 @@ def _apply_new_steps(steps_value: int, source: str = "web",
       возвращается applied=False (state не меняется).
     - Sheets log пишется ДО применения к state. Если падает — state не меняется,
       возвращается applied=False + error.
-    - При успехе: state.steps.today обновляется, steps.can_use пересчитывается
-      (без day rollover — это отдельная задача в save_game_date_last_enter).
+    - При успехе: state.steps.today обновляется, steps.can_use пересчитывается.
+    - Day rollover (4.54.0.2): перед валидацией зовём save_game_date_last_enter
+      — если игрок открыл страницу вчера и submit'ит сегодня (или вкладка живёт
+      через midnight без F5), state.steps.today обнулится и валидация пройдёт.
+      Без этого ввод "100 шагов" блокировался stale значением вчерашних 8k.
     - source — 'web' / 'manual' / 'auto' / etc; пишется в steps_log.
     """
     state = game.state
     if state is None:
         return StepsAppliedResult(False, 0, 0, False, "state not initialized")
+
+    # Day rollover (4.54.0.2): если первое действие на новый день идёт через
+    # POST /api/steps (например с iPhone Shortcut, без предварительного GET /),
+    # state в RAM ещё с вчера. Без этой проверки ввод "100 шагов" отвергся бы
+    # как меньше вчерашних. Если rollover фактически произошёл — persist
+    # свежий state, чтобы CLI и web видели одно и то же.
+    old_date = state.date_last_enter
+    save_game_date_last_enter(state)
+    if state.date_last_enter != old_date:
+        persist_state_to_cloud()
 
     if steps_value <= state.steps.today:
         return StepsAppliedResult(
@@ -230,6 +225,13 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     state = game.state
     if state is None:
         raise RuntimeError("game.state не инициализирован — должен быть вызван init_game_state() в lifespan.")
+
+    # Day rollover (4.54.0.2). Defense-in-depth: основной триггер —
+    # try_reload_state на GET /, но если вкладка живёт через midnight и
+    # делает только submit формы (которые не зовут try_reload_state), без
+    # этой проверки рендер показал бы вчерашние today/used/daily_bonus.
+    # save_game_date_last_enter idempotent: на тот же день no-op.
+    save_game_date_last_enter(state)
 
     # Auto-finalize работы по таймеру: каждый рендер dashboard'а / fragment'а
     # проверяет state.work.end и если время вышло — начисляет зарплату и

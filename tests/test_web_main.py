@@ -48,19 +48,28 @@ def patch_sheets_load(monkeypatch):
     import work as _wm
     monkeypatch.setattr(_ch, "save_characteristic", lambda: None)
     monkeypatch.setattr(_wm, "save_characteristic", lambda: None)
-    # И в web.main (где import характеристик идёт через `from … import save_characteristic`,
-    # т.е. ссылка скопирована в namespace модуля).
-    import web.main as _wm_main
-    monkeypatch.setattr(_wm_main, "save_characteristic", lambda: None)
+    # И в web.sync (persist_state_to_cloud зовёт save_characteristic локально —
+    # после переноса helper'а из web/main.py в web/sync.py в 0.2.1b).
+    import web.sync as _wsync_mod
+    monkeypatch.setattr(_wsync_mod, "save_characteristic", lambda: None)
     # Сброс кэша last_reload между тестами — чтобы badge от предыдущих
     # тестов не протекал в текущий.
     web_sync._reset_for_tests()
 
 
 def _setup_state(state=None):
-    """Сбросить container и заполнить дефолтным state — так lifespan не пойдёт в Sheets."""
+    """Сбросить container и заполнить дефолтным state — так lifespan не пойдёт в Sheets.
+
+    По умолчанию выставляет `date_last_enter` на сегодня — чтобы тесты,
+    которые не про rollover, не ловили его в _dashboard_context /
+    _apply_new_steps / try_reload_state. Тесты rollover'а явно перезаписывают
+    эту дату на прошлую."""
+    if state is None:
+        state = GameState.default_new_game()
+    if state.date_last_enter == '':
+        state.date_last_enter = str(datetime.now().date())
     game.state = None
-    init_game_state(state if state is not None else GameState.default_new_game())
+    init_game_state(state)
 
 
 # ----- /healthz -----
@@ -175,14 +184,16 @@ def test_status_fragment_returns_html_without_full_page_wrapper():
 def test_status_fragment_contains_core_stats():
     state = GameState.default_new_game()
     state.steps.today = 5000
-    state.steps.can_use = 4500
+    state.steps.used = 500  # → can_use = 5000 - 500 + 0 (нет бонусов в default) = 4500
     state.energy = 30
     state.money = 250
     _setup_state(state)
     with TestClient(app) as client:
         response = client.get("/status")
     body = response.text
-    assert "4,500" in body  # steps.can_use formatted
+    # save_game_date_last_enter в _dashboard_context всегда пересчитывает
+    # can_use = today - used + bonuses; для default state бонусы = 0 → 4500.
+    assert "4,500" in body
     assert "30" in body
     assert "250" in body
 
@@ -1392,8 +1403,8 @@ def test_web_work_start_persists_state_to_cloud(monkeypatch):
 
     monkeypatch.setattr(GameStateRepo, "save",
                         lambda self, data, user_id=None: saved_to_sheets.append(data))
-    import web.main as wm
-    monkeypatch.setattr(wm, "save_characteristic", lambda: saved_locally.append(1))
+    import web.sync as ws
+    monkeypatch.setattr(ws, "save_characteristic", lambda: saved_locally.append(1))
 
     _setup_state(_state_for_work())
     with TestClient(app) as client:
@@ -1454,9 +1465,9 @@ def test_web_work_failed_validation_does_not_persist(monkeypatch):
     saved_to_sheets = []
     monkeypatch.setattr(GameStateRepo, "save",
                         lambda self, data, user_id=None: saved_to_sheets.append(data))
-    import web.main as wm
+    import web.sync as ws
     saved_locally = []
-    monkeypatch.setattr(wm, "save_characteristic", lambda: saved_locally.append(1))
+    monkeypatch.setattr(ws, "save_characteristic", lambda: saved_locally.append(1))
 
     _setup_state(_state_for_work())
     with TestClient(app) as client:
@@ -1505,3 +1516,186 @@ def test_work_section_appears_between_stats_and_active_sessions():
     active_pos = body.find('id="active-sessions"')
     bonuses_pos = body.find('id="bonuses"')
     assert 0 < stats_pos < work_pos < active_pos < bonuses_pos
+
+
+# ----- Day rollover в web (task 4.54.0.2) -----
+
+def test_try_reload_state_triggers_rollover_when_date_is_stale(monkeypatch):
+    """try_reload_state после успешного reload зовёт save_game_date_last_enter
+    — это переносит state на сегодня, обнуляет today/used и persist'ит."""
+    from web import sync as web_sync_mod
+    from google_sheets_db import GameStateRepo
+
+    # state с вчерашней датой (yesterday) — rollover должен сработать.
+    state = GameState.default_new_game()
+    state.date_last_enter = '2020-01-01'  # давно в прошлом
+    state.steps.today = 8000
+    state.steps.used = 200
+    _setup_state(state)
+    # Sheets возвращает то же самое (мокнуто в autouse-фикстуре).
+
+    persist_calls = []
+    monkeypatch.setattr(web_sync_mod, "persist_state_to_cloud",
+                        lambda: persist_calls.append(1))
+
+    status = web_sync_mod.try_reload_state()
+
+    assert status.ok is True
+    # Rollover применён.
+    assert state.date_last_enter == str(datetime.now().date())
+    assert state.steps.today == 0
+    assert state.steps.used == 0
+    # И persist вызван.
+    assert len(persist_calls) == 1
+
+
+def test_try_reload_state_no_rollover_no_persist_when_date_current(monkeypatch):
+    """Если в state уже сегодняшняя дата — save_game_date_last_enter no-op,
+    persist НЕ зовётся (нет смысла писать неизменённый state)."""
+    from web import sync as web_sync_mod
+
+    state = GameState.default_new_game()
+    state.date_last_enter = str(datetime.now().date())
+    state.steps.today = 8000
+    _setup_state(state)
+
+    persist_calls = []
+    monkeypatch.setattr(web_sync_mod, "persist_state_to_cloud",
+                        lambda: persist_calls.append(1))
+
+    status = web_sync_mod.try_reload_state()
+
+    assert status.ok is True
+    # Дата та же, today не сбросился.
+    assert state.steps.today == 8000
+    assert persist_calls == []
+
+
+def test_try_reload_state_persists_yesterday_steps_correctly():
+    """При rollover today→yesterday копируется и daily_bonus считается по
+    10k+ за вчера. Если вчера было 12k — daily_bonus +1."""
+    state = GameState.default_new_game()
+    state.date_last_enter = '2020-01-01'
+    state.steps.today = 12000
+    state.steps.daily_bonus = 0
+    _setup_state(state)
+
+    web_sync.try_reload_state()
+
+    assert state.steps.yesterday == 12000
+    assert state.steps.daily_bonus == 1
+    assert state.steps.today == 0
+
+
+def test_apply_new_steps_works_after_midnight_rollover(monkeypatch):
+    """Кейс игрока: вкладка живёт с вчера (state.steps.today=8000), наступила
+    полночь, игрок утром вводит 800 шагов с свежего браслета. Без rollover
+    в _apply_new_steps валидация (steps > today) отклонит ввод. С rollover'ом
+    today обнулится и 800 будет принято."""
+    from google_sheets_db import StepsLogRepo
+    appended = []
+    monkeypatch.setattr(StepsLogRepo, "append",
+                        lambda self, ts, steps, source, user_id="alex":
+                        appended.append((ts, steps, source)))
+
+    state = GameState.default_new_game()
+    state.date_last_enter = '2020-01-01'  # вчера / любая прошлая дата
+    state.steps.today = 8000
+    state.steps.used = 200
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/api/steps", json={"steps": 800})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["applied"] is True
+    assert body["steps_today"] == 800
+    # Date обновлена на сегодня.
+    assert state.date_last_enter == str(datetime.now().date())
+    # Лог получил 800.
+    assert appended[0][1] == 800
+
+
+def test_apply_new_steps_persists_after_rollover(monkeypatch):
+    """После rollover'а в _apply_new_steps state.work тоже должен попасть в
+    Sheets — это страховка для случая, когда первое действие на новый день
+    идёт через POST /api/steps без предварительного GET / (например iPhone
+    Shortcut)."""
+    from web import sync as web_sync_mod
+
+    persist_calls = []
+    monkeypatch.setattr(web_sync_mod, "persist_state_to_cloud",
+                        lambda: persist_calls.append(1))
+    # web.main.persist_state_to_cloud — это import-скопированная ссылка.
+    import web.main as wm
+    monkeypatch.setattr(wm, "persist_state_to_cloud",
+                        lambda: persist_calls.append(1))
+
+    state = GameState.default_new_game()
+    state.date_last_enter = '2020-01-01'
+    state.steps.today = 8000
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.post("/api/steps", json={"steps": 500})
+
+    # Persist вызван хотя бы один раз — после rollover'а в _apply_new_steps.
+    assert len(persist_calls) >= 1
+
+
+def test_dashboard_context_triggers_rollover_too(monkeypatch):
+    """Defense-in-depth: GET /status (не зовёт try_reload_state, но всё ещё
+    рендерит dashboard) — _dashboard_context должен сам триггернуть
+    rollover."""
+    state = GameState.default_new_game()
+    state.date_last_enter = '2020-01-01'
+    state.steps.today = 8000
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    assert state.date_last_enter == str(datetime.now().date())
+    assert state.steps.today == 0
+
+
+def test_dashboard_after_rollover_form_min_is_1():
+    """После rollover state.steps.today=0, форма должна позволять ввести
+    с min=1 (today+1). До фикса валидация требовала min=8001."""
+    state = GameState.default_new_game()
+    state.date_last_enter = '2020-01-01'
+    state.steps.today = 8000
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    body = response.text
+    assert 'min="1"' in body
+    # Старый stale "8001" не мелькает.
+    assert 'min="8001"' not in body
+
+
+def test_rollover_does_not_clear_active_work_session():
+    """Активная смена через midnight остаётся как есть — таймер просто
+    продолжает идти на новый день. CLI делает то же самое (rollover не
+    трогает state.work)."""
+    state = _state_for_work()
+    state.date_last_enter = '2020-01-01'
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 2
+    state.work.hours = 4
+    state.work.start = datetime.now() - timedelta(minutes=30)
+    state.work.end = datetime.now() + timedelta(hours=2)  # таймер ещё идёт
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/")
+
+    # Steps сбросились (rollover), но work не тронут.
+    assert state.steps.today == 0
+    assert state.work.active is True
+    assert state.work.work_type == "watchman"
+    assert state.work.hours == 4
