@@ -1,13 +1,28 @@
 """Бонусы (шаги/энергия/скорость) — функции, читающие GameState."""
 
-from equipment_bonus import equipment_stamina_bonus
+from equipment_bonus import equipment_energy_max_bonus, equipment_stamina_bonus
 from state import GameState
 
 
-def skill_bonus_energy_max(state: GameState):
-    # Бонус Макс. Энергии от навыка (мутирующая, нигде не вызывается; см. 1.5).
-    state.energy_max += state.gym.energy_max_skill
-    return state.energy_max
+# Базовый максимум энергии нового персонажа. Все бонусы добавляются поверх.
+ENERGY_MAX_BASE = 50
+
+
+def compute_energy_max(state: GameState) -> int:
+    """Вычисляет актуальный максимум энергии из всех источников.
+
+    `state.energy_max` (поле) НЕ читается — это derived value, всегда
+    вычисляется на лету (вариант A — pure computed, см. задачу 4.48.4.1).
+    Поле остаётся в dataclass для save-format совместимости (CSV/Sheets
+    колонка `energy_max`), но в логике игры читается только эта функция.
+    """
+    return (
+        ENERGY_MAX_BASE
+        + state.gym.energy_max_skill
+        + equipment_energy_max_bonus(state)
+        + state.steps.daily_bonus
+        + state.char_level.skill_energy_max
+    )
 
 
 def equipment_bonus_stamina_steps(state: GameState):

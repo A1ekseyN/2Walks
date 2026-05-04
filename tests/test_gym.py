@@ -6,7 +6,6 @@ import pytest
 
 from state import GameState
 from gym import (
-    _energy_max_skill_level,
     _next_skill_level,
     _training_cost,
     _apply_speed_bonus,
@@ -16,20 +15,9 @@ from gym import (
 )
 
 
-# ----- _energy_max_skill_level / _next_skill_level -----
-
-def test_energy_max_skill_level_baseline():
-    state = GameState.default_new_game()
-    state.energy_max = 50  # Default: 50 = 49 + 1 (skill 1).
-    assert _energy_max_skill_level(state) == 1
-
-
-def test_energy_max_skill_level_with_bonuses():
-    state = GameState.default_new_game()
-    state.energy_max = 60        # 49 + skill X + daily + equipment(0) → X+daily = 11
-    state.steps.daily_bonus = 3
-    assert _energy_max_skill_level(state) == 8
-
+# ----- _next_skill_level -----
+# В 0.2.1g (4.48.4.1) удалён off-by-one helper `_energy_max_skill_level` —
+# теперь все 8 навыков читаются единообразно через `getattr(state.gym, key) + 1`.
 
 def test_next_skill_level_for_stamina():
     state = GameState.default_new_game()
@@ -37,12 +25,11 @@ def test_next_skill_level_for_stamina():
     assert _next_skill_level(state, 'stamina') == 5
 
 
-def test_next_skill_level_for_energy_max_uses_energy_formula():
+def test_next_skill_level_for_energy_max_skill():
+    """После унификации в 0.2.1g — energy_max_skill через тот же путь."""
     state = GameState.default_new_game()
-    state.energy_max = 55
-    state.steps.daily_bonus = 1
-    # 55 - 49 - 0 - 1 = 5
-    assert _next_skill_level(state, 'energy_max') == 5
+    state.gym.energy_max_skill = 15
+    assert _next_skill_level(state, 'energy_max_skill') == 16
 
 
 # ----- _training_cost -----

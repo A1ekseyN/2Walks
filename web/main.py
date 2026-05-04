@@ -36,7 +36,6 @@ from characteristics import game, init_game_state, skill_training_table
 from gym import (
     Skill_Training,
     _apply_speed_bonus,
-    _energy_max_skill_level,
     skill_training_check_done,
 )
 from equipment_bonus import (
@@ -56,7 +55,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.1f"
+VERSION = "0.2.1g"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -190,12 +189,9 @@ def _validate_and_apply_skill_allocation(state, skill: str) -> Optional[str]:
 
 
 # Gym skill training (4.48.4) — UI-метаданные.
-# `field` — атрибут в state.gym, через который читается current level.
-# 'energy_max' — особый случай: уровень выводится из state.energy_max через
-# _energy_max_skill_level. Помечен `available=False` — мутация через CLI
-# Skill_Training сломана (state.gym.energy_max не существует), web тоже не
-# даёт стартовать. Cм. follow-up задачу 4.48.4.1 — review логики
-# energy_max_skill.
+# `field` — атрибут в state.gym, через который читается current level. Для
+# 'energy_max_skill' field теперь корректно совпадает с именем (после унификации
+# в 0.2.1g / 4.48.4.1 — старый ключ 'energy_max' переименован в 'energy_max_skill').
 _GYM_SKILL_DISPLAY = {
     "stamina": {
         "title": "Stamina", "icon": "🏃",
@@ -203,12 +199,11 @@ _GYM_SKILL_DISPLAY = {
         "effect": "+1 % к общему кол-во шагов",
         "available": True,
     },
-    "energy_max": {
+    "energy_max_skill": {
         "title": "Energy Max", "icon": "🔋",
-        "field": None,  # выводится из _energy_max_skill_level
+        "field": "energy_max_skill",
         "effect": "+1 ед. к макс энергии",
-        "available": False,
-        "unavailable_reason": "Особая логика — см. задачу 4.48.4.1",
+        "available": True,
     },
     "speed_skill": {
         "title": "Speed", "icon": "⚡",
@@ -260,11 +255,7 @@ def _build_gym_skills(state) -> list:
     """
     options = []
     for key, meta in _GYM_SKILL_DISPLAY.items():
-        if meta["field"] is not None:
-            current = getattr(state.gym, meta["field"])
-        else:
-            # energy_max — особый случай
-            current = _energy_max_skill_level(state)
+        current = getattr(state.gym, meta["field"])
         next_level = current + 1
 
         # Cost lookup. skill_training_table может не содержать высоких уровней —
@@ -543,6 +534,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # Параметры для JS-таймера энергии в _status_fragment.html (data-attrs).
     # JS раз в 60 сек обновляет цифру, считая `min(energy + floor((now-stamp)/interval), max)`.
     energy_interval_sec = speed_skill_equipment_and_level_bonus(60, state)
+    # Computed energy_max (4.48.4.1 / 0.2.1g) — теперь не читается из state-кэша,
+    # вычисляется из источников каждый рендер.
+    from bonus import compute_energy_max
+    energy_max_now = compute_energy_max(state)
 
     # char_level уже создан выше (для update_level call) — переиспользуем.
     now_ts = datetime.now().timestamp()
@@ -652,6 +647,7 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # Energy regen (0.2.1c) — параметры для JS-таймера на клиенте.
         "energy_time_stamp": state.energy_time_stamp,
         "energy_interval_sec": energy_interval_sec,
+        "energy_max_now": energy_max_now,
         # Skill allocation (4.48.8): список навыков с current-значениями.
         # Блок рендерится только если up_skills > 0 (state.char_level.up_skills).
         "skill_options": skill_options,

@@ -7,7 +7,7 @@ from characteristics import skill_training_table, save_characteristic, get_energ
 from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def
 from functions_02 import time
-from equipment_bonus import equipment_speed_skill_bonus, equipment_energy_max_bonus
+from equipment_bonus import equipment_speed_skill_bonus
 from bonus import apply_move_optimization_gym
 from inventory import Wear_Equipped_Items
 from actions import try_spend, start_training as actions_start_training
@@ -16,22 +16,20 @@ from state import GameState
 
 # ----- Чистые helper-функции расчёта (тестируются напрямую) -----
 
-def _energy_max_skill_level(state: GameState) -> int:
-    """Текущий уровень навыка energy_max (выводится из state.energy_max)."""
-    return state.energy_max - 49 - equipment_energy_max_bonus(state) - state.steps.daily_bonus
-
-
 def _next_skill_level(state: GameState, skill_name: str) -> int:
-    """Уровень, до которого мы прокачиваем навык."""
-    if skill_name == 'energy_max':
-        return _energy_max_skill_level(state)
+    """Уровень, до которого мы прокачиваем навык. Все 8 навыков теперь
+    единообразно — `state.gym.<skill_name> + 1` (после унификации в 0.2.1g
+    ключ `'energy_max_skill'` тоже соответствует field-name)."""
     return getattr(state.gym, skill_name) + 1
 
 
 def _training_cost(state: GameState, skill_name: str) -> dict:
-    """Возвращает запись из skill_training_table для следующего уровня навыка."""
+    """Возвращает запись из skill_training_table для следующего уровня навыка.
+    `energy_max_skill` тоже идёт через общий путь — `get_energy_training_data`
+    оставлен на случай level > 30, но для уровней 1-30 совпадает с
+    `skill_training_table`."""
     level = _next_skill_level(state, skill_name)
-    if skill_name == 'energy_max':
+    if skill_name == 'energy_max_skill':
         return get_energy_training_data(level)
     return skill_training_table[level]
 
@@ -80,7 +78,7 @@ _SKILL_DESCRIPTIONS = {
         'stamina',
         'Каждый уровень, на 1 % повышает пройденное кол-во шагов на протяжении дня.',
     ),
-    'energy_max': (
+    'energy_max_skill': (
         'Максимальный запас энергии',
         'energy_max_skill',
         'Каждый уровень, добавляет + 1 единицу к максимальному запасу энергии.',
@@ -148,7 +146,7 @@ def gym_menu(state: GameState):
 
     skill_options = {
         '1': ('stamina', 'Stamina:    ', state.gym.stamina + 1),
-        '2': ('energy_max', 'Energy Max: ', _energy_max_skill_level(state)),
+        '2': ('energy_max_skill', 'Energy Max: ', state.gym.energy_max_skill + 1),
         '3': ('speed_skill', 'Speed:      ', state.gym.speed_skill + 1),
         '4': ('luck_skill', 'Luck:       ', state.gym.luck_skill + 1),
         '5': ('move_optimization_adventure', 'Оптимизация движений Adventure:   ',

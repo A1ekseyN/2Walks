@@ -1801,7 +1801,7 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 - Auto-finalize: `skill_training_check_done(state)` теперь вызывается в `_dashboard_context` (рядом с `work_check_done`). Каждый GET / POST после истечения таймера повышает уровень навыка на +1 и обнуляет training. CLI остаётся primary path для main loop.
 - `energy_max` в меню отображается, но помечен `available=False` — не запускается через web с понятной ошибкой "Особая логика — см. задачу 4.48.4.1". CLI flow для energy_max тоже сломан (`getattr(state.gym, 'energy_max')` → AttributeError, поле в dataclass называется `energy_max_skill`).
 
-#### 4.48.4.1. Review: логика energy_max_skill `[M / S / todo]`
+#### 4.48.4.1. Review: логика energy_max_skill `[M / S / done (0.2.1g)]`
 
 **Контекст (04.05.2026, обнаружено при реализации 4.48.4):** прокачка навыка `energy_max` сломана и в CLI, и в web. Симптомы:
 
@@ -1822,6 +1822,18 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 **Effort:** S (понятный refactor, ~30-50 строк + миграция существующих save'ов).
 
 **Зависимость:** не блокирующая. Текущий web-флоу 4.48.4 показывает energy_max в UI с пометкой "недоступно", остальные 7 навыков работают. CLI тоже не использует energy_max нормально (упадёт при попытке).
+
+**Сделано (04.05.2026, версия 0.2.1g):**
+- Pure variant A: добавлен helper `bonus.compute_energy_max(state)` — сумма из 5 источников (50 + gym.energy_max_skill + equipment + daily_bonus + char_level.skill_energy_max). Все читатели (`actions.try_spend`, `functions.energy_time_charge`, `functions.status_bar`, `functions.char_info`, `web/main.py:_dashboard_context`) теперь используют эту функцию вместо `state.energy_max` (поле осталось в dataclass для save-format совместимости — обновляется при load через `compute_energy_max`).
+- Удалён off-by-one helper `_energy_max_skill_level` (формула `state.energy_max - 49 - bonuses` могла давать отрицательные значения при рассинхроне между runtime energy_max и источниками).
+- Унификация ключа: `'energy_max'` → `'energy_max_skill'` в `gym.py:_SKILL_DESCRIPTIONS`, `gym_menu skill_options`, `gym._next_skill_level`, `gym._training_cost`, `web/main.py:_GYM_SKILL_DISPLAY` (флаг `available=False` снят, energy_max_skill теперь обычный навык).
+- Защитная миграция в `state.from_dict`: если `skill_training_name == 'energy_max'` (старый сейв) — автоконвертация в `'energy_max_skill'`.
+- Удалена мёртвая функция `bonus.skill_bonus_energy_max` + соответствующий тест.
+- Удалён дубликат `_equipment_energy_max_bonus` в characteristics.py — все используют `equipment_bonus.equipment_energy_max_bonus`.
+- 4 новых теста в `test_bonus.py` (compute_energy_max default / gym_skill / all_sources / ignores_state_field).
+- Существующие тесты обновлены: `test_gym.py` (удалены `_energy_max_skill_level` тесты, добавлен `test_next_skill_level_for_energy_max_skill`), `test_characteristics.py` (импорт обновлён на `equipment_bonus.equipment_energy_max_bonus`), `test_web_main.py` (energy_max_skill теперь работает + старый ключ `'energy_max'` возвращает "Неизвестный навык").
+- Smoke verify (read-only, без записи в Sheets): загруженный state имеет `gym.energy_max_skill = 15`, `compute_energy_max(state) = 65`, `state.energy_max (cache) = 65` — всё консистентно. Прокачка с уровня 15 теперь работает (раньше падала на AttributeError).
+- All 355 tests pass.
 
 - `GET /gym` — таблица скиллов с ценами/требованиями.
 - `POST /api/gym/train` — старт обучения.

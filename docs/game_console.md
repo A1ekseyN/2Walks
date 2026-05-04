@@ -29,7 +29,7 @@ python game.py
 1. `game.py:__main__` выводит `Version: 0.2.0d` и переключает codepage.
 2. Вызывается `init_game_state()`:
    - `GameStateRepo().load()` тянет лист `game_state` из Google Sheets, при неудаче — читает `characteristic.csv`.
-   - Из загруженного flat-dict собирается `game.state = GameState.from_dict(...)`. `timestamp_last_enter`, `loc='home'`, `energy_max=50` + бонусы экипировки/навыков/уровня применяются как post-load fixups.
+   - Из загруженного flat-dict собирается `game.state = GameState.from_dict(...)`. `timestamp_last_enter`, `loc='home'`, `state.energy_max = compute_energy_max(state)` (50 + все бонусы) применяются как post-load fixups. Поле `state.energy_max` — кэш для save-format; в логике игры читается через `bonus.compute_energy_max(state)` (после 0.2.1g).
    - `game.state` теперь живой instance, видимый всем модулям через `from characteristics import game; game.state`.
 3. Вызывается `play()`. Внутри:
    - Локальная переменная `state = game.state` для удобства.
@@ -47,7 +47,7 @@ python game.py
 |---|---|
 | Идентификатор дня и шаги | `state.date_last_enter`, `state.timestamp_last_enter`, `state.steps.{today,used,yesterday,total_used,can_use,daily_bonus}` |
 | Уровень и очки | `state.char_level.{level,up_skills,skill_stamina,skill_energy_max,skill_speed,skill_luck}` |
-| Ресурсы | `state.energy`, `state.energy_max`, `state.energy_time_stamp`, `state.money` |
+| Ресурсы | `state.energy`, `state.energy_max` (cache; canonical = `bonus.compute_energy_max(state)`), `state.energy_time_stamp`, `state.money` |
 | Прокачиваемые навыки (Gym) | `state.gym.{stamina,energy_max_skill,speed_skill,luck_skill,neatness_in_using_things,move_optimization_adventure,move_optimization_gym,move_optimization_work,mechanics,it_technologies}` |
 | Текущая тренировка | `state.training.{active,skill_name,timestamp,time_end}` |
 | Работа | `state.work.{work_type,active,hours,salary,start,end}` |
@@ -69,7 +69,7 @@ CSV / JSON / Google Sheets хранят flat-формат с прежними к
 
 В начале каждой итерации последовательно вызываются:
 
-1. `energy_time_charge(state)` (`functions.py`) — регенерация энергии. Сравнивает текущий timestamp с `state.energy_time_stamp` и, если прошло достаточно секунд (по умолчанию 60, умноженное на модификатор скорости), начисляет по одной единице за каждый полный интервал. Остаток сохраняется в стампе (`stamp = now - remainder`), чтобы дробные секунды не терялись. При `state.energy >= state.energy_max` стамп сразу синкается к `now` — регенерация "не копится" пока энергия на максимуме, после траты отсчёт интервала начинается заново.
+1. `energy_time_charge(state)` (`functions.py`) — регенерация энергии. Сравнивает текущий timestamp с `state.energy_time_stamp` и, если прошло достаточно секунд (по умолчанию 60, умноженное на модификатор скорости), начисляет по одной единице за каждый полный интервал. Остаток сохраняется в стампе (`stamp = now - remainder`), чтобы дробные секунды не терялись. При `state.energy >= compute_energy_max(state)` стамп сразу синкается к `now` — регенерация "не копится" пока энергия на максимуме, после траты отсчёт интервала начинается заново. Кап читается через `bonus.compute_energy_max(state)` (после 0.2.1g), не через stale-поле.
 2. `work_check_done(state)` (`work.py`) — если персонаж на работе и `state.work.end <= now`, начисляет зарплату, сбрасывает `state.work.*`.
 3. `skill_training_check_done(state)` (`gym.py`) — если идёт тренировка и `state.training.time_end <= now`, повышает уровень соответствующего навыка на 1, сбрасывает `state.training.*`.
 4. `status_bar(state)` (`functions.py`) — печатает шаги, энергию, деньги, уровень, текущую локацию, а также информацию о текущей тренировке/работе/приключении с таймером до завершения.
@@ -147,9 +147,9 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 При выборе ресурсы списываются через `actions.try_spend(state, steps, energy, money)` (атомарно: либо все хватит и спишется, либо ничего), затем `actions.start_training(state, skill_name, time_end, ...)` выставляет `state.training.active=True`, `state.training.skill_name`, `state.training.time_end = now + time * speed_modifier`. Фактический прирост уровня навыка случится в `skill_training_check_done(state)` на следующем тике главного цикла.
 
-`Energy Max` идёт через отдельную таблицу `get_energy_training_data()` (`characteristics.py`), потому что `state.energy_max` начинается с 50 и его "уровень" вычитается из текущего значения минус бонусы экипировки и Daily.
+`Energy Max`: после 0.2.1g (4.48.4.1) идёт через тот же общий путь, что остальные навыки — ключ переименован в `'energy_max_skill'` (соответствует field-name в `state.gym`). `state.energy_max` теперь — derived value: вычисляется через `bonus.compute_energy_max(state) = 50 + gym.energy_max_skill + equipment + daily_bonus + char_level.skill_energy_max`. Поле в dataclass осталось для save-format совместимости, но в логике игры читается только функция.
 
-**Web (4.48.4 / 0.2.1e):** тот же модуль работает через 2 endpoint'а в `web/main.py` — `POST /web/gym/start` (Form → HTML fragment), `POST /api/gym/start` (JSON через `GymStartRequest`). Общий helper `_validate_and_apply_training(state, skill_name)` делает pre-flight проверку ресурсов и вызывает существующий `Skill_Training(state, name).start_skill_training()` + `Wear_Equipped_Items.decrease_durability` + `persist_state_to_cloud()`. Auto-finalize: `skill_training_check_done(state)` теперь вызывается в `_dashboard_context` — на каждый рендер web проверяет, не истёк ли таймер тренировки. UI: `<section id="gym">` свёрнута по умолчанию; внутри — 8 карточек навыков с pre-computed cost (`🏃 -N · 🔋 -M · 💰 -K · 🕑 ~Xm`), кнопки disabled при нехватке ресурсов, `hx-confirm` перед стартом. **Известный баг:** `energy_max` помечен `available=False` — CLI и web flow для него сломан (поле `state.gym.energy_max_skill` не используется, ключ `'energy_max'` ловит AttributeError). См. follow-up задачу 4.48.4.1.
+**Web (4.48.4 / 0.2.1e + 0.2.1g):** тот же модуль работает через 2 endpoint'а в `web/main.py` — `POST /web/gym/start` (Form → HTML fragment), `POST /api/gym/start` (JSON через `GymStartRequest`). Общий helper `_validate_and_apply_training(state, skill_name)` делает pre-flight проверку ресурсов и вызывает существующий `Skill_Training(state, name).start_skill_training()` + `Wear_Equipped_Items.decrease_durability` + `persist_state_to_cloud()`. Auto-finalize: `skill_training_check_done(state)` теперь вызывается в `_dashboard_context` — на каждый рендер web проверяет, не истёк ли таймер тренировки. UI: `<section id="gym">` свёрнута по умолчанию; внутри — 8 карточек навыков (включая energy_max_skill — после 0.2.1g стал обычным навыком) с pre-computed cost (`🏃 -N 🔋 -M 💰 -K 🕑 ~Xm`), кнопки disabled при нехватке ресурсов, `hx-confirm` перед стартом.
 
 ### 3.2 Work (Работа) — `work.py`
 
@@ -284,10 +284,11 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ## 7. Энергия, скорость, бонусы — формулы коротко
 
-- **Регенерация энергии:** 1 единица за `speed_skill_equipment_and_level_bonus(60, state)` секунд. Это `60 * (1 - (state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed)/100)`. То есть при +50 % скорости одна энергия восстанавливается за 30 секунд. На максимуме (`state.energy == state.energy_max`) регенерация приостановлена — стамп двигается к `now`, время не банкуется.
+- **Регенерация энергии:** 1 единица за `speed_skill_equipment_and_level_bonus(60, state)` секунд. Это `60 * (1 - (state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed)/100)`. То есть при +50 % скорости одна энергия восстанавливается за 30 секунд. На максимуме (`state.energy == compute_energy_max(state)`) регенерация приостановлена — стамп двигается к `now`, время не банкуется.
+- **Energy max (после 0.2.1g):** `bonus.compute_energy_max(state) = 50 + state.gym.energy_max_skill + equipment_energy_max_bonus(state) + state.steps.daily_bonus + state.char_level.skill_energy_max`. Поле `state.energy_max` — кэш для save-format, в логике игры читается только через эту функцию.
 - **Время активностей (Gym/Work/Adventure):** `time * (1 - speed_bonus/100)` секунд.
 - **Шаги за активность:** `base_steps * (1 - state.gym.move_optimization_<area>/100)` через `apply_move_optimization_*(steps, state)` из `bonus.py`.
-- **Daily bonus:** +1 к `state.steps.daily_bonus` каждый день, если вчера было ≥ 10k шагов; иначе сброс в 0. Применяется и к `state.steps.can_use`, и к `state.energy_max`.
+- **Daily bonus:** +1 к `state.steps.daily_bonus` каждый день, если вчера было ≥ 10k шагов; иначе сброс в 0. Применяется и к `state.steps.can_use`, и к `compute_energy_max(state)` (через слагаемое в формуле).
 - **Level bonus:** `level_steps_bonus(state)` добавляет шаги в зависимости от `state.char_level.skill_stamina`.
 - **Luck (для дропа):** `current_luck(state) = state.gym.luck_skill + equipment_luck_bonus(state) + state.char_level.skill_luck`. Считается на каждом дропе — прокачка применяется без рестарта (закрыто в задаче 1.1).
 

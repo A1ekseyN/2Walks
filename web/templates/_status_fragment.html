@@ -40,10 +40,10 @@
             <span class="stat-label">🔋 Energy</span>
             <span>
                 <span data-energy="{{ state.energy }}"
-                      data-energy-max="{{ state.energy_max }}"
+                      data-energy-max="{{ energy_max_now }}"
                       data-energy-stamp="{{ energy_time_stamp }}"
                       data-energy-interval="{{ energy_interval_sec }}">{{ state.energy }}</span>
-                / {{ state.energy_max }}
+                / {{ energy_max_now }}
             </span>
         </div>
 

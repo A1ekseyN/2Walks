@@ -195,7 +195,13 @@ class GameState:
 
             training=TrainingSession(
                 active=bool(d.get('skill_training', False)),
-                skill_name=d.get('skill_training_name'),
+                # Legacy migration (4.48.4.1 / 0.2.1g): старый ключ 'energy_max'
+                # заменён на 'energy_max_skill' для соответствия field-name в
+                # state.gym. Если в сейве лежит старый ключ — конвертируем при
+                # загрузке. Поломанный flow (AttributeError на старте/finalize)
+                # не активен — никто не успел запустить тренировку с этим ключом.
+                skill_name=('energy_max_skill' if d.get('skill_training_name') == 'energy_max'
+                            else d.get('skill_training_name')),
                 timestamp=d.get('skill_training_timestamp'),
                 time_end=_deser_datetime(d.get('skill_training_time_end')),
             ),

@@ -1839,10 +1839,13 @@ def test_energy_regenerates_in_dashboard_context():
 
 def test_energy_clamped_to_max_in_dashboard_context():
     """Energy уже на max → state не растёт, stamp синкается к now (защита
-    от баг 2.2.2 — бесплатной энергии после максимума)."""
+    от баг 2.2.2 — бесплатной энергии после максимума).
+
+    После 0.2.1g (4.48.4.1) energy_max — computed value: задаём через
+    state.gym.energy_max_skill (было `state.energy_max = 65` напрямую)."""
     state = GameState.default_new_game()
+    state.gym.energy_max_skill = 15  # 50 + 15 = 65 max
     state.energy = 65
-    state.energy_max = 65
     state.energy_time_stamp = datetime.now().timestamp() - 1000  # давно
     _setup_state(state)
 
@@ -1855,10 +1858,13 @@ def test_energy_clamped_to_max_in_dashboard_context():
 
 
 def test_energy_data_attrs_in_dom():
-    """В DOM-фрагменте есть все 4 data-атрибута для JS-таймера."""
+    """В DOM-фрагменте есть все 4 data-атрибута для JS-таймера.
+
+    После 0.2.1g — `data-energy-max` берётся из `compute_energy_max(state)`
+    (context var `energy_max_now`), не из stale-поля `state.energy_max`."""
     state = GameState.default_new_game()
+    state.gym.energy_max_skill = 15  # 50 + 15 = 65
     state.energy = 30
-    state.energy_max = 65
     state.energy_time_stamp = datetime.now().timestamp()
     _setup_state(state)
 
@@ -2386,14 +2392,29 @@ def test_web_gym_start_with_unknown_skill():
     assert "Неизвестный навык" in body
 
 
-def test_web_gym_start_with_energy_max_returns_unavailable():
-    """energy_max сейчас не реализован — должен возвращать ошибку."""
+def test_web_gym_start_with_energy_max_skill_works():
+    """После 0.2.1g (4.48.4.1) — energy_max_skill теперь обычный навык,
+    прокачка работает как для других skills. Стартуем с level=0 → level 1
+    стоит 1000/5/10, что покрывают дефолтные ресурсы _state_for_gym."""
+    state = _state_for_gym()
+    # state.gym.energy_max_skill = 0 (default) → next level 1 → cost 1000/5/10.
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/gym/start", data={"skill_name": "energy_max_skill"})
+    assert response.status_code == 200
+    # Тренировка стартанула — state.training активен.
+    assert state.training.active is True
+    assert state.training.skill_name == "energy_max_skill"
+
+
+def test_web_gym_start_with_old_energy_max_key_returns_error():
+    """Старый ключ 'energy_max' (без _skill) теперь не валидный — ошибка."""
     _setup_state(_state_for_gym())
     with TestClient(app) as client:
         response = client.post("/web/gym/start", data={"skill_name": "energy_max"})
     assert response.status_code == 200
     body = response.text
-    assert "4.48.4.1" in body or "Особая логика" in body
+    assert "Неизвестный навык" in body
 
 
 def test_web_gym_start_when_already_training_rejects():
@@ -2519,20 +2540,22 @@ def test_build_gym_skills_returns_8_entries():
     state = _state_for_gym()
     skills = _build_gym_skills(state)
     keys = [s["key"] for s in skills]
+    # После 0.2.1g (4.48.4.1) — ключ 'energy_max' переименован в 'energy_max_skill'.
     assert keys == [
-        "stamina", "energy_max", "speed_skill", "luck_skill",
+        "stamina", "energy_max_skill", "speed_skill", "luck_skill",
         "move_optimization_adventure", "move_optimization_gym",
         "move_optimization_work", "neatness_in_using_things",
     ]
 
 
-def test_build_gym_skills_marks_energy_max_unavailable():
+def test_build_gym_skills_energy_max_skill_now_available():
+    """После 0.2.1g — energy_max_skill больше не помечен available=False."""
     from web.main import _build_gym_skills
     state = _state_for_gym()
     skills = _build_gym_skills(state)
-    energy_max = next(s for s in skills if s["key"] == "energy_max")
-    assert energy_max["available"] is False
-    assert "4.48.4.1" in energy_max["unavailable_reason"]
+    energy_max = next(s for s in skills if s["key"] == "energy_max_skill")
+    assert energy_max["available"] is True
+    assert energy_max["unavailable_reason"] is None
 
 
 def test_build_gym_skills_can_afford_flag():

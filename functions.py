@@ -25,9 +25,10 @@ def energy_time_charge(state: GameState):
     """Регенерация энергии во времени. Одна единица каждые
     speed_skill_equipment_and_level_bonus(60) секунд. При достижении
     energy_max регенерация приостанавливается, стамп синкается к now."""
+    from bonus import compute_energy_max  # lazy — избегаем циклов при импорте functions
     now = timestamp_now()
     energy = state.energy
-    energy_max = state.energy_max
+    energy_max = compute_energy_max(state)
     interval = speed_skill_equipment_and_level_bonus(60, state)
 
     if energy >= energy_max:
@@ -68,6 +69,8 @@ def status_bar(state: GameState):
     max_steps = state.steps.today + total_bonus
     bonus_percent = bonus_percentage(state)
 
+    from bonus import compute_energy_max  # lazy import
+    energy_max_now = compute_energy_max(state)
     print(f'\nSteps 🏃: {Fore.LIGHTCYAN_EX}{steps(state):,.0f} / {max_steps:,.0f}{Style.RESET_ALL} '
           f'(Bonus: Stamina 🏃: + {Fore.LIGHTCYAN_EX}{stamina_skill_bonus_def(state):,.0f}{Style.RESET_ALL} '
           f'/ Equipment 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps(state):,.0f}{Style.RESET_ALL} '
@@ -75,7 +78,7 @@ def status_bar(state: GameState):
           f'/ Level: {Fore.LIGHTCYAN_EX}{level_steps_bonus(state)}{Style.RESET_ALL}. '
           f'[🏃: {total_bonus:,.0f}, {bonus_percent:.2f} %]) '
           f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{format_steps(state.steps.total_used)}{Style.RESET_ALL})'
-          f'\nEnergy 🔋: {Fore.GREEN}{state.energy} / {state.energy_max}{Style.RESET_ALL} '
+          f'\nEnergy 🔋: {Fore.GREEN}{state.energy} / {energy_max_now}{Style.RESET_ALL} '
           f'(Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus(state)}{Style.RESET_ALL} / '
           f'Daily 🔋: + {Fore.GREEN}{state.steps.daily_bonus}{Style.RESET_ALL} / '
           f'Level: + {Fore.GREEN}{state.char_level.skill_energy_max}{Style.RESET_ALL})', end='')
@@ -198,9 +201,10 @@ def char_info(state: GameState):
     print(f'- Пройдено шагов за сегодня 🏃: {state.steps.today:,.0f}')
     print(f'- Потрачено шагов за сегодня 🏃: {state.steps.used:,.0f}')
 
+    from bonus import compute_energy_max  # lazy
     print('\n### Бонусы за навыки: ###')
     print(f'- Запас энергии 🔋: {state.energy} эд.')
-    print(f'- Макс. запас энергии 🔋: {state.energy_max} эд.')
+    print(f'- Макс. запас энергии 🔋: {compute_energy_max(state)} эд.')
     print(f'\n- Выносливость: + {state.gym.stamina} % (+ {stamina_skill_bonus_def(state)} шагов).')
     print(f'- Максимальный запас энергии: + {state.gym.energy_max_skill} энергии.')
     print(f'- Скорость: + {state.gym.speed_skill} %.')

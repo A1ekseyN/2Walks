@@ -8,7 +8,7 @@ from bonus import (
     apply_move_optimization_adventure,
     apply_move_optimization_gym,
     apply_move_optimization_work,
-    skill_bonus_energy_max,
+    compute_energy_max,
 )
 
 
@@ -84,11 +84,34 @@ def test_apply_move_optimization_work():
     assert apply_move_optimization_work(500, state) == 450
 
 
-def test_skill_bonus_energy_max_mutates_state():
-    """Sanity: функция сейчас не используется в коде, но миграция сохранила её поведение."""
+def test_compute_energy_max_default():
+    """Default state: 50 + 0 + 0 + 0 + 0 = 50."""
     state = GameState.default_new_game()
-    state.energy_max = 50
-    state.gym.energy_max_skill = 7
-    result = skill_bonus_energy_max(state)
-    assert result == 57
-    assert state.energy_max == 57
+    assert compute_energy_max(state) == 50
+
+
+def test_compute_energy_max_with_gym_skill():
+    state = GameState.default_new_game()
+    state.gym.energy_max_skill = 15
+    assert compute_energy_max(state) == 65
+
+
+def test_compute_energy_max_with_all_sources():
+    """Полная комбинация: gym + equipment + daily + char_level skill."""
+    state = GameState.default_new_game()
+    state.gym.energy_max_skill = 10
+    state.equipment.head = _item('energy_max', 5)  # equipment +5
+    state.steps.daily_bonus = 3
+    state.char_level.skill_energy_max = 2
+    # 50 + 10 + 5 + 3 + 2 = 70
+    assert compute_energy_max(state) == 70
+
+
+def test_compute_energy_max_ignores_state_field():
+    """state.energy_max как поле (legacy save cache) НЕ влияет на compute —
+    всегда выводится из источников. Это и есть pure A: derived value."""
+    state = GameState.default_new_game()
+    state.energy_max = 999  # mock stale cache
+    state.gym.energy_max_skill = 5
+    # compute считает только из источников.
+    assert compute_energy_max(state) == 55

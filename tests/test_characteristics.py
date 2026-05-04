@@ -8,7 +8,8 @@
 """
 
 import characteristics
-from characteristics import game, init_game_state, _equipment_energy_max_bonus
+from characteristics import game, init_game_state
+from equipment_bonus import equipment_energy_max_bonus
 from state import GameState
 
 
@@ -54,8 +55,10 @@ def test_init_is_idempotent():
 
 
 def test_equipment_energy_max_bonus_no_equipment():
+    """После 0.2.1g дубликат `_equipment_energy_max_bonus` в characteristics.py
+    удалён — все читают через `equipment_bonus.equipment_energy_max_bonus`."""
     state = GameState.default_new_game()
-    assert _equipment_energy_max_bonus(state) == 0
+    assert equipment_energy_max_bonus(state) == 0
 
 
 def test_equipment_energy_max_bonus_sums_only_energy_max_items():
@@ -75,7 +78,7 @@ def test_equipment_energy_max_bonus_sums_only_energy_max_items():
         'item_name': ['x'], 'item_type': ['x'], 'grade': ['a-grade'],
         'quality': [50.0], 'price': [50],
     }
-    assert _equipment_energy_max_bonus(state) == 15
+    assert equipment_energy_max_bonus(state) == 15
 
 
 def test_init_applies_post_load_fixups():

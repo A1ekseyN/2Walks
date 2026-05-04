@@ -45,7 +45,10 @@ def try_spend(state: GameState, steps: int = 0, energy: int = 0, money: int = 0)
         state.steps.used += steps
         state.steps.total_used += steps
     if energy:
-        was_full = state.energy >= state.energy_max
+        # Lazy import — bonus.py зависит от equipment_bonus, чтобы не тянуть
+        # его при каждом импорте actions (используется hot-path).
+        from bonus import compute_energy_max
+        was_full = state.energy >= compute_energy_max(state)
         state.energy -= energy
         if was_full:
             state.energy_time_stamp = datetime.now().timestamp()

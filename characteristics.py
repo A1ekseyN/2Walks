@@ -56,19 +56,16 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # Legacy fixups, которые делались на module-level до 1.2:
     # - timestamp_last_enter всегда обновляется до текущего момента при загрузке.
     # - loc всегда сбрасывается в 'home' (загруженное значение игнорируется).
-    # - energy_max начинается с 50, потом добавляются бонусы.
+    # - energy_max — обновляем кэш-поле через compute_energy_max (4.48.4.1 / 0.2.1g);
+    #   логика игры читает значение через `bonus.compute_energy_max(state)`, поле
+    #   `state.energy_max` остаётся в dataclass для save-format совместимости.
     # Day rollover detection — единственная точка в functions.save_game_date_last_enter()
     # на первом тике main loop, через state.date_last_enter (legacy save.txt
     # удалён в задаче 2.1, версия 0.2.0k).
     s.timestamp_last_enter = datetime.now().timestamp()
     s.loc = 'home'
-    s.energy_max = 50  # сброс перед добавлением бонусов
-    s.energy_max += (
-        s.gym.energy_max_skill
-        + _equipment_energy_max_bonus(s)
-        + s.steps.daily_bonus
-        + s.char_level.skill_energy_max
-    )
+    from bonus import compute_energy_max  # lazy — bonus импортирует equipment_bonus
+    s.energy_max = compute_energy_max(s)
 
     # Max-merge с steps_log (задача 4.15) — поднимает state.steps.today до
     # максимума по записям лога за сегодня (web/iPhone/manual). Без этого CLI
@@ -109,19 +106,6 @@ def apply_steps_log_max_merge(state: GameState) -> None:
         # Recompute can_use — lazy import чтобы избежать circular.
         from functions import total_bonus_steps
         state.steps.can_use = state.steps.today - state.steps.used + total_bonus_steps(state)
-
-
-def _equipment_energy_max_bonus(s: GameState) -> int:
-    """Бонус Energy Max от экипировки. Дубликат `equipment_energy_max_bonus`
-    из equipment_bonus.py — оставлен здесь, чтобы характеристики не зависели
-    от bonus-модулей при инициализации (избегаем циклов импорта)."""
-    bonus = 0
-    for item in (s.equipment.head, s.equipment.neck, s.equipment.torso,
-                 s.equipment.finger_01, s.equipment.finger_02,
-                 s.equipment.legs, s.equipment.foots):
-        if item is not None and item['characteristic'][0] == 'energy_max':
-            bonus += item['bonus'][0]
-    return bonus
 
 
 def load_characteristic():
