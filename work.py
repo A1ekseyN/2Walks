@@ -32,7 +32,12 @@ class Work:
 
     def work_choice(self):
         state = self._state
-        if not state.work.active:
+        if state.work.active:
+            self.add_working_hours(state.work.work_type)
+            return None
+        # Цикл retry на невалиде (1.5.1 — 0.2.1h, было: рекурсивный self-call).
+        choices = {'1': 'watchman', '2': 'factory', '3': 'courier_foot', '4': 'forwarder'}
+        while True:
             print('\n--- 🏭 Work Location 🏭 ---')
             print(f'\nSteps 🏃: {state.steps.can_use}; Energy 🔋: {state.energy}')
             hour_time = round(60 - ((60 / 100) * state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed))
@@ -45,21 +50,17 @@ class Work:
                   f'\n\t4. Экспедитор - 💰: {Fore.LIGHTYELLOW_EX}50{Style.RESET_ALL} $ (🏃: {self.work_requirements["forwarder"]["steps"]} + 🔋: 50)'
                   '\n\t0. Вернуться назад.')
             working = input('\nВыберите вакансию, или вернитесь обратно:\n>>> ')
-            choices = {'1': 'watchman', '2': 'factory', '3': 'courier_foot', '4': 'forwarder'}
             if working in choices:
                 self.ask_hours(choices[working])
-            elif working == '0':
-                pass
-            else:
-                print('\nВы ввели не правильные данные. Попробуйте еще раз.')
-                self.work_choice()
-            return working
-        else:
-            self.add_working_hours(state.work.work_type)
+                return working
+            if working == '0':
+                return working
+            print('\nВы ввели не правильные данные. Попробуйте еще раз.')
 
     def ask_hours(self, work):
         state = self._state
-        try:
+        # Цикл retry на невалиде / ValueError (1.5.1 — 0.2.1h).
+        while True:
             print(f'\nSteps 🏃: {state.steps.can_use}; Energy 🔋: {state.energy}')
             print(f'Вы выбрали вакансию: {Fore.GREEN}{work.title()}{Style.RESET_ALL} c зарплатой: {Fore.LIGHTYELLOW_EX}{self.work_requirements[work]["salary"]}{Style.RESET_ALL} $ в час.')
 
@@ -75,19 +76,21 @@ class Work:
                   f'{Fore.LIGHTGREEN_EX}{max_available_hours * self.work_requirements[work]["energy"]}{Style.RESET_ALL} энергии, '
                   f'{Fore.LIGHTYELLOW_EX}{max_available_hours * self.work_requirements[work]["salary"]}{Style.RESET_ALL} $ заработка).')
 
-            working_hours = abs(int(input('\nВведите количество рабочих часов: 1 - 8.\n0. Выход.\n>>> ')))
+            try:
+                working_hours = abs(int(input('\nВведите количество рабочих часов: 1 - 8.\n0. Выход.\n>>> ')))
+            except ValueError:
+                print('\nВы ввели неправильные данные. Попробуйте ещё раз.')
+                continue
+
             if 1 <= working_hours <= max_available_hours:
                 self.check_requirements(work, working_hours)
                 steps = working_hours * self.work_requirements[work]['steps']
                 Wear_Equipped_Items(state).decrease_durability(steps)
-            elif working_hours == 0:
+                return
+            if working_hours == 0:
                 self.work_choice()
-            else:
-                print(f'\nНужно ввести число рабочих часов в диапазоне 1 - {max_available_hours}.')
-                self.ask_hours(work)
-        except ValueError:
-            print('\nВы ввели неправильные данные. Попробуйте ещё раз.')
-            self.ask_hours(work)
+                return
+            print(f'\nНужно ввести число рабочих часов в диапазоне 1 - {max_available_hours}.')
 
     def add_working_hours(self, work):
         state = self._state

@@ -40,20 +40,21 @@ def _sell_item_at_index(state: GameState, index: int):
 # ----- UI-обёртки -----
 
 def inventory_menu(state: GameState):
-    print('\n--- 🎒 Меню инвентаря 🎒 ---'
-          f'\nВсего в инвентаре - {len(state.inventory)} предметов: ')
-    inventory_view(state)
+    # Цикл retry на невалиде (1.5.3 — 0.2.1h, было: рекурсивный self-call).
+    while True:
+        print('\n--- 🎒 Меню инвентаря 🎒 ---'
+              f'\nВсего в инвентаре - {len(state.inventory)} предметов: ')
+        inventory_view(state)
 
-    ask = input('\nВыберите раздел Инвентаря: '
-                '\ns. Sold / Продать'
-                '\n0. Выход. '
-                '\n>>> ')
-    if ask in ('s', 'ы', 'sold', 'ыщдв'):
-        sold_item(state)
-    elif ask == '0':
-        pass
-    else:
-        inventory_menu(state)
+        ask = input('\nВыберите раздел Инвентаря: '
+                    '\ns. Sold / Продать'
+                    '\n0. Выход. '
+                    '\n>>> ')
+        if ask in ('s', 'ы', 'sold', 'ыщдв'):
+            sold_item(state)
+            return
+        if ask == '0':
+            return
 
 
 def inventory_view(state: GameState):
@@ -77,49 +78,51 @@ def inventory_view(state: GameState):
 
 
 def sold_item(state: GameState):
-    print('\n--- Продажа предметов из инвентаря: ---')
-    print(f'Всего в инвентаре: {len(state.inventory)} предметов.')
-    state.inventory = inventory_view(state)
+    # Цикл retry на невалиде / ValueError / неподтверждении (1.5.3 — 0.2.1h).
+    while True:
+        print('\n--- Продажа предметов из инвентаря: ---')
+        print(f'Всего в инвентаре: {len(state.inventory)} предметов.')
+        state.inventory = inventory_view(state)
 
-    try:
-        item_to_sold = int(input(f'\t0. Назад'
-                                 f'\n\nКакой предмет хотите продать? (Введите число от 1 до {len(state.inventory)}). \n>>> '))
-        if item_to_sold <= len(state.inventory) and item_to_sold != 0:
-            item_index = item_to_sold - 1
-            item = state.inventory[item_index]
+        try:
+            item_to_sold = int(input(f'\t0. Назад'
+                                     f'\n\nКакой предмет хотите продать? (Введите число от 1 до {len(state.inventory)}). \n>>> '))
+        except ValueError:
+            continue
 
-            print(f'\nВы выбрали предмет: '
-                  f'\n\t- {item["item_type"][0].title()}, '
-                  f'{item["grade"][0]}, '
-                  f'+ {item["bonus"][0]} {item["characteristic"][0].title()}, '
-                  f'(Quality: {item["quality"][0]}), '
-                  f'(Price: {item["price"][0]} $) '
-                  f'\n\t- Цена предмета 💰: {item["price"][0]} $')
-            ask = input('\nВы уверены, что хотите продать этот предмет? '
-                        '\n1. Да'
-                        '\n0. Назад \n>>> ')
-            if ask == '1':
-                sold, refund = _sell_item_at_index(state, item_index)
-                print(f'\nВы продали предмет:'
-                      f'\n\t- {sold["item_type"][0].title()}, '
-                      f'{sold["grade"][0]}, '
-                      f'+ {sold["bonus"][0]} {sold["characteristic"][0].title()}, '
-                      f'(Quality: {sold["quality"][0]}), '
-                      f'(Price: {sold["price"][0]} $) '
-                      f'\n\t- Цена предмета 💰: {sold["price"][0]} $')
-                if refund == 0:
-                    print('У предмета нет цены. Продажа за 0 $.')
-                inventory_menu(state)
-            elif ask == '0':
-                sold_item(state)
-            else:
-                sold_item(state)
-        elif item_to_sold == 0:
+        if item_to_sold == 0:
             inventory_menu(state)
-        else:
-            sold_item(state)
-    except ValueError:
-        sold_item(state)
+            return
+        if not (1 <= item_to_sold <= len(state.inventory)):
+            continue  # вне диапазона — повторяем меню
+
+        item_index = item_to_sold - 1
+        item = state.inventory[item_index]
+
+        print(f'\nВы выбрали предмет: '
+              f'\n\t- {item["item_type"][0].title()}, '
+              f'{item["grade"][0]}, '
+              f'+ {item["bonus"][0]} {item["characteristic"][0].title()}, '
+              f'(Quality: {item["quality"][0]}), '
+              f'(Price: {item["price"][0]} $) '
+              f'\n\t- Цена предмета 💰: {item["price"][0]} $')
+        ask = input('\nВы уверены, что хотите продать этот предмет? '
+                    '\n1. Да'
+                    '\n0. Назад \n>>> ')
+        if ask == '1':
+            sold, refund = _sell_item_at_index(state, item_index)
+            print(f'\nВы продали предмет:'
+                  f'\n\t- {sold["item_type"][0].title()}, '
+                  f'{sold["grade"][0]}, '
+                  f'+ {sold["bonus"][0]} {sold["characteristic"][0].title()}, '
+                  f'(Quality: {sold["quality"][0]}), '
+                  f'(Price: {sold["price"][0]} $) '
+                  f'\n\t- Цена предмета 💰: {sold["price"][0]} $')
+            if refund == 0:
+                print('У предмета нет цены. Продажа за 0 $.')
+            inventory_menu(state)
+            return
+        # ask == '0' или любой другой невалид — продолжаем цикл (показать меню снова).
 
 
 # ----- Износ экипировки -----

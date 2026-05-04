@@ -78,7 +78,10 @@ class Adventure:
             print(f'\t🗺️ Персонаж находится в Приключении: {state.adventure.name.title()}.')
             print(f'\t🕑 Персонаж вернется через: {Fore.LIGHTBLUE_EX}{adv_end}{Style.RESET_ALL}')
 
-    def adventure_menu(self):
+    def _render_adventure_menu(self):
+        """Печать меню приключений с условной разблокировкой по counters.
+        Вынесено в helper (1.5.5 — 0.2.1h), чтобы тело adventure_menu loop'а
+        не раздувалось до 50 строк."""
         state = self._state
         print('\n ️🗺 ️--- Меню Приключения --- 🗺️')
         print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money} $,")
@@ -120,40 +123,49 @@ class Adventure:
             print(f'\t- Пройдите прогулку на 25к ещё: {3 - counters.get("walk_25k", 0)} раз.')
 
         print('\t0. Выход')
+
+    def adventure_menu(self):
+        # adventure_menu теперь только entry-point — вся retry-логика в
+        # adventure_choice (1.5.5 — 0.2.1h, было: ping-pong рекурсия через
+        # 2 функции).
         self.adventure_choice()
 
     def adventure_choice(self):
-        ask = input('\nВыберите локацию, в которую хотите отправиться:\n>>> ')
-        if ask in self.adventures:
-            adv = self.adventures[ask]
-            adv_name = adv['name']
-            adv_data = adv['data']
-            adv_req = self.adventure_requirements[ask]
-            adv_steps = adv_data['steps']
-            adv_energy = adv_data['energy']
-            adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'], self._state)
-            self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
-        elif ask == '0':
-            pass
-        else:
-            self.adventure_menu()
+        # Цикл retry на невалиде (1.5.5 — 0.2.1h). Меню перерисовывается
+        # на каждой итерации через _render_adventure_menu().
+        while True:
+            self._render_adventure_menu()
+            ask = input('\nВыберите локацию, в которую хотите отправиться:\n>>> ')
+            if ask in self.adventures:
+                adv = self.adventures[ask]
+                adv_name = adv['name']
+                adv_data = adv['data']
+                adv_req = self.adventure_requirements[ask]
+                adv_steps = adv_data['steps']
+                adv_energy = adv_data['energy']
+                adv_time = speed_skill_equipment_and_level_bonus(adv_data['time'], self._state)
+                # confirmation возвращает True (старт) / False (назад → пере-меню).
+                started = self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
+                if started:
+                    return
+                continue
+            if ask == '0':
+                return
 
     def adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time):
-        print(f'\nВы выбрали приключение: {adv_name}.'
-              f'\nДля прохождения приключения необходимо: {adv_req}'
-              '\n\t1. Пройти Приключение.'
-              '\n\t0. Назад.')
-        try:
+        # Цикл retry на невалиде (1.5.5 — 0.2.1h). Возвращает True если
+        # приключение фактически стартовало (ресурсы хватили), иначе False
+        # — caller (adventure_choice) перерисует меню.
+        while True:
+            print(f'\nВы выбрали приключение: {adv_name}.'
+                  f'\nДля прохождения приключения необходимо: {adv_req}'
+                  '\n\t1. Пройти Приключение.'
+                  '\n\t0. Назад.')
             ask = input('\n>>> ')
             if ask == '1':
-                if not self.check_requirements(adv_name, adv_steps, adv_energy, adv_time):
-                    self.adventure_menu()
-            elif ask == '0':
-                self.adventure_menu()
-            else:
-                self.adventure_choice_confirmation(adv_name, adv_req, adv_steps, adv_energy, adv_time)
-        except Exception as error:
-            print(f'Ошибка подтверждения выбора Приключения: {error}')
+                return self.check_requirements(adv_name, adv_steps, adv_energy, adv_time)
+            if ask == '0':
+                return False
 
     def check_requirements(self, adv_name, adv_steps, adv_energy, adv_time):
         state = self._state

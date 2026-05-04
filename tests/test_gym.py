@@ -98,6 +98,20 @@ def test_check_requirements_fail_insufficient_steps(monkeypatch, capsys):
 
 # ----- Skill_Training.start_skill_training -----
 
+def test_gym_menu_recovers_from_invalid_input_without_recursion(monkeypatch, capsys):
+    """1.5.6 regression: gym_menu использует while True вместо рекурсии.
+    Серия невалидов → '0' (выход) — должна отработать без RecursionError."""
+    from gym import gym_menu
+    inputs = iter(['xxx', '99', 'абвгд', '', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+    state = GameState.default_new_game()
+    gym_menu(state)  # должна корректно вернуться без RecursionError
+    out = capsys.readouterr().out
+    # Меню перерисовывалось несколько раз (минимум 1 раз — кейс старт +
+    # 4 невалида = 5 раз).
+    assert out.count('Спортзал') >= 4
+
+
 def test_start_skill_training_spends_resources_and_sets_timer(capsys):
     state = GameState.default_new_game()
     state.gym.stamina = 0

@@ -85,7 +85,7 @@ tables/         — skill_training_table, adventure_data_table
 
 ---
 
-### 1.5. Заменить рекурсивные меню на циклы `[M / M / todo]`
+### 1.5. Заменить рекурсивные меню на циклы `[M / M / done (0.2.1h)]`
 
 **Переоценка Effort с S на M** — первоначальная оценка опиралась на "везде одинаковый шаблон". Анализ (24.04.2026) показал ~15 реальных мест в 6 файлах, плюс решение по UX и длинные меню (`adventure_menu`, `gym_menu`) делают задачу больше, чем казалось.
 
@@ -112,7 +112,7 @@ tables/         — skill_training_table, adventure_data_table
 
 #### Подзадачи (по файлам, в порядке возрастания сложности)
 
-##### 1.5.1. `work.py` — work_choice, ask_hours `[L / S / todo]`
+##### 1.5.1. `work.py` — work_choice, ask_hours `[L / S / done (0.2.1h)]`
 
 Ретраи (3 места):
 - `work.py:54` — `work_choice` else → self
@@ -123,7 +123,7 @@ tables/         — skill_training_table, adventure_data_table
 
 Учесть: `work.py:113` (`add_working_hours` else → `self.work_choice()`) — это категория B (навигация), не трогаем.
 
-##### 1.5.2. `equipment.py` — equipment_change, change_item_in_slot `[L / S / todo]`
+##### 1.5.2. `equipment.py` — equipment_change, change_item_in_slot `[L / S / done (0.2.1h)]`
 
 Ретраи (3 места):
 - `equipment.py:97` — `equipment_change` else → self
@@ -134,7 +134,7 @@ tables/         — skill_training_table, adventure_data_table
 
 Учесть: `equipment.py:152,157` (после действия `Equipment.equipment_view(self=None)`) — категория B, не трогаем.
 
-##### 1.5.3. `inventory.py` — inventory_menu, sold_item `[L / S / todo]`
+##### 1.5.3. `inventory.py` — inventory_menu, sold_item `[L / S / done (0.2.1h)]`
 
 Ретраи (5 мест):
 - `inventory.py:19` — `inventory_menu` else → self
@@ -145,7 +145,7 @@ tables/         — skill_training_table, adventure_data_table
 
 Учесть: `inventory.py:15,86,92` — переходы между `inventory_menu` ↔ `sold_item` — категория B, не трогаем.
 
-##### 1.5.4. `shop.py` — shop_menu + подменю `[L / S / todo]`
+##### 1.5.4. `shop.py` — shop_menu + подменю `[L / S / done (0.2.1h)]`
 
 Ретраи:
 - `shop.py:43` — `shop_menu` else → self
@@ -155,7 +155,7 @@ tables/         — skill_training_table, adventure_data_table
 
 Учесть: `shop.py:32,35,86,88` — вызовы `Shop.shop_menu(self)` после действия — категория B, не трогаем.
 
-##### 1.5.5. `adventure.py` — adventure_menu + adventure_choice + adventure_choice_confirmation `[M / S / todo]`
+##### 1.5.5. `adventure.py` — adventure_menu + adventure_choice + adventure_choice_confirmation `[M / S / done (0.2.1h)]`
 
 Ретраи (2 места):
 - `adventure.py:132` — `adventure_choice` else → `adventure_menu()`
@@ -171,7 +171,7 @@ tables/         — skill_training_table, adventure_data_table
 
 Учесть: `adventure.py:147,149` (после `check_requirements` / `adventure_choice_confirmation` → `adventure_menu`) — категория B, не трогаем.
 
-##### 1.5.6. `gym.py` — gym_menu `[M / S / todo]`
+##### 1.5.6. `gym.py` — gym_menu `[M / S / done (0.2.1h)]`
 
 Ретраи (4 места):
 - `gym.py:142, 144, 146, 149` — различные else/except в `gym_menu` → self
@@ -185,6 +185,8 @@ tables/         — skill_training_table, adventure_data_table
 ---
 
 **Порядок выполнения:** 1.5.1 → 1.5.2 → 1.5.3 → 1.5.4 → 1.5.5 → 1.5.6. Каждая подзадача — самостоятельное изменение, свой мини-смоук-тест (меню открыть, ввести ерунду, Ctrl+C). Коммитить можно либо после каждой, либо пакетом по 2-3.
+
+**Сделано (04.05.2026, версия 0.2.1h):** все 6 подзадач закрыты одним batch-коммитом. Pattern: каждая функция-меню обёрнута в `while True`, с `continue` на ошибке/невалиде и `return` на успехе. Длинные меню (gym, adventure) получили helper-функции `_render_<menu>` для рендеринга, чтобы тело loop'а не раздувалось. В gym.py попутно: (1) узкий `except ValueError` вместо `except Exception` (раньше маскировал баги); (2) удалён рекурсивный вызов `gym_menu(self._state)` из `Skill_Training.check_requirements` — внешний loop сам перерисует через `continue`. В shop.py 4 stub-функции для одежды слиты в общий `_clothes_stub(label, header)` (DRY). Добавлены 2 regression-теста: `test_gym_menu_recovers_from_invalid_input_without_recursion`, `test_work_choice_recovers_from_invalid_input_without_recursion`. All 357 tests pass. Существующие тесты не сломаны (использовали monkeypatch input — продолжают работать с while-loop'ами).
 
 ---
 
@@ -341,9 +343,13 @@ if energy:
 
 ---
 
-### 2.6. При входе в меню работы (когда уже работаешь) обнуляется ЗП `[L / S / todo]`
+### 2.6. При входе в меню работы (когда уже работаешь) обнуляется ЗП `[L / S / done (косвенно через 0.2.0a, подтверждено в 0.2.1h)]`
 
-Из `bugs.txt`. Вероятно, где-то в `Work.add_working_hours` неправильно сбрасывается `work_salary`. Нужно воспроизвести и найти точное место.
+**Не воспроизводится в текущей версии.** Запись в `bugs.txt` актуальна для версий до 0.2.0a (Phase 4 GameState rollout, апрель 2026). Тогда хранение salary было через словарь `char_characteristic`, и при загрузке из CSV/Sheets с неполным форматом `salary` мог остаться как 0. После миграции на `state.gym` / `state.work` dataclass и через `state.from_dict` (с явным `int(d.get('work_salary', 0))`) — поле корректно парсится, а `Work.check_requirements` всегда задаёт `salary` из `work_requirements[work_type]['salary']` при старте/продлении смены.
+
+**Воспроизведение 04.05.2026 показало:** при стартe смены Watchman 1 час → state.work.salary=2, state.work.hours=1. Меню `add_working_hours` корректно показывает `Место работы: Watchman, в час - 2 $ (💰: + 2 $)` — это `salary × hours = 2 × 1 = 2 $`, как и должно быть. То что игроку показалось "обнулением" — на самом деле произведение `salary × hours` где hours=1.
+
+**Закрыто без code changes.** bugs.txt отмечен `[FIXED 0.2.0a, task 2.6]`.
 
 ---
 

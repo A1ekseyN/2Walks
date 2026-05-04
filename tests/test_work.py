@@ -145,3 +145,13 @@ def test_work_check_done_no_session_no_op():
     state.work.end = None
     work_check_done(state)
     assert state.work.active is False
+
+
+def test_work_choice_recovers_from_invalid_input_without_recursion(monkeypatch):
+    """1.5.1 regression: work_choice использует while True вместо рекурсии."""
+    inputs = iter(['xxx', '99', '', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+    state = GameState.default_new_game()
+    work = Work(state)
+    result = work.work_choice()  # должна вернуть без RecursionError
+    assert result == '0'

@@ -130,6 +130,8 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ## 3. Локации — как в них играется
 
+**Pattern меню (после 0.2.1h / задача 1.5):** все локационные меню (Gym, Work, Adventure, Inventory, Equipment, Shop) обёрнуты в `while True` loop'ы. Невалидный ввод → `continue` (рендер меню повторяется), валидный выбор → `return`. Длинные меню (gym ~60 строк, adventure ~45 строк) выделены в helper-функции `_render_gym_menu(state, options)` / `Adventure._render_adventure_menu(self)` — чтобы тело loop'а оставалось читаемым. Раньше при невалиде функции вызывали себя рекурсивно (`return func(state)`), что строило стек и загрязняло трейсбэки; теперь чистая итеративная логика, идиоматическая для Python. Категория B (навигация между разными меню через прямой вызов соседней функции — `inventory_menu → sold_item → inventory_menu`) — отложена до задачи 1.1 (state machine).
+
 ### 3.1 Gym (Спортзал) — `gym.py`
 
 Меню `gym_menu(state)` позволяет запустить тренировку одного из навыков. На каждый навык рассчитана стоимость следующего уровня по общей таблице `skill_training_table` (`characteristics.py`): `steps`, `energy`, `money`, `time` (в секундах).

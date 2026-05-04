@@ -135,10 +135,19 @@ def display_skill_description(skill_name, state: GameState):
 
 # ----- Меню Gym -----
 
-def gym_menu(state: GameState):
+def _render_gym_menu(state: GameState, skill_options: dict) -> None:
+    """Печать меню Gym (1.5.6 — 0.2.1h, helper для loop'а в gym_menu)."""
     print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
+    print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money} $.")
+    print('На данный момент вы можете улучшить: ')
+    for key, (skill, name, level) in skill_options.items():
+        print(f'\t{key}. {name}{Fore.LIGHTCYAN_EX}{level}{Style.RESET_ALL} lvl ({get_lvl_up_info(skill, level, state)})')
+    print('\n\t0. Назад.')
 
+
+def gym_menu(state: GameState):
     if state.training.active:
+        print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
         skill_lvl = getattr(state.gym, state.training.skill_name)
         print(f'\t🏋 Улучшаем навык - {state.training.skill_name.title()} до {Fore.LIGHTCYAN_EX}{skill_lvl + 1}{Style.RESET_ALL} уровня.'
               f'\n\t🕑 Улучшение через: {Fore.CYAN}{state.training.time_end - datetime.fromtimestamp(datetime.now().timestamp())}{Style.RESET_ALL}.')
@@ -159,18 +168,21 @@ def gym_menu(state: GameState):
               state.gym.neatness_in_using_things + 1),
     }
 
-    print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money} $.")
-    print('На данный момент вы можете улучшить: ')
-    for key, (skill, name, level) in skill_options.items():
-        print(f'\t{key}. {name}{Fore.LIGHTCYAN_EX}{level}{Style.RESET_ALL} lvl ({get_lvl_up_info(skill, level, state)})')
-    print('\n\t0. Назад.')
+    # Цикл retry на невалиде / отказе от подтверждения (1.5.6 — 0.2.1h, было:
+    # рекурсивные self-вызовы + широкий except Exception). Теперь except только
+    # на ValueError (фактических ValueError источников нет, но оставлено как
+    # narrow safety net на случай регрессии).
+    while True:
+        _render_gym_menu(state, skill_options)
+        try:
+            temp_number = input('\nВыберите какой навык улучшить: \n>>> ')
+        except ValueError:
+            continue
 
-    try:
-        temp_number = input('\nВыберите какой навык улучшить: \n>>> ')
         if temp_number == '0':
             return
         if temp_number not in skill_options:
-            return gym_menu(state)
+            continue
 
         skill_name, skill_display_name, _ = skill_options[temp_number]
         display_skill_description(skill_name, state)
@@ -178,7 +190,7 @@ def gym_menu(state: GameState):
         ask = input(f'\t1. Повысить {skill_display_name.strip()} + 1.'
                     f'\n\t0. Назад\n>>> ')
         if ask != '1':
-            return gym_menu(state)
+            continue
 
         state.training.skill_name = skill_name
         skill_training = Skill_Training(state=state, name=skill_name)
@@ -187,11 +199,9 @@ def gym_menu(state: GameState):
             skill_training.start_skill_training()
             steps = apply_move_optimization_gym(skill_training_table[getattr(state.gym, skill_name) + 1]["steps"], state)
             Wear_Equipped_Items(state).decrease_durability(steps)
-        else:
-            gym_menu(state)
-    except Exception as error:
-        print(f'\nОшибка Gym: {error}')
-        gym_menu(state)
+            return
+        # Ресурсов не хватило — check_requirements уже напечатал детали,
+        # просто перерисовываем меню (continue).
 
 
 def skill_training_check_done(state: GameState):
@@ -244,7 +254,9 @@ class Skill_Training:
             print(f'\t- 🔋: Не хватает - {cost["energy"] - self._state.energy} энергии.')
         if self._state.money <= cost['money']:
             print(f'\t- 💰: Не хватает - {cost["money"] - self._state.money} money.')
-        gym_menu(self._state)
+        # Удалён рекурсивный вызов gym_menu(self._state) (1.5.6 — 0.2.1h):
+        # с while-loop в gym_menu вызывающий код сам перерисует меню через
+        # `continue` при возврате False.
         return False
 
     def start_skill_training(self):

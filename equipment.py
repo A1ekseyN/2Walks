@@ -99,7 +99,6 @@ class Equipment:
         Equipment.equipment_change(self, state)
 
     def equipment_change(self, state: GameState):
-        ask = input('\nВыберите слот, в котором хотите заменить одежду или экипировку: \n>>> ')
         slot_map = {
             '1': ('голова',           'helmet',   'equipment_head'),
             '2': ('шея',              'necklace', 'equipment_neck'),
@@ -108,13 +107,15 @@ class Equipment:
             '5': ('палец правой руки', 'ring',     'equipment_finger_02'),
             '6': ('ступни',           'shoes',    'equipment_foots'),
         }
-        if ask in slot_map:
-            item_name, item_type, item_slot = slot_map[ask]
-            Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
-        elif ask == '0':
-            pass
-        else:
-            Equipment.equipment_change(self, state)
+        # Цикл retry на невалиде (1.5.2 — 0.2.1h, было: рекурсивный self-call).
+        while True:
+            ask = input('\nВыберите слот, в котором хотите заменить одежду или экипировку: \n>>> ')
+            if ask in slot_map:
+                item_name, item_type, item_slot = slot_map[ask]
+                Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
+                return
+            if ask == '0':
+                return
 
     def equipment_change_item_in_slot(self, item_name, item_type, item_slot, state: GameState):
         slot_attr = _SLOT_ATTR[item_slot]
@@ -149,8 +150,15 @@ class Equipment:
 
     def change_item_in_slot(self, item_name, item_type, item_slot, list_cnt, state: GameState):
         slot_attr = _SLOT_ATTR[item_slot]
-        try:
-            index = int(input('\n>>> '))
+        # Цикл retry на ValueError / невалидном индексе (1.5.2 — 0.2.1h).
+        while True:
+            try:
+                index = int(input('\n>>> '))
+            except ValueError:
+                print('\nПроизошла ошибка при выборе экипировки. Введите число.')
+                Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
+                return
+
             if index in list_cnt:
                 chosen = state.inventory[index - 1]
                 print(f'\nВы выбрали предмет:'
@@ -163,22 +171,20 @@ class Equipment:
                     if prev_item is not None:
                         print('\nВы заменили один предмет экипировки на другой.')
                     Equipment.equipment_view(self=None, state=state)
-                else:
-                    Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
+                    return
+                Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
+                return
 
-            elif index == 0:
+            if index == 0:
                 Equipment.equipment_view(self=None, state=state)
-            elif index == 99:
+                return
+            if index == 99:
                 removed = _unequip(state, slot_attr)
                 if removed is not None:
                     print(f'\nВы сняли предмет экипировки: '
                           f'\n- {removed["item_name"][0].title()} {removed["grade"][0].title()}: + {removed["bonus"][0]} {removed["characteristic"][0].title()} (Quality: {removed["quality"][0]})')
-            else:
-                print('\nПопробуйте еще раз ввести число: ')
-                Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
-        except ValueError:
-            print('\nПроизошла ошибка при выборе экипировки. Введите число.')
-            Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
+                return
+            print('\nПопробуйте еще раз ввести число: ')
 
     def inventory_view(self, state: GameState):
         print(f'\nВ инвентаре находится {len(state.inventory)} предметов: ')

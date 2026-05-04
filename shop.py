@@ -40,183 +40,140 @@ class Shop:
     """Магазин — UI-обёртка вокруг покупок."""
 
     def shop_menu(self, state: GameState):
-        money = _money_line(state)
-        item = _empty_item()
+        # Цикл retry на невалиде / возврате из подменю (1.5.4 — 0.2.1h).
+        while True:
+            money = _money_line(state)
+            item = _empty_item()
 
-        print('\n--- 🛒 Магазин --- 🛒'
-              '\nВ этой локации, Вы можете приобрести разное оборудование, и расходные материалы.'
-              f'\n{money}')
-        print('\nВы можете приобрести: '
-              '\n\t1. Еда, вода, расходные материалы'
-              '\n\t2. Одежда (Тестовый режим)'
-              '\n\t0. Назад')
-        ask = input('\nВыберите раздел меню: \n>>> ')
-        if ask == '1':
-            Shop.shop_menu_food_and_water(self, item=item, money=money, state=state)
-            Shop.shop_menu(self, state=state)
-        elif ask == '2':
-            Shop.shop_menu_clothes(self, item=item, money=money, state=state)
-            Shop.shop_menu(self, state=state)
-        elif ask in ('3', '9', '0'):
-            pass
-        else:
-            Shop.shop_menu(self, state=state)
+            print('\n--- 🛒 Магазин --- 🛒'
+                  '\nВ этой локации, Вы можете приобрести разное оборудование, и расходные материалы.'
+                  f'\n{money}')
+            print('\nВы можете приобрести: '
+                  '\n\t1. Еда, вода, расходные материалы'
+                  '\n\t2. Одежда (Тестовый режим)'
+                  '\n\t0. Назад')
+            ask = input('\nВыберите раздел меню: \n>>> ')
+            if ask == '1':
+                Shop.shop_menu_food_and_water(self, item=item, money=money, state=state)
+                continue
+            if ask == '2':
+                Shop.shop_menu_clothes(self, item=item, money=money, state=state)
+                continue
+            if ask in ('3', '9', '0'):
+                return
 
     def shop_menu_food_and_water(self, item, money, state: GameState):
-        print('\nВы можете купить еду и другие расходные материалы.'
-              f'\n{money}'
-              '\n\t1. 🍔 Чизбургер (🔋: + 5) - 2 $.'
-              '\n\t2. ☕ Кофе (🔋: + 25) - 10 $.'
-              '\n\t0. Назад')
-        ask = input('\nВыберите вариант, который хотите приобрести: \n>>> ')
-        if ask == '1':
-            cb = _empty_item()
-            cb['item_name'].append('cheeseburger')
-            cb['item_type'].append('food')
-            cb['characteristic'].append('energy')
-            cb['bonus'].append(5)
-            cb['price'].append(2)
-            if _buy_item(state, cb, 2):
-                print('\nВы приобрели 🍔 Чизбургер - за 2 $.')
-            else:
+        # Цикл retry на невалиде (1.5.4 — 0.2.1h).
+        while True:
+            print('\nВы можете купить еду и другие расходные материалы.'
+                  f'\n{money}'
+                  '\n\t1. 🍔 Чизбургер (🔋: + 5) - 2 $.'
+                  '\n\t2. ☕ Кофе (🔋: + 25) - 10 $.'
+                  '\n\t0. Назад')
+            ask = input('\nВыберите вариант, который хотите приобрести: \n>>> ')
+            if ask == '1':
+                cb = _empty_item()
+                cb['item_name'].append('cheeseburger')
+                cb['item_type'].append('food')
+                cb['characteristic'].append('energy')
+                cb['bonus'].append(5)
+                cb['price'].append(2)
+                if _buy_item(state, cb, 2):
+                    print('\nВы приобрели 🍔 Чизбургер - за 2 $.')
+                    return
                 print('\nУ Вас не достаточно денег для покупки.')
-                Shop.shop_menu_food_and_water(self, item, money, state)
+                continue
 
-        elif ask == '2':
-            coffee = _empty_item()
-            coffee['item_name'].append('coffee')
-            coffee['item_type'].append('drink')
-            coffee['characteristic'].append('energy')
-            coffee['bonus'].append(25)
-            coffee['price'].append(10)
-            if _buy_item(state, coffee, 10):
-                print('\nВы приобрели ☕ Coffee - за 10 $.')
-            else:
+            if ask == '2':
+                coffee = _empty_item()
+                coffee['item_name'].append('coffee')
+                coffee['item_type'].append('drink')
+                coffee['characteristic'].append('energy')
+                coffee['bonus'].append(25)
+                coffee['price'].append(10)
+                if _buy_item(state, coffee, 10):
+                    print('\nВы приобрели ☕ Coffee - за 10 $.')
+                    return
                 print('\nУ Вас не достаточно денег для покупки.')
-                Shop.shop_menu_food_and_water(self, item, money, state)
+                continue
 
-        elif ask == '0':
-            Shop.shop_menu(self, state=state)
-        else:
-            Shop.shop_menu(self, state=state)
+            if ask == '0':
+                return  # возврат в shop_menu происходит через цикл там
+            # любой невалид — повторяем меню.
 
     def shop_menu_clothes(self, item, money, state: GameState):
-        def clothes_head(money):
-            print('\nВ этом меню можно приобрести головной убор: '
-                  f'\n{money}'
-                  '\n\t1. ---'
-                  '\n\t2. ---'
-                  '\n\t3. ---'
-                  '\n\t0. Назад')
-            ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask in ('1', '2', '3'):
-                print('\n--- Тестовая - шапка')
-            elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money, state)
-            else:
-                clothes_head(money)
-
-        def clothes_jacket(money):
-            print('\nВ этом меню можно приобрести куртку: '
-                  f'\n{money}'
-                  '\n\t1. ---'
-                  '\n\t2. ---'
-                  '\n\t3. ---'
-                  '\n\t0. Назад')
-            ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask in ('1', '2', '3'):
-                print('\n--- Тестовая покупка - куртка')
-            elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money, state)
-            else:
-                clothes_jacket(money)
-
-        def clothes_pants(money):
-            print('\nВ этом меню можно приобрести штаны: '
-                  f'\n{money}'
-                  '\n\t1. ---'
-                  '\n\t2. ---'
-                  '\n\t3. ---'
-                  '\n\t0. Назад')
-            ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask in ('1', '2', '3'):
-                print('\n--- Тестовая - штаны')
-            elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money, state)
-            else:
-                clothes_pants(money)
-
-        def clothes_gloves(money):
-            print('\nВ этом меню можно приобрести перчатки: '
-                  f'\n{money}'
-                  '\n\t1. ---'
-                  '\n\t2. ---'
-                  '\n\t3. ---'
-                  '\n\t0. Назад')
-            ask = input('\nЧто вы хотите приобрести? \n>>> ')
-            if ask in ('1', '2', '3'):
-                print('\n--- Тестовая покупка - перчатки')
-            elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money, state)
-            else:
-                clothes_gloves(money)
+        def _clothes_stub(label, header):
+            # Generic stub-цикл для одежды (заглушки до 4.7).
+            while True:
+                print(f'\n{header}: '
+                      f'\n{money}'
+                      '\n\t1. ---'
+                      '\n\t2. ---'
+                      '\n\t3. ---'
+                      '\n\t0. Назад')
+                ask = input('\nЧто вы хотите приобрести? \n>>> ')
+                if ask in ('1', '2', '3'):
+                    print(f'\n--- Тестовая - {label}')
+                    return
+                if ask == '0':
+                    return
 
         def clothes_shoes(money):
-            print('\nВ этом меню можно приобрести обувь: '
-                  f'\n{money}'
-                  f'\n\t1. Кеды - C-Grade (+ 1 % шагов) (Цена: 25 $)'
-                  f'\n\t2. Кеды - B-Grade (+ 2 % шагов) (Цена: 50 $)'
-                  f'\n\t3. Кеды - A-Grade (+ 3 % шагов) (Цена: 100 $)'
-                  f'\n\t0. Назад')
-            ask = input('\nЧто вы хотите приобрести? \n>>> ')
             shoe_specs = {
                 '1': ('c-grade', 1, 25),
                 '2': ('b-grade', 2, 50),
                 '3': ('a-grade', 3, 100),
             }
-            if ask in shoe_specs:
-                grade, bonus, price = shoe_specs[ask]
-                shoe = _empty_item()
-                shoe['item_name'].append('Кеды')
-                shoe['item_type'].append('shoes')
-                shoe['grade'].append(grade)
-                shoe['characteristic'].append('stamina')
-                shoe['bonus'].append(bonus)
-                shoe['quality'].append(100)
-                shoe['price'].append(price)
-                if _buy_item(state, shoe, price):
-                    print(f'\nВы приобрели: Кеды - {grade.upper()} (+ {bonus} % шагов) за - {price} $.')
-                else:
+            while True:
+                print('\nВ этом меню можно приобрести обувь: '
+                      f'\n{money}'
+                      f'\n\t1. Кеды - C-Grade (+ 1 % шагов) (Цена: 25 $)'
+                      f'\n\t2. Кеды - B-Grade (+ 2 % шагов) (Цена: 50 $)'
+                      f'\n\t3. Кеды - A-Grade (+ 3 % шагов) (Цена: 100 $)'
+                      f'\n\t0. Назад')
+                ask = input('\nЧто вы хотите приобрести? \n>>> ')
+                if ask in shoe_specs:
+                    grade, bonus, price = shoe_specs[ask]
+                    shoe = _empty_item()
+                    shoe['item_name'].append('Кеды')
+                    shoe['item_type'].append('shoes')
+                    shoe['grade'].append(grade)
+                    shoe['characteristic'].append('stamina')
+                    shoe['bonus'].append(bonus)
+                    shoe['quality'].append(100)
+                    shoe['price'].append(price)
+                    if _buy_item(state, shoe, price):
+                        print(f'\nВы приобрели: Кеды - {grade.upper()} (+ {bonus} % шагов) за - {price} $.')
+                        return
                     print(f'\nУ вас не достаточно денег. Не хватает 💰: {price - state.money} $.')
-            elif ask == '0':
-                Shop.shop_menu_clothes(self, item, money, state)
-            else:
-                Shop.shop_menu_clothes(self, item, money, state)
+                    return
+                if ask == '0':
+                    return
 
-        print('\nВ можете купить одежду для персонажа.'
-              f'\n{money}'
-              '\n\t1. Шапка'
-              '\n\t2. Куртка'
-              '\n\t3. Штаны'
-              '\n\t4. Перчатки'
-              '\n\t5. Обувь'
-              '\n\t0. Назад')
-        ask = input('\nВыберите раздел товара, который хотите приобрести: \n>>> ')
-        if ask == '1':
-            clothes_head(money)
-        elif ask == '2':
-            clothes_jacket(money)
-        elif ask == '3':
-            clothes_pants(money)
-        elif ask == '4':
-            clothes_gloves(money)
-        elif ask == '5':
-            clothes_shoes(money)
-            Shop.shop_menu_clothes(self, item, money, state)
-        elif ask == '0':
-            pass
-        else:
-            Shop.shop_menu_clothes(self, item, money, state)
+        # Цикл retry на главном меню одежды (1.5.4 — 0.2.1h).
+        while True:
+            print('\nВ можете купить одежду для персонажа.'
+                  f'\n{money}'
+                  '\n\t1. Шапка'
+                  '\n\t2. Куртка'
+                  '\n\t3. Штаны'
+                  '\n\t4. Перчатки'
+                  '\n\t5. Обувь'
+                  '\n\t0. Назад')
+            ask = input('\nВыберите раздел товара, который хотите приобрести: \n>>> ')
+            if ask == '1':
+                _clothes_stub('шапка', 'В этом меню можно приобрести головной убор')
+            elif ask == '2':
+                _clothes_stub('куртка', 'В этом меню можно приобрести куртку')
+            elif ask == '3':
+                _clothes_stub('штаны', 'В этом меню можно приобрести штаны')
+            elif ask == '4':
+                _clothes_stub('перчатки', 'В этом меню можно приобрести перчатки')
+            elif ask == '5':
+                clothes_shoes(money)
+            elif ask == '0':
+                return
+            # любой невалид — повторяем меню.
 
     def shop_menu_equipment(self):
         # Раздел для покупки экипировки.
