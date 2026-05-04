@@ -56,7 +56,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.1e"
+VERSION = "0.2.1f"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -200,13 +200,13 @@ _GYM_SKILL_DISPLAY = {
     "stamina": {
         "title": "Stamina", "icon": "🏃",
         "field": "stamina",
-        "effect": "+1 % к общему количеству шагов",
+        "effect": "+1 % к общему кол-во шагов",
         "available": True,
     },
     "energy_max": {
         "title": "Energy Max", "icon": "🔋",
         "field": None,  # выводится из _energy_max_skill_level
-        "effect": "+1 ед. к максимальному запасу энергии",
+        "effect": "+1 ед. к макс энергии",
         "available": False,
         "unavailable_reason": "Особая логика — см. задачу 4.48.4.1",
     },

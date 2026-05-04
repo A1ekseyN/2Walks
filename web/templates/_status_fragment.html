@@ -253,42 +253,43 @@
                 Дождись окончания, прежде чем стартовать новую.</small>
             </p>
         {% else %}
-            <p style="margin-top: 0.5rem;">
-                <small>Выбери навык для прокачки. Каждая кнопка показывает стоимость.</small>
-            </p>
+            {# Двухуровневый раскрывающийся список (4.48.4 follow-up): каждый
+               навык — отдельный nested <details>, свёрнут по умолчанию.
+               Игрок видит компактный список, разворачивает только интересные.
+               Несколько можно открыть одновременно (без JS-accordion). #}
             <form hx-post="/web/gym/start" hx-target="#status-bar" hx-swap="innerHTML"
                   hx-disabled-elt="this"
                   style="display: flex; flex-direction: column; gap: 0.25rem; margin: 0;">
                 {% for skill in gym_skills %}
-                <article style="padding: 0.5rem 0.75rem; margin: 0.25rem 0;">
-                    <div>
-                        <strong>{{ skill.icon }} {{ skill.title }}</strong>
+                <details style="padding: 0.25rem 0.5rem; margin: 0.1rem 0;">
+                    <summary>
+                        {{ skill.icon }} <strong>{{ skill.title }}</strong>
                         ({{ skill.current_level }} → {{ skill.next_level }})
-                        <small>· {{ skill.effect }}</small>
-                    </div>
+                        <small>{{ skill.effect }}</small>
+                    </summary>
                     {% if skill.cost and skill.available %}
                         {% if skill.can_afford %}
                         <button type="submit" name="skill_name" value="{{ skill.key }}"
-                                class="outline" style="margin: 0.25rem 0 0 0; text-align: center; width: 100%;"
-                                hx-confirm="Прокачать {{ skill.title }} ({{ skill.current_level }} → {{ skill.next_level }})? Спишется: 🏃 {{ skill.cost.steps }} · 🔋 {{ skill.cost.energy }} · 💰 {{ skill.cost.money }}. Время: {{ skill.cost.real_time }}.">
-                            🏃 -{{ skill.cost.steps }} · 🔋 -{{ skill.cost.energy }} · 💰 -{{ skill.cost.money }} · 🕑 {{ skill.cost.real_time }}
+                                class="outline" style="margin: 0.5rem 0 0 0; text-align: center; width: 100%;"
+                                hx-confirm="Прокачать {{ skill.title }} ({{ skill.current_level }} → {{ skill.next_level }})? Спишется: 🏃 {{ skill.cost.steps }} 🔋 {{ skill.cost.energy }} 💰 {{ skill.cost.money }}. Время: {{ skill.cost.real_time }}.">
+                            🏃 -{{ skill.cost.steps }} 🔋 -{{ skill.cost.energy }} 💰 -{{ skill.cost.money }} 🕑 {{ skill.cost.real_time }}
                         </button>
                         {% else %}
                         <button type="button" disabled
-                                class="outline secondary" style="margin: 0.25rem 0 0 0; text-align: center; width: 100%;">
-                            🏃 -{{ skill.cost.steps }} · 🔋 -{{ skill.cost.energy }} · 💰 -{{ skill.cost.money }} · 🕑 {{ skill.cost.real_time }}
+                                class="outline secondary" style="margin: 0.5rem 0 0 0; text-align: center; width: 100%;">
+                            🏃 -{{ skill.cost.steps }} 🔋 -{{ skill.cost.energy }} 💰 -{{ skill.cost.money }} 🕑 {{ skill.cost.real_time }}
                         </button>
                         <small class="equipment-empty">
                             Не хватает:
                             {%- if skill.missing.steps %} 🏃 {{ skill.missing.steps }}{% endif -%}
-                            {%- if skill.missing.energy %} · 🔋 {{ skill.missing.energy }}{% endif -%}
-                            {%- if skill.missing.money %} · 💰 {{ skill.missing.money }}{% endif -%}
+                            {%- if skill.missing.energy %} 🔋 {{ skill.missing.energy }}{% endif -%}
+                            {%- if skill.missing.money %} 💰 {{ skill.missing.money }}{% endif -%}
                         </small>
                         {% endif %}
                     {% else %}
                         <small class="equipment-empty">{{ skill.unavailable_reason or "Недоступно." }}</small>
                     {% endif %}
-                </article>
+                </details>
                 {% endfor %}
             </form>
         {% endif %}

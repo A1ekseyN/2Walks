@@ -2277,6 +2277,50 @@ def test_gym_section_disabled_button_when_not_enough_resources():
     assert "Не хватает" in body
 
 
+def test_gym_skills_use_nested_details():
+    """4.48.4 follow-up: каждый из 8 навыков обёрнут в собственный nested
+    <details>, свёрнут по умолчанию — игрок раскрывает только нужные."""
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    gym_pos = body.find('id="gym"')
+    next_section_pos = body.find('id="bonuses"', gym_pos)
+    gym_section = body[gym_pos:next_section_pos]
+    # Внутри Gym-блока есть 8 nested <details> — по одному на каждый навык.
+    import re
+    details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
+    # 1 внешний + 8 nested = 9.
+    assert len(details_tags) == 9
+    # Ни один не должен быть `open`.
+    for tag in details_tags:
+        assert "open" not in tag, f"details unexpectedly open: {tag}"
+
+
+def test_gym_skill_summary_shows_minimal_info():
+    """Summary каждого навыка содержит только имя, level → next, описание."""
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Summary stamina — компактная строка.
+    assert "🏃 <strong>Stamina</strong>" in body
+    assert "(0 → 1)" in body  # default state.gym.stamina = 0
+    assert "+1 % к общему кол-во шагов" in body
+
+
+def test_gym_section_no_intro_text():
+    """4.48.4 follow-up: введение 'Выбери навык для прокачки...' убрано —
+    список навыков самодостаточный."""
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    gym_pos = body.find('id="gym"')
+    gym_section = body[gym_pos:gym_pos + 16000]
+    assert "Выбери навык для прокачки" not in gym_section
+
+
 def test_gym_section_when_training_active_no_start_buttons():
     """Если идёт тренировка — нет form с /web/gym/start, есть подсказка."""
     state = _state_for_gym()

@@ -29,7 +29,7 @@ python google_sheets_db.py
 # One-time migration of Google Sheets layout (renames Sheet1 → game_state, creates steps_log)
 python migrate_sheets.py
 
-# Drop-rate Monte-Carlo simulation (10k×6 iterations)
+# Drop-rate Monte-Carlo simulation (5 luck × 7 difficulty × 10k iterations on real Drop_Item)
 python drop_test_montecarlo.py
 ```
 
@@ -37,7 +37,7 @@ CLI и web — отдельные процессы, у каждого свой `
 
 Подробная шпаргалка по локальному запуску (включая доступ с iPhone через домашнюю Wi-Fi) — [`docs/local_setup.md`](docs/local_setup.md).
 
-Pytest is the test framework (config in `pytest.ini`, tests in `tests/`). Run all tests with `.venv/bin/pytest tests/`. There is no linter or CI configured. `drop_test_montecarlo.py` is a standalone Monte-Carlo drop simulator.
+Pytest is the test framework (config in `pytest.ini`, tests in `tests/`). Run all tests with `.venv/bin/pytest tests/`. There is no linter or CI configured. `drop_test_montecarlo.py` is a standalone Monte-Carlo drop simulator — uses the **real** `Drop_Item.one_item_random_grade(hard, state)` from `drop.py` (no fork-copy after 3.2.2 / 0.2.1f), so its measurements correspond to the actual game balance and are usable for tuning `drop_percent_*` constants.
 
 ## Architecture
 

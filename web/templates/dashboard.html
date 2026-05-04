@@ -54,6 +54,16 @@
             padding-bottom: 0.5rem;
         }
 
+        /* Gym — nested <details> для каждого из 8 навыков получают
+           прямоугольную рамку + padding + radius, чтобы визуально
+           отделять навыки друг от друга. */
+        section#gym details details {
+            border: 1px solid var(--pico-muted-border-color, #d1d5db);
+            border-radius: 0.25rem;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.4rem;
+        }
+
         /* Steps inline form (4.48.2): toggle через JS, по клику на .steps-clickable. */
         .steps-form-container { display: none; }
         #steps-section.form-visible .steps-form-container { display: block; }
