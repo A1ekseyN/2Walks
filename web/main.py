@@ -27,11 +27,18 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from bonus import (
+    apply_move_optimization_gym,
     daily_steps_bonus,
     equipment_bonus_stamina_steps,
     level_steps_bonus,
 )
-from characteristics import game, init_game_state
+from characteristics import game, init_game_state, skill_training_table
+from gym import (
+    Skill_Training,
+    _apply_speed_bonus,
+    _energy_max_skill_level,
+    skill_training_check_done,
+)
 from equipment_bonus import (
     equipment_energy_max_bonus,
     equipment_luck_bonus,
@@ -49,7 +56,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.1d"
+VERSION = "0.2.1e"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -182,6 +189,179 @@ def _validate_and_apply_skill_allocation(state, skill: str) -> Optional[str]:
     return None
 
 
+# Gym skill training (4.48.4) — UI-метаданные.
+# `field` — атрибут в state.gym, через который читается current level.
+# 'energy_max' — особый случай: уровень выводится из state.energy_max через
+# _energy_max_skill_level. Помечен `available=False` — мутация через CLI
+# Skill_Training сломана (state.gym.energy_max не существует), web тоже не
+# даёт стартовать. Cм. follow-up задачу 4.48.4.1 — review логики
+# energy_max_skill.
+_GYM_SKILL_DISPLAY = {
+    "stamina": {
+        "title": "Stamina", "icon": "🏃",
+        "field": "stamina",
+        "effect": "+1 % к общему количеству шагов",
+        "available": True,
+    },
+    "energy_max": {
+        "title": "Energy Max", "icon": "🔋",
+        "field": None,  # выводится из _energy_max_skill_level
+        "effect": "+1 ед. к максимальному запасу энергии",
+        "available": False,
+        "unavailable_reason": "Особая логика — см. задачу 4.48.4.1",
+    },
+    "speed_skill": {
+        "title": "Speed", "icon": "⚡",
+        "field": "speed_skill",
+        "effect": "+1 % к скорости активностей",
+        "available": True,
+    },
+    "luck_skill": {
+        "title": "Luck", "icon": "🍀",
+        "field": "luck_skill",
+        "effect": "+1 % к удаче дропа",
+        "available": True,
+    },
+    "move_optimization_adventure": {
+        "title": "Move Optimization (Adventure)", "icon": "🗺️",
+        "field": "move_optimization_adventure",
+        "effect": "-1 % шагов на приключения",
+        "available": True,
+    },
+    "move_optimization_gym": {
+        "title": "Move Optimization (Gym)", "icon": "🏋",
+        "field": "move_optimization_gym",
+        "effect": "-1 % шагов на тренировки",
+        "available": True,
+    },
+    "move_optimization_work": {
+        "title": "Move Optimization (Work)", "icon": "🏭",
+        "field": "move_optimization_work",
+        "effect": "-1 % шагов на работу",
+        "available": True,
+    },
+    "neatness_in_using_things": {
+        "title": "Neatness", "icon": "🧰",
+        "field": "neatness_in_using_things",
+        "effect": "-1 % износ экипировки",
+        "available": True,
+    },
+}
+
+
+def _build_gym_skills(state) -> list:
+    """Pre-computed список 8 gym-навыков для UI прокачки.
+
+    Каждая запись — dict `{key, title, icon, effect, current_level, next_level,
+    cost: {steps, energy, money, time, real_time}, can_afford, missing,
+    available, unavailable_reason}`. Стоимость берётся из
+    `skill_training_table[next_level]` с поправкой move_optimization_gym
+    (steps) и speed-бонусом (real_time).
+    """
+    options = []
+    for key, meta in _GYM_SKILL_DISPLAY.items():
+        if meta["field"] is not None:
+            current = getattr(state.gym, meta["field"])
+        else:
+            # energy_max — особый случай
+            current = _energy_max_skill_level(state)
+        next_level = current + 1
+
+        # Cost lookup. skill_training_table может не содержать высоких уровней —
+        # тогда стартовать нельзя, missing.cost = True.
+        cost_raw = skill_training_table.get(next_level)
+        if cost_raw is None:
+            options.append({
+                "key": key,
+                "title": meta["title"],
+                "icon": meta["icon"],
+                "effect": meta["effect"],
+                "current_level": current,
+                "next_level": next_level,
+                "cost": None,
+                "can_afford": False,
+                "missing": {"max_level": True},
+                "available": False,
+                "unavailable_reason": "Достигнут максимум по таблице.",
+            })
+            continue
+
+        steps_needed = apply_move_optimization_gym(cost_raw["steps"], state)
+        energy_needed = cost_raw["energy"]
+        money_needed = cost_raw["money"]
+        real_minutes = round(_apply_speed_bonus(cost_raw["time"], state))
+
+        missing = {}
+        if state.steps.can_use < steps_needed:
+            missing["steps"] = steps_needed - state.steps.can_use
+        if state.energy < energy_needed:
+            missing["energy"] = energy_needed - state.energy
+        if state.money < money_needed:
+            missing["money"] = money_needed - state.money
+
+        options.append({
+            "key": key,
+            "title": meta["title"],
+            "icon": meta["icon"],
+            "effect": meta["effect"],
+            "current_level": current,
+            "next_level": next_level,
+            "cost": {
+                "steps": steps_needed,
+                "energy": energy_needed,
+                "money": money_needed,
+                "time": cost_raw["time"],
+                "real_time": _format_real_time(real_minutes),
+            },
+            "can_afford": not missing,
+            "missing": missing,
+            "available": meta["available"],
+            "unavailable_reason": meta.get("unavailable_reason"),
+        })
+    return options
+
+
+def _validate_and_apply_training(state, skill_name: str) -> Optional[str]:
+    """Валидирует skill_name + наличие активной тренировки + ресурсы. На успехе
+    стартует тренировку через CLI helper Skill_Training.start_skill_training()
+    (try_spend + start_training + Wear_Equipped_Items.decrease_durability),
+    зовёт persist_state_to_cloud(). Возвращает текст ошибки или None."""
+    if skill_name not in _GYM_SKILL_DISPLAY:
+        return f"Неизвестный навык: {skill_name}"
+    meta = _GYM_SKILL_DISPLAY[skill_name]
+    if not meta.get("available", True):
+        return meta.get("unavailable_reason", f"Навык '{skill_name}' недоступен.")
+    if state.training.active:
+        return "Тренировка уже идёт — дождись окончания текущей."
+
+    # Pre-flight check ресурсов до try_spend, чтобы вернуть осмысленный текст.
+    field = meta["field"]
+    current = getattr(state.gym, field)
+    next_level = current + 1
+    cost_raw = skill_training_table.get(next_level)
+    if cost_raw is None:
+        return f"Навык '{skill_name}' достиг максимума по таблице (lvl {current})."
+
+    steps_needed = apply_move_optimization_gym(cost_raw["steps"], state)
+    if state.steps.can_use < steps_needed:
+        return f"Не хватает 🏃: нужно {steps_needed}, есть {state.steps.can_use}."
+    if state.energy < cost_raw["energy"]:
+        return f"Не хватает 🔋: нужно {cost_raw['energy']}, есть {state.energy}."
+    if state.money < cost_raw["money"]:
+        return f"Не хватает 💰: нужно {cost_raw['money']}, есть {state.money}."
+
+    # Старт через существующий CLI helper. Skill_Training.check_requirements
+    # печатает в stdout (CLI noise — допустимо в uvicorn логе) и при недостаче
+    # рекурсивно вызывает gym_menu (который заблокируется на input()).
+    # Поэтому мы сами проверили ресурсы выше и сразу вызываем start_skill_training.
+    state.training.skill_name = skill_name  # CLI делает это в gym_menu до Skill_Training
+    skill_training = Skill_Training(state=state, name=skill_name)
+    skill_training.start_skill_training()
+    Wear_Equipped_Items(state).decrease_durability(steps_needed)
+    persist_state_to_cloud()
+    return None
+
+
 def _build_skill_options(state) -> list:
     """Pre-computed данные для UI распределения навыков. Каждая запись — dict
     `{key, title, icon, effect, current}` где current = state.char_level.skill_<key>."""
@@ -299,7 +479,8 @@ def _apply_new_steps(steps_value: int, source: str = "web",
 def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        steps_form_open: bool = False,
                        work_error: Optional[str] = None,
-                       skill_error: Optional[str] = None) -> dict:
+                       skill_error: Optional[str] = None,
+                       gym_error: Optional[str] = None) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -342,11 +523,21 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     if state.char_level.level != pre_level:
         persist_state_to_cloud()
 
+    # Auto-finalize тренировки навыка (4.48.4 / 0.2.1e). Если state.training.end
+    # < now — повышает уровень навыка на +1 и сбрасывает state.training.
+    # save_characteristic вызывается внутри skill_training_check_done.
+    # GameStateRepo.save отдельно не зовём — на следующее web-mutation
+    # snapshot подтянется. Но если game_state Sheets важен, persist здесь
+    # нужен — для согласованности с work_check_done (который тоже без persist
+    # в Sheets, только save_characteristic локально). Остаётся та же
+    # известная проблема double-claim race (см. TASKS 4.48.5.1).
+    skill_training_check_done(state)
+
     # Auto-finalize работы по таймеру: каждый рендер dashboard'а / fragment'а
     # проверяет state.work.end и если время вышло — начисляет зарплату и
     # обнуляет смену. Так web-сценарий не требует отдельного "Claim"-клика
     # (CLI делает то же самое в main loop'е). Аналогично появятся вызовы
-    # training_finalize / adventure_finalize в задачах 4.48.3 / 4.48.4.
+    # adventure_finalize в задаче 4.48.3.
     work_check_done(state)
 
     # Параметры для JS-таймера энергии в _status_fragment.html (data-attrs).
@@ -395,6 +586,9 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # Skill allocation (4.48.8): pre-computed список навыков для UI.
     # Блок видим только если up_skills > 0 (управляется в шаблоне).
     skill_options = _build_skill_options(state)
+
+    # Gym skill training (4.48.4 / 0.2.1e): pre-computed список 8 навыков.
+    gym_skills = _build_gym_skills(state)
 
     # Work UI: либо меню вакансий (когда не работаешь), либо форма "+N часов"
     # (когда уже работаешь). Расчёт max_hours и pre-computed hour_options
@@ -462,6 +656,9 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # Блок рендерится только если up_skills > 0 (state.char_level.up_skills).
         "skill_options": skill_options,
         "skill_error": skill_error,
+        # Gym skill training (4.48.4 / 0.2.1e): список 8 навыков с pre-computed cost.
+        "gym_skills": gym_skills,
+        "gym_error": gym_error,
         # Work UI (4.48.5): меню вакансий или форма "+часы".
         "work_vacancies": work_vacancies,
         "work_max_add_hours": work_max_add_hours,
@@ -748,3 +945,63 @@ async def api_level_allocate(payload: SkillAllocateRequest):
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "char_level": _char_level_snapshot(state)})
+
+
+# ----------------------------------------------------------------------------
+# Gym skill training — задача 4.48.4 (0.2.1e).
+#
+# 2 endpoint'а: POST /web/gym/start (Form → HTML fragment) и
+# POST /api/gym/start (JSON через GymStartRequest). Подтверждение на клиенте
+# через `hx-confirm` HTMX-атрибут — игрок подтверждает старт прежде чем
+# уходит запрос. Auto-finalize тренировки делает skill_training_check_done
+# в _dashboard_context.
+# ----------------------------------------------------------------------------
+
+
+class GymStartRequest(BaseModel):
+    """Body для POST /api/gym/start."""
+    skill_name: str = Field(..., description="stamina / speed_skill / luck_skill / move_optimization_* / neatness_in_using_things")
+
+
+def _training_snapshot(state) -> dict:
+    """Минимальный snapshot state.training для JSON-ответа."""
+    t = state.training
+    return {
+        "active": t.active,
+        "skill_name": t.skill_name,
+        "time_end_ts": t.time_end.timestamp() if t.time_end else None,
+        "timestamp": t.timestamp,
+    }
+
+
+@app.post("/web/gym/start", response_class=HTMLResponse)
+async def web_gym_start(request: Request, skill_name: str = Form(...)):
+    """Form-data старт тренировки навыка. Возвращает обновлённый
+    `_status_fragment.html`."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+
+    err = _validate_and_apply_training(state, skill_name)
+    context = _dashboard_context(request, gym_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/api/gym/start")
+async def api_gym_start(payload: GymStartRequest):
+    """JSON старт тренировки навыка."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+
+    if state.training.active:
+        return JSONResponse(
+            {"ok": False, "error": "Training already active.",
+             "training": _training_snapshot(state)},
+            status_code=409,
+        )
+
+    err = _validate_and_apply_training(state, payload.skill_name)
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "training": _training_snapshot(state)})

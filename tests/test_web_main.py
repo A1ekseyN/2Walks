@@ -204,7 +204,9 @@ def test_active_training_renders_with_data_end_ts():
     state = GameState.default_new_game()
     state.training.active = True
     state.training.skill_name = "stamina"
-    state.training.time_end = datetime(2026, 5, 1, 18, 0, 0)
+    # End в будущем — skill_training_check_done не должен финализировать.
+    state.training.time_end = datetime.now() + timedelta(minutes=10)
+    state.training.timestamp = (datetime.now() - timedelta(minutes=2)).timestamp()
     state.gym.stamina = 4
     _setup_state(state)
     with TestClient(app) as client:
@@ -2184,6 +2186,360 @@ def test_dashboard_context_no_level_up_no_persist(monkeypatch):
     assert state.char_level.level == 1
     assert state.char_level.up_skills == 0
     assert saved_to_sheets == []
+
+
+# ----- Gym skill training (task 4.48.4 / 0.2.1e) -----
+
+def _state_for_gym(steps=10000, energy=20, money=200):
+    """State с ресурсами достаточными для прокачки большинства навыков 1-го уровня.
+
+    energy_time_stamp выставлен в now, чтобы energy_time_charge в
+    _dashboard_context не регенерировал энергию обратно в max между
+    мутацией и рендером ответа."""
+    state = GameState.default_new_game()
+    state.steps.today = steps
+    state.steps.can_use = steps
+    state.energy = energy
+    state.money = money
+    state.energy_time_stamp = datetime.now().timestamp()
+    return state
+
+
+def test_gym_section_renders_in_status_fragment():
+    """В фрагменте присутствует <section id='gym'> с <details>."""
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'id="gym"' in body
+    gym_pos = body.find('id="gym"')
+    gym_section = body[gym_pos:gym_pos + 8000]
+    assert "<details" in gym_section
+    assert "<summary>" in gym_section
+
+
+def test_gym_section_collapsed_by_default():
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    gym_pos = body.find('id="gym"')
+    gym_section = body[gym_pos:gym_pos + 8000]
+    assert "<details>" in gym_section
+    assert "<details open" not in gym_section
+
+
+def test_gym_section_renders_8_skills():
+    """Меню Gym показывает все 8 навыков (включая energy_max — но он
+    помечен как недоступный для старта)."""
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # 7 working skills via hidden form input value.
+    assert 'value="stamina"' in body
+    assert 'value="speed_skill"' in body
+    assert 'value="luck_skill"' in body
+    assert 'value="move_optimization_adventure"' in body
+    assert 'value="move_optimization_gym"' in body
+    assert 'value="move_optimization_work"' in body
+    assert 'value="neatness_in_using_things"' in body
+    # energy_max — отображается, но помечен недоступным (нет form-button).
+    assert "Energy Max" in body
+    # Все 8 заголовков навыков.
+    assert "Stamina" in body
+    assert "Speed" in body
+    assert "Luck" in body
+
+
+def test_gym_section_shows_costs_and_time():
+    """Кнопка stamina (level 0 → 1): cost из skill_training_table[1] = 1000 шагов / 5 эн / 10 $ / 5 мин."""
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Стоимость в формате `🏃 -1000 · 🔋 -5 · 💰 -10 · 🕑 5m`.
+    assert "🏃 -1000" in body
+    assert "🔋 -5" in body
+    assert "💰 -10" in body
+    assert "🕑 5m" in body
+
+
+def test_gym_section_disabled_button_when_not_enough_resources():
+    """Если на первый уровень не хватает (например, очень мало шагов) —
+    кнопка отображается с disabled и текстом 'Не хватает: 🏃 N'."""
+    _setup_state(_state_for_gym(steps=100, energy=5, money=10))  # шагов меньше 1000
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # disabled-кнопка для stamina.
+    assert "disabled" in body
+    assert "Не хватает" in body
+
+
+def test_gym_section_when_training_active_no_start_buttons():
+    """Если идёт тренировка — нет form с /web/gym/start, есть подсказка."""
+    state = _state_for_gym()
+    state.training.active = True
+    state.training.skill_name = "stamina"
+    state.training.timestamp = (datetime.now() - timedelta(minutes=2)).timestamp()
+    state.training.time_end = datetime.now() + timedelta(minutes=10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Меню стартов скрыто.
+    assert 'hx-post="/web/gym/start"' not in body
+    # Внутри блока есть подсказка.
+    gym_pos = body.find('id="gym"')
+    gym_section = body[gym_pos:gym_pos + 8000]
+    assert "Идёт прокачка" in gym_section
+
+
+def test_gym_section_after_training_appears_in_active_sessions():
+    """Активная тренировка отображается в Active sessions блоке (existing render)."""
+    state = _state_for_gym()
+    state.training.active = True
+    state.training.skill_name = "speed_skill"
+    state.gym.speed_skill = 2
+    state.training.timestamp = (datetime.now() - timedelta(minutes=2)).timestamp()
+    state.training.time_end = datetime.now() + timedelta(minutes=10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Active sessions section
+    active_pos = body.find('id="active-sessions"')
+    assert active_pos > 0
+    active_section = body[active_pos:active_pos + 4000]
+    assert "Тренировка" in active_section
+    assert "Speed_Skill" in active_section
+
+
+# ----- /web/gym/start (Form) -----
+
+def test_web_gym_start_with_valid_skill():
+    state = _state_for_gym()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/gym/start", data={"skill_name": "stamina"})
+    assert response.status_code == 200
+    # state.training активна.
+    assert state.training.active is True
+    assert state.training.skill_name == "stamina"
+    # Ресурсы списаны (1000 шагов / 5 эн / 10 $ для level 1).
+    assert state.steps.used == 1000
+    assert state.energy == 20 - 5
+    assert state.money == 200 - 10
+
+
+def test_web_gym_start_with_unknown_skill():
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.post("/web/gym/start", data={"skill_name": "ceo"})
+    assert response.status_code == 200
+    body = response.text
+    assert "Неизвестный навык" in body
+
+
+def test_web_gym_start_with_energy_max_returns_unavailable():
+    """energy_max сейчас не реализован — должен возвращать ошибку."""
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.post("/web/gym/start", data={"skill_name": "energy_max"})
+    assert response.status_code == 200
+    body = response.text
+    assert "4.48.4.1" in body or "Особая логика" in body
+
+
+def test_web_gym_start_when_already_training_rejects():
+    state = _state_for_gym()
+    state.training.active = True
+    state.training.skill_name = "luck_skill"
+    state.training.timestamp = (datetime.now() - timedelta(minutes=1)).timestamp()
+    state.training.time_end = datetime.now() + timedelta(minutes=10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/gym/start", data={"skill_name": "stamina"})
+    assert response.status_code == 200
+    body = response.text
+    assert "уже идёт" in body.lower()
+    # state.training.skill_name не сменился.
+    assert state.training.skill_name == "luck_skill"
+
+
+def test_web_gym_start_when_not_enough_resources():
+    _setup_state(_state_for_gym(steps=100))
+    with TestClient(app) as client:
+        response = client.post("/web/gym/start", data={"skill_name": "stamina"})
+    assert response.status_code == 200
+    body = response.text
+    assert "Не хватает 🏃" in body
+
+
+def test_web_gym_start_persists_state(monkeypatch):
+    """Старт тренировки → persist (CSV+JSON+Sheets)."""
+    from google_sheets_db import GameStateRepo
+    saved_to_sheets = []
+    monkeypatch.setattr(GameStateRepo, "save",
+                        lambda self, data, user_id=None: saved_to_sheets.append(data))
+
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        client.post("/web/gym/start", data={"skill_name": "speed_skill"})
+    assert len(saved_to_sheets) == 1
+    assert saved_to_sheets[0]["skill_training"] is True
+    assert saved_to_sheets[0]["skill_training_name"] == "speed_skill"
+
+
+# ----- /api/gym/start (JSON) -----
+
+def test_api_gym_start_with_valid_skill():
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.post("/api/gym/start", json={"skill_name": "stamina"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["training"]["active"] is True
+    assert body["training"]["skill_name"] == "stamina"
+
+
+def test_api_gym_start_unknown_skill_returns_422():
+    _setup_state(_state_for_gym())
+    with TestClient(app) as client:
+        response = client.post("/api/gym/start", json={"skill_name": "ceo"})
+    assert response.status_code == 422
+
+
+def test_api_gym_start_when_already_training_returns_409():
+    state = _state_for_gym()
+    state.training.active = True
+    state.training.skill_name = "luck_skill"
+    state.training.timestamp = (datetime.now() - timedelta(minutes=1)).timestamp()
+    state.training.time_end = datetime.now() + timedelta(minutes=10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/gym/start", json={"skill_name": "stamina"})
+    assert response.status_code == 409
+
+
+def test_api_gym_start_when_not_enough_resources_returns_422():
+    _setup_state(_state_for_gym(steps=100))
+    with TestClient(app) as client:
+        response = client.post("/api/gym/start", json={"skill_name": "stamina"})
+    assert response.status_code == 422
+
+
+# ----- Auto-finalize training in _dashboard_context -----
+
+def test_dashboard_auto_finalizes_expired_training():
+    """state.training.time_end < now → skill_training_check_done в
+    _dashboard_context апает skill уровень и обнуляет training."""
+    state = _state_for_gym()
+    state.training.active = True
+    state.training.skill_name = "stamina"
+    state.training.timestamp = (datetime.now() - timedelta(minutes=20)).timestamp()
+    state.training.time_end = datetime.now() - timedelta(seconds=1)
+    state.gym.stamina = 4  # → должен стать 5
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    assert state.gym.stamina == 5
+    assert state.training.active is False
+    assert state.training.skill_name is None
+
+
+def test_dashboard_does_not_finalize_active_unfinished_training():
+    state = _state_for_gym()
+    state.training.active = True
+    state.training.skill_name = "speed_skill"
+    state.gym.speed_skill = 1
+    state.training.timestamp = (datetime.now() - timedelta(minutes=1)).timestamp()
+    state.training.time_end = datetime.now() + timedelta(minutes=10)
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        client.get("/status")
+
+    assert state.training.active is True
+    assert state.gym.speed_skill == 1
+
+
+# ----- _build_gym_skills helper -----
+
+def test_build_gym_skills_returns_8_entries():
+    from web.main import _build_gym_skills
+    state = _state_for_gym()
+    skills = _build_gym_skills(state)
+    keys = [s["key"] for s in skills]
+    assert keys == [
+        "stamina", "energy_max", "speed_skill", "luck_skill",
+        "move_optimization_adventure", "move_optimization_gym",
+        "move_optimization_work", "neatness_in_using_things",
+    ]
+
+
+def test_build_gym_skills_marks_energy_max_unavailable():
+    from web.main import _build_gym_skills
+    state = _state_for_gym()
+    skills = _build_gym_skills(state)
+    energy_max = next(s for s in skills if s["key"] == "energy_max")
+    assert energy_max["available"] is False
+    assert "4.48.4.1" in energy_max["unavailable_reason"]
+
+
+def test_build_gym_skills_can_afford_flag():
+    """С 10к шагов + 20 эн + 200 $ должно хватать на stamina (1000/5/10),
+    но не на higher-cost навыки. На stamina can_afford=True, на forwarder-style
+    высокие пороги нет (но в gym нет такого, все начальные стоимости одинаковы)."""
+    from web.main import _build_gym_skills
+    state = _state_for_gym()
+    skills = _build_gym_skills(state)
+    stamina = next(s for s in skills if s["key"] == "stamina")
+    assert stamina["can_afford"] is True
+    assert stamina["missing"] == {}
+
+
+def test_build_gym_skills_missing_resources_listed():
+    from web.main import _build_gym_skills
+    state = _state_for_gym(steps=100, energy=2, money=5)
+    skills = _build_gym_skills(state)
+    stamina = next(s for s in skills if s["key"] == "stamina")
+    assert stamina["can_afford"] is False
+    assert stamina["missing"]["steps"] == 900   # 1000 - 100
+    assert stamina["missing"]["energy"] == 3    # 5 - 2
+    assert stamina["missing"]["money"] == 5     # 10 - 5
+
+
+def test_validate_and_apply_training_unknown_skill():
+    from web.main import _validate_and_apply_training
+    state = _state_for_gym()
+    err = _validate_and_apply_training(state, "ceo")
+    assert err is not None
+    assert "Неизвестный" in err
+
+
+def test_validate_and_apply_training_already_active():
+    from web.main import _validate_and_apply_training
+    state = _state_for_gym()
+    state.training.active = True
+    state.training.skill_name = "luck_skill"
+    state.training.time_end = datetime.now() + timedelta(minutes=10)
+    err = _validate_and_apply_training(state, "stamina")
+    assert err is not None
+    assert "уже идёт" in err.lower()
+
+
+def test_validate_and_apply_training_success():
+    from web.main import _validate_and_apply_training
+    state = _state_for_gym()
+    err = _validate_and_apply_training(state, "luck_skill")
+    assert err is None
+    assert state.training.active is True
+    assert state.training.skill_name == "luck_skill"
 
 
 def test_dashboard_context_provides_work_add_hour_options_when_active():

@@ -1789,7 +1789,36 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 - Локальный countdown до завершения, прогресс-бар.
 - Auto-finalize при истечении таймера (детектится в polling, дроп показывается).
 
-#### 4.48.4. Web: Gym `[H / M / todo (blocked by 4.48.1)]`
+#### 4.48.4. Web: Gym `[H / M / done (0.2.1e)]`
+
+- Старт прокачки навыков (8 пунктов) через web. Новая `<section id="gym">` после Work, свёрнута по умолчанию.
+- Когда `state.training.active=True` → блок показывает подсказку "Идёт прокачка X. Прогресс в Active sessions"; меню стартов скрыто (одна тренировка за раз, как в CLI).
+- Когда тренировки нет — 8 карточек навыков с pre-computed cost (`🏃 -N · 🔋 -M · 💰 -K · 🕑 ~Xm`). Если ресурсов не хватает — кнопка `disabled` + строка `Не хватает: 🏃 N · 🔋 M`. `hx-confirm` перед стартом ("Прокачать Stamina (4 → 5)? Спишется ...").
+- 2 endpoint'а: `POST /web/gym/start` (Form) и `POST /api/gym/start` (JSON через `GymStartRequest`). Общий helper `_validate_and_apply_training(state, skill_name)` делает pre-flight проверку ресурсов, дёргает CLI helper `Skill_Training(state, name).start_skill_training()` (`try_spend` + `actions.start_training` + `Wear_Equipped_Items.decrease_durability`), затем `persist_state_to_cloud()`.
+- Auto-finalize: `skill_training_check_done(state)` теперь вызывается в `_dashboard_context` (рядом с `work_check_done`). Каждый GET / POST после истечения таймера повышает уровень навыка на +1 и обнуляет training. CLI остаётся primary path для main loop.
+- `energy_max` в меню отображается, но помечен `available=False` — не запускается через web с понятной ошибкой "Особая логика — см. задачу 4.48.4.1". CLI flow для energy_max тоже сломан (`getattr(state.gym, 'energy_max')` → AttributeError, поле в dataclass называется `energy_max_skill`).
+
+#### 4.48.4.1. Review: логика energy_max_skill `[M / S / todo]`
+
+**Контекст (04.05.2026, обнаружено при реализации 4.48.4):** прокачка навыка `energy_max` сломана и в CLI, и в web. Симптомы:
+
+1. `state.gym.energy_max_skill` существует как поле в dataclass `GymSkills`, но **никогда не записывается** — в коде нет `setattr(state.gym, 'energy_max_skill', ...)`.
+2. CLI `gym_menu` использует ключ `'energy_max'` (без `_skill`) для skill_options, передаёт его в `Skill_Training(state, name='energy_max')`.
+3. `Skill_Training.check_requirements()` / `start_skill_training()` делают `getattr(state._state.gym, self.name)` → `getattr(state.gym, 'energy_max')` → **AttributeError** (поля с таким именем нет, есть только `energy_max_skill`).
+4. `skill_training_check_done(state)` тоже сделает `getattr(state.gym, 'energy_max') + 1` → `setattr(state.gym, 'energy_max', ...)` — создаст лишнее поле, не относящееся к dataclass-схеме.
+
+**Логика которая работает:** `_energy_max_skill_level(state) = state.energy_max - 49 - equipment_energy_max_bonus(state) - state.steps.daily_bonus`. Этот reverse-calc правильно показывает уровень в меню (для default state.energy_max=50 → level=1).
+
+**Что нужно решить:**
+
+1. **Привести имя в соответствие.** Либо переименовать `_skill` суффикс везде на `state.gym.energy_max_skill` (как в `speed_skill`, `luck_skill`), либо хранить уровень в `state.energy_max_skill_level` отдельно от `state.energy_max`.
+2. **Решить, где хранить накопленный уровень навыка.** Текущая логика "уровень = state.energy_max - 49 - bonuses" работает только если каждый level-up инкрементит `state.energy_max`. Но bonuses тоже бьют по этой же переменной — путаница. Лучше: завести отдельное `state.gym.energy_max_skill` (целевое имя), и `state.energy_max` вычислять как `50 + state.gym.energy_max_skill + bonuses` на лету.
+3. **`skill_training_check_done` для energy_max:** должен инкрементить `state.gym.energy_max_skill` (или альтернативную переменную) и пересчитать `state.energy_max`.
+4. **Тесты:** `tests/test_gym.py` — добавить test_energy_max_training_increments_correctly + round-trip через `state.from_dict / to_dict`.
+
+**Effort:** S (понятный refactor, ~30-50 строк + миграция существующих save'ов).
+
+**Зависимость:** не блокирующая. Текущий web-флоу 4.48.4 показывает energy_max в UI с пометкой "недоступно", остальные 7 навыков работают. CLI тоже не использует energy_max нормально (упадёт при попытке).
 
 - `GET /gym` — таблица скиллов с ценами/требованиями.
 - `POST /api/gym/train` — старт обучения.

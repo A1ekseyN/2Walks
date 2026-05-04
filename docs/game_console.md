@@ -149,6 +149,8 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 `Energy Max` идёт через отдельную таблицу `get_energy_training_data()` (`characteristics.py`), потому что `state.energy_max` начинается с 50 и его "уровень" вычитается из текущего значения минус бонусы экипировки и Daily.
 
+**Web (4.48.4 / 0.2.1e):** тот же модуль работает через 2 endpoint'а в `web/main.py` — `POST /web/gym/start` (Form → HTML fragment), `POST /api/gym/start` (JSON через `GymStartRequest`). Общий helper `_validate_and_apply_training(state, skill_name)` делает pre-flight проверку ресурсов и вызывает существующий `Skill_Training(state, name).start_skill_training()` + `Wear_Equipped_Items.decrease_durability` + `persist_state_to_cloud()`. Auto-finalize: `skill_training_check_done(state)` теперь вызывается в `_dashboard_context` — на каждый рендер web проверяет, не истёк ли таймер тренировки. UI: `<section id="gym">` свёрнута по умолчанию; внутри — 8 карточек навыков с pre-computed cost (`🏃 -N · 🔋 -M · 💰 -K · 🕑 ~Xm`), кнопки disabled при нехватке ресурсов, `hx-confirm` перед стартом. **Известный баг:** `energy_max` помечен `available=False` — CLI и web flow для него сломан (поле `state.gym.energy_max_skill` не используется, ключ `'energy_max'` ловит AttributeError). См. follow-up задачу 4.48.4.1.
+
 ### 3.2 Work (Работа) — `work.py`
 
 `Work(state).work_choice()`:
