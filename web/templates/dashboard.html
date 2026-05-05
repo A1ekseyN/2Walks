@@ -109,14 +109,35 @@
        После HTMX swap событие htmx:afterSwap триггерит refresh — таймеры
        могут появиться/исчезнуть с обновлённым state. */
 
+    /* Форматирование оставшегося времени для таймеров work / training /
+       adventure. Должно соответствовать Python `functions_02.format_timedelta`
+       (0.2.1i / задача 2.10) — иначе CLI и web будут показывать разные
+       значения для одного и того же state. Месяц приближённо = 30 дней,
+       год = 365 дней. */
+    const _SEC_YEAR = 365 * 24 * 3600;
+    const _SEC_MONTH = 30 * 24 * 3600;
+    const _SEC_WEEK = 7 * 24 * 3600;
+    const _SEC_DAY = 24 * 3600;
+    const _SEC_HOUR = 3600;
+    const _SEC_MINUTE = 60;
+
     function formatRemaining(seconds) {
         if (seconds <= 0) return "0:00:00";
-        const sign = seconds < 0 ? "-" : "";
-        seconds = Math.abs(Math.floor(seconds));
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = seconds % 60;
-        return `${sign}${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        let total = Math.floor(seconds);
+        const parts = [];
+        const y = Math.floor(total / _SEC_YEAR); total %= _SEC_YEAR;
+        if (y > 0) parts.push(`${y}г`);
+        const mo = Math.floor(total / _SEC_MONTH); total %= _SEC_MONTH;
+        if (mo > 0) parts.push(`${mo}мес`);
+        const w = Math.floor(total / _SEC_WEEK); total %= _SEC_WEEK;
+        if (w > 0) parts.push(`${w}нед`);
+        const d = Math.floor(total / _SEC_DAY); total %= _SEC_DAY;
+        if (d > 0) parts.push(`${d}д`);
+        const h = Math.floor(total / _SEC_HOUR); total %= _SEC_HOUR;
+        const m = Math.floor(total / _SEC_MINUTE);
+        const s = total % _SEC_MINUTE;
+        parts.push(`${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+        return parts.join(" ");
     }
 
     function tickEnergy() {

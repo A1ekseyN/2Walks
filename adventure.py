@@ -6,7 +6,7 @@ from colorama import Fore, Style
 from adventure_data import adventure_data_table
 from colors import steps_color, energy_color
 from drop import Drop_Item
-from functions_02 import time
+from functions_02 import time, format_timedelta
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from settings import debug_mode
 from bonus import apply_move_optimization_adventure
@@ -73,8 +73,9 @@ class Adventure:
             state.adventure.name = None
             state.adventure.end_ts = None
         elif state.adventure.end_ts > datetime.now().timestamp():
-            adv_end = datetime.fromtimestamp(state.adventure.end_ts) - datetime.fromtimestamp(datetime.now().timestamp())
-            adv_end = str(adv_end).split('.')[0]
+            adv_end = format_timedelta(
+                datetime.fromtimestamp(state.adventure.end_ts) - datetime.fromtimestamp(datetime.now().timestamp())
+            )
             print(f'\t🗺️ Персонаж находится в Приключении: {state.adventure.name.title()}.')
             print(f'\t🕑 Персонаж вернется через: {Fore.LIGHTBLUE_EX}{adv_end}{Style.RESET_ALL}')
 

@@ -119,7 +119,7 @@ Non-trivial mutations go through `actions.py` to keep invariants in one place:
 - `drop.py` — item drop logic for Adventure. Grades are `c/b/a/s/s+`, weighted by `drop_percent_*` constants. `current_luck(state)` is computed at the moment of the drop (no module-level pinning).
 - `level.py` (`CharLevel`), `characteristics.py` (`save_characteristic`), `bonus.py`, `equipment_bonus.py`, `skill_bonus.py` — stat/bonus math. All take `state` explicitly.
 - `adventure_data.py` — static data table for adventures. Adventure `__init__` copies entries before applying `move_optimization` so the table itself is never mutated.
-- `functions.py` / `functions_02.py` — cross-cutting helpers (`status_bar`, `energy_time_charge`, `char_info`, date/time helpers).
+- `functions.py` / `functions_02.py` — cross-cutting helpers (`status_bar`, `energy_time_charge`, `char_info`, date/time helpers). `functions_02.format_timedelta(td)` (since 0.2.1i) is the canonical countdown formatter for work / training / adventure timers — produces `Yг Mмес Wнед Dд H:MM:SS`. The JS `formatRemaining(seconds)` in `web/templates/dashboard.html` mirrors it constant-for-constant (year=365d, month=30d, week=7d) so CLI and web show identical strings for the same state. Existing `functions_02.time(x)` (minutes → "H час M мин." with colorama) is a separate display helper for activity costs in gym/work/adventure cost menus and is unchanged.
 - `settings.py` — `debug_mode` flag consumed by many modules for verbose logging.
 
 ### Tests

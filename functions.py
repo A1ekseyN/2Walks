@@ -8,6 +8,7 @@ from datetime import datetime
 
 from adventure import Adventure
 from bonus import equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
+from functions_02 import format_timedelta
 from locations import icon_loc
 from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def, speed_skill_equipment_and_level_bonus
@@ -90,16 +91,14 @@ def status_bar(state: GameState):
 
     print(f'Вы находитесь в локации: {icon_loc(state)} {Fore.GREEN}{state.loc.title()}{Style.RESET_ALL}.')
     if state.training.active:
-        skill_end_time = state.training.time_end - datetime.fromtimestamp(datetime.now().timestamp())
-        skill_end_time = str(skill_end_time).split('.')[0]
+        skill_end_time = format_timedelta(state.training.time_end - datetime.fromtimestamp(datetime.now().timestamp()))
         # Уровень изучаемого скилла читается динамически: имя в state.training.skill_name
         # совпадает с атрибутом state.gym (stamina, energy_max_skill, speed_skill, ...).
         current_level = getattr(state.gym, state.training.skill_name)
         print(f'\t🏋 Улучшаем навык - {state.training.skill_name.title()} до {Fore.LIGHTCYAN_EX}{current_level + 1}{Style.RESET_ALL} уровня.'
               f'\n\t🕑 Улучшение через: {Fore.LIGHTBLUE_EX}{skill_end_time}{Style.RESET_ALL}.')
     if state.work.active:
-        work_end_time = state.work.end - datetime.fromtimestamp(datetime.now().timestamp())
-        work_end_time = str(work_end_time).split('.')[0]
+        work_end_time = format_timedelta(state.work.end - datetime.fromtimestamp(datetime.now().timestamp()))
         print(f'\t🏭 Место работы: {state.work.work_type.title()} (💰: + {Fore.LIGHTYELLOW_EX}{state.work.salary * state.work.hours}{Style.RESET_ALL} $).'
               f'\n\t🕑 Конец смены через: {Fore.LIGHTBLUE_EX}{work_end_time}{Style.RESET_ALL}.')
     if state.adventure.active:

@@ -153,6 +153,27 @@ def test_dashboard_loads_pico_and_htmx_cdn():
     assert "htmx.org" in body
 
 
+def test_dashboard_format_remaining_js_constants_match_python():
+    """0.2.1i / задача 2.10: JS `formatRemaining` использует те же константы
+    что Python `format_timedelta` (365 дней год, 30 дней месяц, 7 дней неделя)
+    и те же суффиксы (г / мес / нед / д). Если конста разойдутся, CLI и web
+    покажут разные значения для одного и того же state."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    # Константы должны быть в JS-коде.
+    assert "_SEC_YEAR = 365 * 24 * 3600" in body
+    assert "_SEC_MONTH = 30 * 24 * 3600" in body
+    assert "_SEC_WEEK = 7 * 24 * 3600" in body
+    assert "_SEC_DAY = 24 * 3600" in body
+    # Суффиксы (внутри template-литералов).
+    assert "${y}г" in body
+    assert "${mo}мес" in body
+    assert "${w}нед" in body
+    assert "${d}д" in body
+
+
 def test_dashboard_shows_location_icon_and_name():
     state = GameState.default_new_game()
     state.loc = "gym"
