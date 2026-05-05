@@ -22,7 +22,9 @@ def _next_skill_level(state: GameState, skill_name: str) -> int:
     """Уровень, до которого мы прокачиваем навык. Все 8 навыков теперь
     единообразно — `state.gym.<skill_name> + 1` (после унификации в 0.2.1g
     ключ `'energy_max_skill'` тоже соответствует field-name)."""
-    return getattr(state.gym, skill_name) + 1
+    # cast(int) — mypy не умеет вывести тип через getattr(..., dynamic name).
+    current: int = getattr(state.gym, skill_name)
+    return current + 1
 
 
 def _training_cost(state: GameState, skill_name: str) -> dict:
@@ -270,9 +272,11 @@ class Skill_Training:
         try_spend(state, steps=steps_needed, energy=cost['energy'], money=cost['money'])
 
         # Установка таймера тренировки.
-        skill_training_time = round(cost['time']) * 60
-        skill_training_time = _apply_speed_bonus(skill_training_time, state)
-        time_end = datetime.fromtimestamp(datetime.now().timestamp() + skill_training_time)
+        # base_seconds — int (round * 60), adjusted_seconds — float после
+        # speed-бонуса. Разные имена чтобы mypy не ругался на int *= float.
+        base_seconds = round(cost['time']) * 60
+        adjusted_seconds = _apply_speed_bonus(base_seconds, state)
+        time_end = datetime.fromtimestamp(datetime.now().timestamp() + adjusted_seconds)
         actions_start_training(state, skill_name=self.name, time_end=time_end,
                                timestamp=datetime.now().timestamp())
 

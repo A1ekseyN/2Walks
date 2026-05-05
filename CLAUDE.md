@@ -31,7 +31,12 @@ python migrate_sheets.py
 
 # Drop-rate Monte-Carlo simulation (5 luck × 7 difficulty × 10k iterations on real Drop_Item)
 python drop_test_montecarlo.py
+
+# Static type check (mypy with permissive baseline — see mypy.ini)
+mypy .
 ```
+
+Dev-only deps (mypy и т.д.) живут в `requirements-dev.txt` — установка `pip install -r requirements-dev.txt`. Основные runtime-зависимости — `requirements.txt`.
 
 CLI и web — отдельные процессы, у каждого свой `game.state`. В MVP запускаем только что-то одно за раз; sync resolution CLI ↔ Web — задача 4.54.
 
@@ -124,7 +129,9 @@ Non-trivial mutations go through `actions.py` to keep invariants in one place:
 
 ### Type hints
 
-Since 0.2.1j-r (task 5.1, 05.05.2026) the codebase has ~100% type hint coverage across all modules — `state.py`, `actions.py`, `bonus.py`, `equipment_bonus.py`, `skill_bonus.py`, `level.py`, `characteristics.py`, `gym.py`, `work.py`, `adventure.py`, `inventory.py`, `equipment.py`, `shop.py`, `functions.py`, `functions_02.py`. Hint-only режим — mypy / static analyzer **не подключён** (отдельная задача 5.4 на будущее), хинты используются для IDE autocomplete и читателя кода. New code should add hints by default. Pattern: parameters `state: GameState`, return types explicit (`-> bool`, `-> None`, `-> tuple[X, Y]`). `Optional[X]` from `typing` for nullable params; `dict[str, int]` / `list[dict]` parameterized where structure is known. Item dicts (`state.inventory`, `state.equipment.<slot>`) typed as plain `dict` — TypedDict postponed to task 1.6 (Items as dataclass).
+Since 0.2.1j-r (task 5.1, 05.05.2026) the codebase has ~100% type hint coverage across all modules — `state.py`, `actions.py`, `bonus.py`, `equipment_bonus.py`, `skill_bonus.py`, `level.py`, `characteristics.py`, `gym.py`, `work.py`, `adventure.py`, `inventory.py`, `equipment.py`, `shop.py`, `functions.py`, `functions_02.py`. Since 0.2.1u (task 5.6, 02.05.2026) **mypy подключён** — конфиг в `mypy.ini` с пермиссивным baseline (`disallow_untyped_defs=False`, `strict_optional=False`, `ignore_missing_imports=True`), запуск через `mypy .`, на момент подключения 0 ошибок. CI step пока не настроен (нет CI вообще), запускается локально перед коммитами. New code should add hints by default. Pattern: parameters `state: GameState`, return types explicit (`-> bool`, `-> None`, `-> tuple[X, Y]`). `Optional[X]` from `typing` for nullable params; `dict[str, int]` / `list[dict]` parameterized where structure is known. Item dicts (`state.inventory`, `state.equipment.<slot>`) typed as plain `dict` — TypedDict postponed to task 1.6 (Items as dataclass).
+
+Один из побочных эффектов подключения mypy — обнаружен и исправлен реальный runtime-баг в `state.AdventureSession.end_ts` (5.6.1): тип был `Optional[datetime]`, а на запись/чтение всегда использовался Unix timestamp (`float`). `_deser_datetime(float)` возвращал `None`, поэтому `adventure_end_timestamp` терялся при каждом load — игрок терял прогресс активного приключения после reload/restart. Тип переведён на `Optional[float]`, `from_dict` читает значение напрямую без `_deser_datetime`. Урок: type-mismatch не всегда косметика — иногда это потерянное состояние.
 
 ### Tests
 

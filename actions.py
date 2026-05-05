@@ -91,9 +91,13 @@ def start_adventure(
     state: GameState,
     name: str,
     start_ts: float,
-    end_ts: datetime,
+    end_ts: float,
 ) -> None:
-    """Включает приключение — выставляет state.adventure."""
+    """Включает приключение — выставляет state.adventure.
+
+    `start_ts` и `end_ts` — оба float Unix timestamps (5.6.1 — 0.2.1u).
+    Раньше end_ts был объявлен `datetime` но фактически передавался как
+    int/float — несоответствие типа поправлено."""
     state.adventure.active = True
     state.adventure.name = name
     state.adventure.start_ts = start_ts

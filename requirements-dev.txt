@@ -1,0 +1,9 @@
+# Dev-dependencies (linters, type-checkers, test extras).
+# Установка:
+#   source .venv/bin/activate && pip install -r requirements-dev.txt
+#
+# В runtime ничего из этого файла не нужно — production install:
+#   pip install -r requirements.txt
+
+# Static type checker (задача 5.6 — Подключить mypy).
+mypy>=1.8.0

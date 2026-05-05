@@ -110,7 +110,7 @@ def apply_steps_log_max_merge(state: GameState) -> None:
 
 def load_characteristic() -> dict:
     """Функция для считывания сохранения из csv файла"""
-    char_characteristic = {}
+    char_characteristic: dict[str, Any] = {}
 
     with open("characteristic.csv", mode='r', encoding='utf-8') as file:
         csv_reader = csv.reader(file)

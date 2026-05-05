@@ -53,11 +53,11 @@ def apply_move_optimization_adventure(steps: dict, state: GameState) -> dict:
 
 def apply_move_optimization_gym(steps: int, state: GameState) -> int:
     """Уменьшает требуемые шаги для Gym на % прокачки соответствующего навыка."""
-    steps *= (1 - state.gym.move_optimization_gym / 100)
-    return int(steps)
+    adjusted = steps * (1 - state.gym.move_optimization_gym / 100)
+    return int(adjusted)
 
 
 def apply_move_optimization_work(steps: int, state: GameState) -> int:
     """Уменьшает требуемые шаги для Work на % прокачки соответствующего навыка."""
-    steps *= (1 - state.gym.move_optimization_work / 100)
-    return int(steps)
+    adjusted = steps * (1 - state.gym.move_optimization_work / 100)
+    return int(adjusted)

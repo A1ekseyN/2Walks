@@ -44,7 +44,7 @@ def _unequip(state: GameState, slot_attr: str) -> Optional[dict]:
 
     Возвращает снятый предмет или None, если слот был пуст.
     """
-    item = getattr(state.equipment, slot_attr)
+    item: Optional[dict] = getattr(state.equipment, slot_attr)
     if item is None:
         return None
     setattr(state.equipment, slot_attr, None)

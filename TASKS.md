@@ -2355,6 +2355,69 @@ UI-функции с `input()` / `print()`. 26 функций суммарно:
 
 ---
 
+### 5.6. Подключить mypy + конфиг + cleanup ошибок (зонтичная) `[M / S / done (0.2.1u)]`
+
+Follow-up к 5.1 (Type hints — done в 0.2.1j-r). После добавления аннотаций сами хинты не enforce'аются — mypy их проверяет статически и ловит несоответствия типов. Эта задача — про **подключение mypy** в проект и **fix всех ошибок** на permissive baseline.
+
+**Подключение (done в 0.2.1u):**
+- Создан `requirements-dev.txt` с `mypy>=1.8.0` (отделили dev-deps от runtime).
+- Создан `mypy.ini` с permissive базой: python 3.13, `warn_return_any`, `warn_unused_configs`, `warn_redundant_casts`, `warn_unused_ignores`, `ignore_missing_imports=True` (gspread/colorama без stubs), `disallow_untyped_defs=False`, `strict_optional=False` (item dicts ждут 1.6).
+- `pip install -r requirements-dev.txt` → mypy 1.20.2 установлен.
+
+**Первый прогон (`mypy .`):** 29 ошибок в 9 файлах. Категории:
+- 🔴 Реальный баг типизации `state.adventure.end_ts` (5 ошибок) — поле объявлено как `Optional[datetime]`, но в коде везде используется как `Optional[float]` (Unix timestamp). Save format уже хранит float. Выделено в подзадачу **5.6.1**.
+- 🟡 `int *= float` в bonus.py / gym.py / inventory.py / characteristics.py — runtime ОК (есть `int(x)` в return), но mypy ругается на присвоение float в int-переменную. Локальная переменная-float фиксит.
+- 🟡 `getattr(state.gym, name) -> Any` в gym.py / equipment.py / web/main.py — mypy не знает что state.gym имеет только int-поля. Fix: `cast(int, getattr(...))` или `# type: ignore[no-any-return]`.
+- 🟢 `load_characteristic -> dict` polymorphic value types — fix `dict[str, Any]`.
+- 🟢 gspread `value_input_option="USER_ENTERED"` ожидает enum `ValueInputOption`, не str — выделено в подзадачу **5.6.2**.
+- 🟢 Прочие single-line (drop.py annotation для local var, и т.п.).
+
+**После cleanup ожидаем:** 0 ошибок mypy на permissive baseline. Дальше можно ужесточить (`disallow_untyped_defs`, `strict_optional`) — но это отдельная задача.
+
+**Вне scope:**
+- TypedDict для item dicts (ждёт 1.6).
+- CI integration (нет CI в проекте — отдельная задача когда понадобится).
+- Strict mode (`--strict`) — после permissive baseline.
+
+#### 5.6.1. Fix `state.adventure.end_ts` type mismatch `[L / XS / done (0.2.1u)]`
+
+В `state.py:AdventureSession`:
+```python
+end_ts: Optional[datetime] = None       # was adventure_end_timestamp
+```
+
+Но в коде везде используется как float (Unix timestamp):
+- `adventure.py:64,75`: `state.adventure.end_ts <= datetime.now().timestamp()` — сравнение datetime с float.
+- `adventure.py:77`: `datetime.fromtimestamp(state.adventure.end_ts)` — `fromtimestamp()` ожидает float.
+- `adventure.py:194`: `actions.start_adventure(state, ..., end_ts=now_ts + adv_time*60)` — передаётся int.
+- `adventure.py:206`: `state.adventure.end_ts - datetime.now().timestamp()` — datetime - float.
+- `web/main.py:557`: тот же datetime <= float.
+
+Save format (`state.from_dict`) уже читает `adventure_end_timestamp` как float **без** `_deser_datetime`. То есть runtime тип всегда float, dataclass-аннотация неверна.
+
+**Fix:** заменить `end_ts: Optional[datetime]` → `Optional[float]` в `AdventureSession`, обновить `Adventure.start_adventure(end_ts: float)` сигнатуру (сейчас `: datetime`). Save round-trip не ломается — поле уже float в сейвах.
+
+**Migration:** не нужна — данные уже float, только аннотация была неправильной.
+
+#### 5.6.2. Mypy: gspread `ValueInputOption` enum `[L / XS / done (0.2.1u)]`
+
+В `google_sheets_db.py:216`:
+```python
+ws.append_row(entry, value_input_option='USER_ENTERED')
+```
+
+Mypy ругается: `Argument "value_input_option"... has incompatible type "str"; expected "ValueInputOption"`. Это типовое ужесточение API gspread в новых версиях.
+
+**Fix варианты:**
+- (A) Импортировать enum: `from gspread.utils import ValueInputOption` → `value_input_option=ValueInputOption.user_entered`.
+- (B) `# type: ignore[arg-type]` если хотим оставить string-литерал (gspread runtime принимает обе формы).
+
+**Решить при реализации.** Подкаст в отдельную подзадачу — изменение касается только gspread API.
+
+**Сделано (05.05.2026, 0.2.1u):** выбран вариант (A) — импорт enum: `from gspread.utils import ValueInputOption` + использование `value_input_option=ValueInputOption.user_entered`. Чище чем `# type: ignore`, mypy теперь проходит. Test mock'ам в test_sheets_repo.py не пострадали — мы мокаем worksheet, а не enum.
+
+---
+
 ## Большая цель
 
 **Текущий фокус (апрель 2026):** наладить надёжную синхронизацию шагов iPhone -> Google Sheet + закрыть накопленные баги.

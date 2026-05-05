@@ -163,19 +163,35 @@ def test_datetime_fields_preserved_round_trip():
 
 
 def test_datetime_string_parsed_on_load():
-    """Если datetime приходит как строка (legacy CSV format) — парсится в datetime."""
+    """Legacy CSV format: datetime-строки для training_time_end / working_end
+    парсятся в datetime через _deser_datetime. adventure_end_timestamp после
+    задачи 5.6.1 (0.2.1u) — float Unix timestamp, не datetime, проверка ниже
+    в test_adventure_end_ts_is_float."""
     legacy = {
         'skill_training_time_end': '2026-04-29 14:00:00.000000',
         'working_end': '2026-04-29 16:00:00.000000',
-        'adventure_end_timestamp': '2026-04-29 18:00:00.000000',
     }
     s = GameState.from_dict(legacy)
     assert isinstance(s.training.time_end, datetime)
     assert s.training.time_end == datetime(2026, 4, 29, 14, 0, 0)
     assert isinstance(s.work.end, datetime)
     assert s.work.end == datetime(2026, 4, 29, 16, 0, 0)
-    assert isinstance(s.adventure.end_ts, datetime)
-    assert s.adventure.end_ts == datetime(2026, 4, 29, 18, 0, 0)
+
+
+def test_adventure_end_ts_is_float():
+    """5.6.1 (0.2.1u): adventure_end_timestamp — Unix ts (float), не datetime.
+    Раньше через _deser_datetime float-значение → None (баг типизации).
+    Теперь читается напрямую как float."""
+    save = {'adventure_end_timestamp': 1777900000.5}
+    s = GameState.from_dict(save)
+    assert s.adventure.end_ts == 1777900000.5
+    assert isinstance(s.adventure.end_ts, float)
+
+
+def test_adventure_end_ts_none_when_missing():
+    """Без adventure_end_timestamp в save — end_ts = None (default)."""
+    s = GameState.from_dict({})
+    assert s.adventure.end_ts is None
 
 
 def test_partial_dict_uses_defaults_for_missing():

@@ -204,7 +204,7 @@ class Wear_Equipped_Items:
 
     def reduce_wear(self, steps: int) -> None:
         """Уменьшает износ предметов с дополнительным учётом neatness (legacy API)."""
-        reduced_steps = steps * (1 - (self._state.gym.neatness_in_using_things / 100))
+        reduced_steps = int(steps * (1 - (self._state.gym.neatness_in_using_things / 100)))
         self.decrease_durability(reduced_steps)
 
     def view_wear_reduce_change(self, item_name: str, initial_quality: float,

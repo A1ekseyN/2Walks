@@ -19,7 +19,7 @@ CLI (``python game.py``) и web (``uvicorn``) — отдельные проце�
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -55,7 +55,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.1t"
+VERSION = "0.2.1u"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -192,7 +192,7 @@ def _validate_and_apply_skill_allocation(state, skill: str) -> Optional[str]:
 # `field` — атрибут в state.gym, через который читается current level. Для
 # 'energy_max_skill' field теперь корректно совпадает с именем (после унификации
 # в 0.2.1g / 4.48.4.1 — старый ключ 'energy_max' переименован в 'energy_max_skill').
-_GYM_SKILL_DISPLAY = {
+_GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
     "stamina": {
         "title": "Stamina", "icon": "🏃",
         "field": "stamina",
@@ -321,7 +321,8 @@ def _validate_and_apply_training(state, skill_name: str) -> Optional[str]:
         return f"Неизвестный навык: {skill_name}"
     meta = _GYM_SKILL_DISPLAY[skill_name]
     if not meta.get("available", True):
-        return meta.get("unavailable_reason", f"Навык '{skill_name}' недоступен.")
+        reason: str = meta.get("unavailable_reason", f"Навык '{skill_name}' недоступен.")
+        return reason
     if state.training.active:
         return "Тренировка уже идёт — дождись окончания текущей."
 
@@ -389,7 +390,7 @@ def _compute_progress_pct(start_ts, end_ts, now_ts) -> float:
     """
     if start_ts is None or end_ts is None or end_ts <= start_ts:
         return 0.0
-    return max(0.0, min(100.0, (now_ts - start_ts) / (end_ts - start_ts) * 100))
+    return float(max(0.0, min(100.0, (now_ts - start_ts) / (end_ts - start_ts) * 100)))
 
 
 class StepsAppliedResult:

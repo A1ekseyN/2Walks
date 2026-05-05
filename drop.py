@@ -177,7 +177,7 @@ class Drop_Item:
 
     def item_collect(self, hard, state: GameState):
         """Собирает item из подразделов. Если все поля валидны — кладёт в state.inventory."""
-        item = {
+        item: dict[str, list] = {
             'item_name': [],
             'item_type': [],
             'grade': [],

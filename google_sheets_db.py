@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Optional
 
 import gspread
+from gspread.utils import ValueInputOption
 from oauth2client.service_account import ServiceAccountCredentials
 
 from config import (
@@ -213,7 +214,7 @@ class StepsLogRepo:
         """Добавляет одну запись в лог. Fail-fast при сетевой ошибке."""
         ws = self._ensure_sheet()
         entry = _format_steps_entry(ts, user_id, steps, source)
-        ws.append_row(entry, value_input_option='USER_ENTERED')
+        ws.append_row(entry, value_input_option=ValueInputOption.user_entered)
 
     def for_day(self, date_str: str, user_id: str = DEFAULT_USER_ID) -> list:
         """Возвращает все записи лога за указанный день для пользователя.

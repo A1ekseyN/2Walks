@@ -1,7 +1,7 @@
 """Adventure — приключения, проверка таймера, дроп предметов."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from colorama import Fore, Style
 
@@ -35,7 +35,10 @@ class Adventure:
     def __init__(self, adventure_data_table: dict, state: GameState) -> None:
         self._state = state
         self.adventure_data_table = adventure_data_table
-        self.adventures = {
+        # dict[str, dict[str, Any]] — внутренние values имеют mixed types
+        # ('name': str, 'data': dict). Без явного annotate mypy выводит
+        # Collection[Any] и индексация adv['data']['steps'] становится ошибкой.
+        self.adventures: dict[str, dict[str, Any]] = {
             '1': {'name': 'walk_easy', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_easy']), self._state)},
             '2': {'name': 'walk_normal', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_normal']), self._state)},
             '3': {'name': 'walk_hard', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_hard']), self._state)},

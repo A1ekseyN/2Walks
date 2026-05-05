@@ -96,7 +96,7 @@ class AdventureSession:
     active: bool = False                    # was 'adventure'
     name: Optional[str] = None              # was adventure_name
     start_ts: Optional[float] = None        # was adventure_start_timestamp
-    end_ts: Optional[datetime] = None       # was adventure_end_timestamp
+    end_ts: Optional[float] = None          # was adventure_end_timestamp — float Unix ts
     counters: dict[str, int] = field(default_factory=lambda: {
         'walk_easy': 0,
         'walk_normal': 0,
@@ -223,7 +223,11 @@ class GameState:
                 active=bool(d.get('adventure', False)),
                 name=d.get('adventure_name'),
                 start_ts=d.get('adventure_start_timestamp'),
-                end_ts=_deser_datetime(d.get('adventure_end_timestamp')),
+                # 5.6.1 (0.2.1u): end_ts — Optional[float] Unix timestamp (раньше
+                # был объявлен Optional[datetime] и через _deser_datetime, что
+                # некорректно конвертировало float→None). Save format всегда был
+                # float, теперь тип совпадает.
+                end_ts=d.get('adventure_end_timestamp'),
                 counters={
                     'walk_easy': int(d.get('adventure_walk_easy_counter', 0)),
                     'walk_normal': int(d.get('adventure_walk_normal_counter', 0)),
