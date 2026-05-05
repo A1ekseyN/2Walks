@@ -14,17 +14,18 @@ Save format CSV / Google Sheets остаётся неизменным: `to_dict(
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 
 # Формат datetime в CSV save (тот же, что в characteristics.py:load_characteristic).
 _DATETIME_FMT = '%Y-%m-%d %H:%M:%S.%f'
 
 
-def _deser_datetime(v):
+def _deser_datetime(v: Any) -> Optional[datetime]:
     """Толерантная конвертация в datetime.
 
-    Принимает datetime / str (legacy CSV format) / None. Возвращает datetime или None.
+    Принимает datetime / str (legacy CSV format) / None / любой другой тип.
+    Возвращает datetime или None при невалидном вводе.
     """
     if v is None or v == '' or v == 'None':
         return None
@@ -96,7 +97,7 @@ class AdventureSession:
     name: Optional[str] = None              # was adventure_name
     start_ts: Optional[float] = None        # was adventure_start_timestamp
     end_ts: Optional[datetime] = None       # was adventure_end_timestamp
-    counters: dict = field(default_factory=lambda: {
+    counters: dict[str, int] = field(default_factory=lambda: {
         'walk_easy': 0,
         'walk_normal': 0,
         'walk_hard': 0,
@@ -139,7 +140,10 @@ class GameState:
     work: WorkSession = field(default_factory=WorkSession)
     adventure: AdventureSession = field(default_factory=AdventureSession)
     equipment: Equipment = field(default_factory=Equipment)
-    inventory: list = field(default_factory=list)
+    # Item dicts имеют структуру {item_name: [str], bonus: [int], ...} (списки в
+    # полях — legacy decision). Полная типизация TypedDict откладывается до
+    # задачи 1.6 (Items as dataclass) — сейчас только `list[dict]`.
+    inventory: list[dict] = field(default_factory=list)
 
     @classmethod
     def default_new_game(cls) -> "GameState":

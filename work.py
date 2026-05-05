@@ -1,6 +1,8 @@
 """Work — рабочая смена. Выбор вакансии, расчёт часов, финализация по таймеру."""
 
 from datetime import datetime, timedelta
+from typing import Optional
+
 from colorama import Fore, Style
 
 from characteristics import save_characteristic
@@ -21,7 +23,7 @@ def _speed_bonus_pct(state: GameState) -> int:
 class Work:
     """Класс для работы — UI выбора + старт сессии."""
 
-    def __init__(self, state: GameState):
+    def __init__(self, state: GameState) -> None:
         self._state = state
         self.work_requirements = {
             'watchman': {'steps': apply_move_optimization_work(200, self._state), 'energy': 4, 'salary': 2},
@@ -30,7 +32,7 @@ class Work:
             'forwarder': {'steps': apply_move_optimization_work(5000, self._state), 'energy': 30, 'salary': 50},
         }
 
-    def work_choice(self):
+    def work_choice(self) -> Optional[str]:
         state = self._state
         if state.work.active:
             self.add_working_hours(state.work.work_type)
@@ -57,7 +59,7 @@ class Work:
                 return working
             print('\nВы ввели не правильные данные. Попробуйте еще раз.')
 
-    def ask_hours(self, work):
+    def ask_hours(self, work: str) -> None:
         state = self._state
         # Цикл retry на невалиде / ValueError (1.5.1 — 0.2.1h).
         while True:
@@ -92,7 +94,7 @@ class Work:
                 return
             print(f'\nНужно ввести число рабочих часов в диапазоне 1 - {max_available_hours}.')
 
-    def add_working_hours(self, work):
+    def add_working_hours(self, work: str) -> None:
         state = self._state
         print(f'\nПерсонаж на работе. Вы можете добавить несколько рабочих часов.'
               f'\nМесто работы: {Fore.GREEN}{state.work.work_type.title()}{Style.RESET_ALL}, '
@@ -108,7 +110,7 @@ class Work:
         else:
             self.work_choice()
 
-    def check_requirements(self, work, working_hours):
+    def check_requirements(self, work: str, working_hours: int) -> bool:
         """Атомарно проверяет ресурсы и стартует/продлевает рабочую сессию."""
         state = self._state
         if working_hours < 1:
@@ -157,8 +159,10 @@ class Work:
         return True
 
 
-def work_check_done(state: GameState):
-    """Финализатор работы по таймеру: начислить зарплату, обнулить смену, save."""
+def work_check_done(state: GameState) -> GameState:
+    """Финализатор работы по таймеру: начислить зарплату, обнулить смену, save.
+
+    Возвращает state (мутированный или нет) — для удобной chain-композиции."""
     if state.work.end is None:
         return state
 

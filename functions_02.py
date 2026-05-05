@@ -3,8 +3,17 @@ from datetime import timedelta
 from colorama import Fore, Style
 
 
-def time(x):
-    # Функция для преобразования времени в часы и минуты.
+def time(x: int) -> str:
+    """Функция для преобразования времени в часы и минуты.
+
+    Принимает количество минут, возвращает строку с colorama-кодами:
+    - x <= 60 → "X мин."
+    - x > 60  → "H час M мин."
+
+    Используется для отображения стоимости активностей (gym/work/adventure)
+    в minutes. Для countdown-таймеров используйте `format_timedelta(td)` —
+    он умеет в дни / недели / месяцы / годы.
+    """
     if x <= 60:
         return f'{Fore.LIGHTBLUE_EX}{x}{Style.RESET_ALL} мин.'
     elif x > 60:

@@ -4,6 +4,8 @@
 UI-обёртки в Equipment.* остаются с input/print.
 """
 
+from typing import Optional
+
 from inventory import inventory_view
 from state import GameState
 
@@ -22,7 +24,7 @@ _SLOT_ATTR = {
 
 # ----- Чистая логика -----
 
-def _equip_from_inventory(state: GameState, slot_attr: str, inventory_index: int):
+def _equip_from_inventory(state: GameState, slot_attr: str, inventory_index: int) -> tuple[dict, Optional[dict]]:
     """Надеть предмет из inventory[index] на слот state.equipment.<slot_attr>.
 
     Если слот занят — старый предмет возвращается в inventory.
@@ -37,7 +39,7 @@ def _equip_from_inventory(state: GameState, slot_attr: str, inventory_index: int
     return new_item, prev_item
 
 
-def _unequip(state: GameState, slot_attr: str):
+def _unequip(state: GameState, slot_attr: str) -> Optional[dict]:
     """Снять предмет со слота — возвращается в inventory.
 
     Возвращает снятый предмет или None, если слот был пуст.
@@ -56,7 +58,7 @@ class Equipment:
     """Отображение и смена экипировки. Все методы фактически статические — `self`
     в них не используется (вызовы передают `self=None`)."""
 
-    def equipment_view(self, state: GameState):
+    def equipment_view(self, state: GameState) -> None:
         eq = state.equipment
 
         print('\n--- 🎒 Экипировка персонажа 🎒 ---')
@@ -98,7 +100,7 @@ class Equipment:
         print('0. Назад')
         Equipment.equipment_change(self, state)
 
-    def equipment_change(self, state: GameState):
+    def equipment_change(self, state: GameState) -> None:
         slot_map = {
             '1': ('голова',           'helmet',   'equipment_head'),
             '2': ('шея',              'necklace', 'equipment_neck'),
@@ -117,7 +119,8 @@ class Equipment:
             if ask == '0':
                 return
 
-    def equipment_change_item_in_slot(self, item_name, item_type, item_slot, state: GameState):
+    def equipment_change_item_in_slot(self, item_name: str, item_type: str,
+                                       item_slot: str, state: GameState) -> None:
         slot_attr = _SLOT_ATTR[item_slot]
         cnt = 0
         list_cnt = []
@@ -148,7 +151,8 @@ class Equipment:
 
         Equipment.change_item_in_slot(self, item_name, item_type, item_slot, list_cnt, state)
 
-    def change_item_in_slot(self, item_name, item_type, item_slot, list_cnt, state: GameState):
+    def change_item_in_slot(self, item_name: str, item_type: str, item_slot: str,
+                             list_cnt: list[int], state: GameState) -> None:
         slot_attr = _SLOT_ATTR[item_slot]
         # Цикл retry на ValueError / невалидном индексе (1.5.2 — 0.2.1h).
         while True:
@@ -186,6 +190,6 @@ class Equipment:
                 return
             print('\nПопробуйте еще раз ввести число: ')
 
-    def inventory_view(self, state: GameState):
+    def inventory_view(self, state: GameState) -> None:
         print(f'\nВ инвентаре находится {len(state.inventory)} предметов: ')
         inventory_view(state)

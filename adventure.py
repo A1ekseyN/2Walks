@@ -1,6 +1,8 @@
 """Adventure — приключения, проверка таймера, дроп предметов."""
 
 from datetime import datetime
+from typing import Optional
+
 from colorama import Fore, Style
 
 from adventure_data import adventure_data_table
@@ -30,7 +32,7 @@ _ADV_COUNTER_KEYS = {
 class Adventure:
     """Приключения: меню, выбор, старт, финализация."""
 
-    def __init__(self, adventure_data_table, state: GameState):
+    def __init__(self, adventure_data_table: dict, state: GameState) -> None:
         self._state = state
         self.adventure_data_table = adventure_data_table
         self.adventures = {
@@ -50,7 +52,7 @@ class Adventure:
                 f'🕑: {time(speed_skill_equipment_and_level_bonus(adv["data"]["time"], self._state))}'
             )
 
-    def adventure_check_done(self, state: GameState = None):
+    def adventure_check_done(self, state: Optional[GameState] = None) -> None:
         """Финализатор приключения по таймеру: дроп + инкремент счётчика + clear.
 
         Поддерживает legacy-вызов `Adventure.adventure_check_done(self=None, state=state)` —
@@ -79,7 +81,7 @@ class Adventure:
             print(f'\t🗺️ Персонаж находится в Приключении: {state.adventure.name.title()}.')
             print(f'\t🕑 Персонаж вернется через: {Fore.LIGHTBLUE_EX}{adv_end}{Style.RESET_ALL}')
 
-    def _render_adventure_menu(self):
+    def _render_adventure_menu(self) -> None:
         """Печать меню приключений с условной разблокировкой по counters.
         Вынесено в helper (1.5.5 — 0.2.1h), чтобы тело adventure_menu loop'а
         не раздувалось до 50 строк."""
@@ -125,13 +127,13 @@ class Adventure:
 
         print('\t0. Выход')
 
-    def adventure_menu(self):
+    def adventure_menu(self) -> None:
         # adventure_menu теперь только entry-point — вся retry-логика в
         # adventure_choice (1.5.5 — 0.2.1h, было: ping-pong рекурсия через
         # 2 функции).
         self.adventure_choice()
 
-    def adventure_choice(self):
+    def adventure_choice(self) -> None:
         # Цикл retry на невалиде (1.5.5 — 0.2.1h). Меню перерисовывается
         # на каждой итерации через _render_adventure_menu().
         while True:
@@ -153,7 +155,9 @@ class Adventure:
             if ask == '0':
                 return
 
-    def adventure_choice_confirmation(self, adv_name, adv_req, adv_steps, adv_energy, adv_time):
+    def adventure_choice_confirmation(self, adv_name: str, adv_req: str,
+                                       adv_steps: int, adv_energy: int,
+                                       adv_time: int) -> bool:
         # Цикл retry на невалиде (1.5.5 — 0.2.1h). Возвращает True если
         # приключение фактически стартовало (ресурсы хватили), иначе False
         # — caller (adventure_choice) перерисует меню.
@@ -168,7 +172,8 @@ class Adventure:
             if ask == '0':
                 return False
 
-    def check_requirements(self, adv_name, adv_steps, adv_energy, adv_time):
+    def check_requirements(self, adv_name: str, adv_steps: int,
+                           adv_energy: int, adv_time: int) -> bool:
         state = self._state
         if not try_spend(state, steps=adv_steps, energy=adv_energy):
             if state.steps.can_use < adv_steps:
@@ -182,7 +187,8 @@ class Adventure:
         Wear_Equipped_Items(state).decrease_durability(adv_steps)
         return True
 
-    def _enter_adventure(self, adv_name, adv_steps, adv_energy, adv_time):
+    def _enter_adventure(self, adv_name: str, adv_steps: int,
+                         adv_energy: int, adv_time: int) -> GameState:
         """Старт приключения после try_spend (списание уже произошло)."""
         state = self._state
         print(f'\nНачало приключения: {adv_name}')
@@ -203,10 +209,11 @@ class Adventure:
         return state
 
     # Сохраняем legacy-имя для совместимости с возможными внешними вызовами.
-    def start_adventure(self, adv_name, adv_steps, adv_energy, adv_time):
+    def start_adventure(self, adv_name: str, adv_steps: int,
+                        adv_energy: int, adv_time: int) -> GameState:
         return self._enter_adventure(adv_name, adv_steps, adv_energy, adv_time)
 
-    def get_adventure_requirement(self, adventure_key):
+    def get_adventure_requirement(self, adventure_key: str) -> str:
         base = self.adventure_data_table[adventure_key]
         final_time = speed_skill_equipment_and_level_bonus(base['time'], self._state)
         return (

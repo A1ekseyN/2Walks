@@ -25,35 +25,39 @@ def compute_energy_max(state: GameState) -> int:
     )
 
 
-def equipment_bonus_stamina_steps(state: GameState):
+def equipment_bonus_stamina_steps(state: GameState) -> int:
     # Бонус шагов через бонус экипировки.
     return round((state.steps.today / 100) * equipment_stamina_bonus(state))
 
 
-def daily_steps_bonus(state: GameState):
+def daily_steps_bonus(state: GameState) -> int:
     # Бонус за пройденное кол-во шагов, более 10к.
     return round((state.steps.today / 100) * state.steps.daily_bonus)
 
 
-def level_steps_bonus(state: GameState):
+def level_steps_bonus(state: GameState) -> int:
     """Бонус к кол-ву шагов в зависимости от уровня прокачки навыка."""
     return round((state.steps.today / 100) * state.char_level.skill_stamina)
 
 
-def apply_move_optimization_adventure(steps, state: GameState):
-    """Уменьшает требуемые шаги для Adventure на % прокачки соответствующего навыка."""
+def apply_move_optimization_adventure(steps: dict, state: GameState) -> dict:
+    """Уменьшает требуемые шаги для Adventure на % прокачки соответствующего навыка.
+
+    Принимает dict-запись из adventure_data_table (`{'steps': int, ...}`),
+    мутирует поле `steps` и возвращает тот же dict (in-place + return).
+    """
     steps['steps'] *= (1 - state.gym.move_optimization_adventure / 100)
     steps['steps'] = int(steps['steps'])
     return steps
 
 
-def apply_move_optimization_gym(steps, state: GameState):
+def apply_move_optimization_gym(steps: int, state: GameState) -> int:
     """Уменьшает требуемые шаги для Gym на % прокачки соответствующего навыка."""
     steps *= (1 - state.gym.move_optimization_gym / 100)
     return int(steps)
 
 
-def apply_move_optimization_work(steps, state: GameState):
+def apply_move_optimization_work(steps: int, state: GameState) -> int:
     """Уменьшает требуемые шаги для Work на % прокачки соответствующего навыка."""
     steps *= (1 - state.gym.move_optimization_work / 100)
     return int(steps)

@@ -1,6 +1,8 @@
 """Gym — прокачка навыков. UI + старт/финализация тренировки."""
 
 from datetime import datetime
+from typing import Optional
+
 from colorama import Fore, Style
 
 from characteristics import skill_training_table, save_characteristic, get_energy_training_data
@@ -61,7 +63,7 @@ def format_lvl_up_info(state: GameState, skill_name: str) -> str:
     )
 
 
-def get_lvl_up_info(skill_name, level, state: GameState):
+def get_lvl_up_info(skill_name: str, level: int, state: GameState) -> str:
     """Описание стоимости конкретного уровня навыка (используется в меню)."""
     cost = skill_training_table[level]
     return (
@@ -118,7 +120,7 @@ _SKILL_DESCRIPTIONS = {
 }
 
 
-def display_skill_description(skill_name, state: GameState):
+def display_skill_description(skill_name: str, state: GameState) -> None:
     """Печатает описание навыка + стоимость прокачки до следующего уровня."""
     if skill_name not in _SKILL_DESCRIPTIONS:
         return
@@ -145,7 +147,7 @@ def _render_gym_menu(state: GameState, skill_options: dict) -> None:
     print('\n\t0. Назад.')
 
 
-def gym_menu(state: GameState):
+def gym_menu(state: GameState) -> None:
     if state.training.active:
         print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
         skill_lvl = getattr(state.gym, state.training.skill_name)
@@ -204,7 +206,7 @@ def gym_menu(state: GameState):
         # просто перерисовываем меню (continue).
 
 
-def skill_training_check_done(state: GameState):
+def skill_training_check_done(state: GameState) -> None:
     """Финализатор тренировки — если таймер истёк, повышает уровень навыка и чистит сессию."""
     if debug_mode and not state.training.active:
         print('\nНавыки не изучаются.')
@@ -230,7 +232,7 @@ def skill_training_check_done(state: GameState):
 class Skill_Training:
     """Прокачка навыка в Gym — проверка ресурсов, старт сессии."""
 
-    def __init__(self, state: GameState, name: str = None):
+    def __init__(self, state: GameState, name: Optional[str] = None) -> None:
         self._state = state
         self.name = name
 
@@ -259,7 +261,7 @@ class Skill_Training:
         # `continue` при возврате False.
         return False
 
-    def start_skill_training(self):
+    def start_skill_training(self) -> GameState:
         state = self._state
         cost = skill_training_table[getattr(state.gym, self.name) + 1]
         steps_needed = apply_move_optimization_gym(cost['steps'], state)

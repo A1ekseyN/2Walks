@@ -4,12 +4,12 @@ from equipment_bonus import equipment_speed_skill_bonus
 from state import GameState
 
 
-def stamina_skill_bonus_def(state: GameState):
+def stamina_skill_bonus_def(state: GameState) -> int:
     # Бонус кол-ва шагов от навыка Stamina.
     return round(state.steps.today / 100) * state.gym.stamina
 
 
-def speed_skill_equipment_and_level_bonus(x, state: GameState):
+def speed_skill_equipment_and_level_bonus(x: int, state: GameState) -> int:
     # Уменьшение длительности на сумму speed-бонусов (gym + equipment + level).
     return int(x - (x / 100) * (
         state.gym.speed_skill

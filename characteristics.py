@@ -1,6 +1,6 @@
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 import csv
 import json
 import ast
@@ -108,7 +108,7 @@ def apply_steps_log_max_merge(state: GameState) -> None:
         state.steps.can_use = state.steps.today - state.steps.used + total_bonus_steps(state)
 
 
-def load_characteristic():
+def load_characteristic() -> dict:
     """Функция для считывания сохранения из csv файла"""
     char_characteristic = {}
 
@@ -146,7 +146,7 @@ def load_characteristic():
     return char_characteristic
 
 
-def load_data_from_google_sheet_or_csv():
+def load_data_from_google_sheet_or_csv() -> dict:
     """Сначала пытается загрузить данные из Google Sheets, при неудаче — CSV."""
     try:
         loaded = GameStateRepo().load()
@@ -347,7 +347,7 @@ skill_training_table = {
 }
 
 
-def get_skill_training(level):
+def get_skill_training(level: int) -> dict:
     """
     Возвращает параметры обучения для заданного уровня.
     Для уровней 1–30 используется статическая таблица (skill_training_table),
@@ -374,7 +374,7 @@ def get_skill_training(level):
         }
 
 
-def get_energy_training_data(level):
+def get_energy_training_data(level: int) -> dict:
     """
     Функция для расчёта необходимого уровня для прокачки.
     Данные берутся из переменной: skill_training_table, в которой есть таблица по прокачке.
@@ -401,17 +401,21 @@ DATE_KEYS = [
 ]
 
 
-def json_serial(obj):
+def json_serial(obj: Any) -> str:
     """
     Функция для преобразования str() -> datetime.
     Функция нужна для нормальной работы времени в игре.
+
+    Используется как `default` callback в `json.dump` — для несериализуемых
+    типов (datetime) возвращает строку, для неподдерживаемых типов
+    выбрасывает TypeError (контракт `json.dump`).
     """
     if isinstance(obj, datetime):
         return obj.strftime('%Y-%m-%d %H:%M:%S.%f')
     raise TypeError("Type not serializable")
 
 
-def save_characteristic():
+def save_characteristic() -> None:
     """Записывает характеристики в файл в формате JSON и CSV."""
     if game.state is None:
         raise RuntimeError("game.state не инициализирован — вызови init_game_state() до save_characteristic().")

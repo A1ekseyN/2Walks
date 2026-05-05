@@ -9,7 +9,7 @@ from state import GameState
 
 # ----- Чистая логика (тестируется напрямую) -----
 
-def _sort_inventory(inventory):
+def _sort_inventory(inventory: list[dict]) -> list[dict]:
     """Сортирует инвентарь по (item_type, characteristic, -bonus). Pure."""
     return sorted(
         inventory,
@@ -21,7 +21,7 @@ def _sort_inventory(inventory):
     )
 
 
-def _sell_item_at_index(state: GameState, index: int):
+def _sell_item_at_index(state: GameState, index: int) -> tuple[dict, int]:
     """Продажа предмета по индексу — мутирует state.inventory и state.money.
 
     Возвращает (item, refund). Refund добавляется к state.money.
@@ -39,7 +39,7 @@ def _sell_item_at_index(state: GameState, index: int):
 
 # ----- UI-обёртки -----
 
-def inventory_menu(state: GameState):
+def inventory_menu(state: GameState) -> None:
     # Цикл retry на невалиде (1.5.3 — 0.2.1h, было: рекурсивный self-call).
     while True:
         print('\n--- 🎒 Меню инвентаря 🎒 ---'
@@ -57,7 +57,7 @@ def inventory_menu(state: GameState):
             return
 
 
-def inventory_view(state: GameState):
+def inventory_view(state: GameState) -> list[dict]:
     """Отображает содержимое инвентаря и возвращает отсортированный список."""
     sorted_inventory = _sort_inventory(state.inventory)
 
@@ -77,7 +77,7 @@ def inventory_view(state: GameState):
     return sorted_inventory
 
 
-def sold_item(state: GameState):
+def sold_item(state: GameState) -> None:
     # Цикл retry на невалиде / ValueError / неподтверждении (1.5.3 — 0.2.1h).
     while True:
         print('\n--- Продажа предметов из инвентаря: ---')
@@ -134,13 +134,13 @@ class Wear_Equipped_Items:
     экипировка отражает актуальные слоты, а не зафиксированные в момент импорта.
     """
 
-    def __init__(self, state: GameState):
+    def __init__(self, state: GameState) -> None:
         self._state = state
         self.max_durability = 10000000
         self.durability = self.max_durability
         self.neatness_factor = 1 - (self._state.gym.neatness_in_using_things / 100)
 
-    def _slots(self):
+    def _slots(self) -> dict:
         """Текущие предметы по слотам: dict {legacy_key: item_dict_or_None}."""
         eq = self._state.equipment
         return {
@@ -153,7 +153,7 @@ class Wear_Equipped_Items:
             'equipment_foots': eq.foots,
         }
 
-    def decrease_durability(self, steps):
+    def decrease_durability(self, steps: int) -> None:
         """Уменьшает прочность всех экипированных предметов на adjusted_steps.
 
         adjusted_steps = steps * (1 - neatness/100). Качество <= 0 клэмпится в 0.
@@ -179,7 +179,7 @@ class Wear_Equipped_Items:
 
         self.recalc_item_prices()
 
-    def recalc_item_prices(self):
+    def recalc_item_prices(self) -> None:
         """Пересчитывает цену каждого предмета на основе обновлённого качества и грейда."""
         for key, item_info in self._slots().items():
             if item_info is None:
@@ -202,13 +202,16 @@ class Wear_Equipped_Items:
                 new_price = item_info.get('price', [0])[0]
             item_info['price'][0] = new_price
 
-    def reduce_wear(self, steps):
+    def reduce_wear(self, steps: int) -> None:
         """Уменьшает износ предметов с дополнительным учётом neatness (legacy API)."""
         reduced_steps = steps * (1 - (self._state.gym.neatness_in_using_things / 100))
         self.decrease_durability(reduced_steps)
 
-    def view_wear_reduce_change(self, item_name, initial_quality, steps, adjusted_steps,
-                                final_quality, wear_without_skill, wear_with_skill):
+    def view_wear_reduce_change(self, item_name: str, initial_quality: float,
+                                steps: int, adjusted_steps: float,
+                                final_quality: float,
+                                wear_without_skill: float,
+                                wear_with_skill: float) -> None:
         """Debug-вывод износа (по умолчанию выключен флагом show_changes)."""
         wear_reduction_percentage = ((steps - adjusted_steps) / steps) * 100
         saved_wear = wear_without_skill - wear_with_skill

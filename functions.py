@@ -17,12 +17,12 @@ from level import CharLevel
 from state import GameState
 
 
-def timestamp_now():
+def timestamp_now() -> float:
     """Возвращает TimeStamp в данный момент. Pure utility, state не требуется."""
     return datetime.now().timestamp()
 
 
-def energy_time_charge(state: GameState):
+def energy_time_charge(state: GameState) -> None:
     """Регенерация энергии во времени. Одна единица каждые
     speed_skill_equipment_and_level_bonus(60) секунд. При достижении
     energy_max регенерация приостанавливается, стамп синкается к now."""
@@ -60,7 +60,7 @@ def energy_time_charge(state: GameState):
             print(f'До следующей +1: {interval - remainder:.1f} sec.')
 
 
-def status_bar(state: GameState):
+def status_bar(state: GameState) -> None:
     """Отображение переменных: шагов, энергии, денег."""
     save_game_date_last_enter(state)  # детект смены дня + пересчёт steps_can_use до любых чтений (см. 2.12)
 
@@ -129,9 +129,11 @@ def _max_merge_today_from_log(state: GameState, date_str: str) -> None:
         state.steps.today = max_in_log
 
 
-def save_game_date_last_enter(state: GameState):
+def save_game_date_last_enter(state: GameState) -> int:
     """Проверка смены игрового дня. На новый день — сброс счётчиков и перенос
-    steps_today в steps_yesterday. В обоих случаях — пересчёт steps_can_use."""
+    steps_today в steps_yesterday. В обоих случаях — пересчёт steps_can_use.
+
+    Возвращает обновлённое значение `state.steps.can_use`."""
     now_date = datetime.now().date()
     last_enter_date_char = state.date_last_enter or None
 
@@ -163,7 +165,7 @@ def save_game_date_last_enter(state: GameState):
     return state.steps.can_use
 
 
-def steps_today_set(entered, state: GameState):
+def steps_today_set(entered: int, state: GameState) -> None:
     """Применяет max(текущий, введённый) к steps_today. Общая логика для
     интерактивного ввода и inline-команды `+N`. Mi Fitness -> Apple Health
     синхронизируется с задержкой, поэтому показания на браслете часто свежее
@@ -182,7 +184,7 @@ def steps_today_set(entered, state: GameState):
         print(f'Обновлено: {old:,} -> {new:,}.')
 
 
-def steps_today_manual_entry(state: GameState):
+def steps_today_manual_entry(state: GameState) -> None:
     """Интерактивный ручной ввод количества шагов через подменю."""
     try:
         entered = int(input('Введите текущее количество шагов с браслета:\n>>> '))
@@ -192,7 +194,7 @@ def steps_today_manual_entry(state: GameState):
     steps_today_set(entered, state)
 
 
-def char_info(state: GameState):
+def char_info(state: GameState) -> None:
     """Отображение характеристик персонажа."""
     print('\n################################')
     print('### Характеристики персонажа ###')
@@ -230,13 +232,13 @@ def char_info(state: GameState):
     print('####################################')
 
 
-def steps(state: GameState):
+def steps(state: GameState) -> int:
     """Возвращает кол-во шагов, доступных для траты сегодня (после пересчёта)."""
     save_game_date_last_enter(state)
     return state.steps.can_use
 
 
-def location_change_map(state: GameState):
+def location_change_map(state: GameState) -> None:
     """Перемещение между локациями на глобальной карте.
 
     Сейчас стоимость нулевая (placeholder для будущей механики 5/150)."""
@@ -244,17 +246,18 @@ def location_change_map(state: GameState):
     state.steps.used += 0
 
 
-def energy_timestamp(state: GameState):
+def energy_timestamp(state: GameState) -> float:
     """Обновляет timestamp последней регенерации энергии до now."""
     state.energy_time_stamp = datetime.now().timestamp()
     print('Energy TimeStamp Update - Function')
     return state.energy_time_stamp
 
 
-def today_steps_to_yesterday_steps(state: GameState):
+def today_steps_to_yesterday_steps(state: GameState) -> tuple[int, int]:
     """На новый день переносит steps_today → steps_yesterday и обновляет daily_bonus.
 
     Если за вчера >= 10k шагов — daily_bonus += 1, иначе сбрасывается в 0.
+    Возвращает (yesterday, daily_bonus) — кортеж новых значений.
     """
     state.steps.yesterday = state.steps.today
     if state.steps.yesterday >= 10000:
@@ -264,7 +267,7 @@ def today_steps_to_yesterday_steps(state: GameState):
     return state.steps.yesterday, state.steps.daily_bonus
 
 
-def total_bonus_steps(state: GameState):
+def total_bonus_steps(state: GameState) -> int:
     """Сумма бонусных шагов из всех источников."""
     return (stamina_skill_bonus_def(state) +
             equipment_bonus_stamina_steps(state) +
@@ -272,7 +275,7 @@ def total_bonus_steps(state: GameState):
             level_steps_bonus(state))
 
 
-def bonus_percentage(state: GameState):
+def bonus_percentage(state: GameState) -> float:
     """Процент бонусных шагов относительно базового количества шагов."""
     total_bonus = total_bonus_steps(state)
     base_steps = state.steps.today
@@ -281,7 +284,7 @@ def bonus_percentage(state: GameState):
     return 0
 
 
-def format_steps(steps):
+def format_steps(steps: int) -> str:
     """Форматирует количество шагов:
     - < 10 000 → без изменений
     - >= 10 000 и < 1 000 000 → округление до тысяч с "k"

@@ -13,7 +13,7 @@ def _money_line(state: GameState) -> str:
     return f'Money 💰: {Fore.LIGHTYELLOW_EX}{state.money}{Style.RESET_ALL} $.'
 
 
-def _empty_item():
+def _empty_item() -> dict:
     return {
         'item_name': [], 'item_type': [], 'grade': [],
         'characteristic': [], 'bonus': [], 'quality': [], 'price': [],
@@ -39,7 +39,7 @@ def _buy_item(state: GameState, item: dict, cost: int) -> bool:
 class Shop:
     """Магазин — UI-обёртка вокруг покупок."""
 
-    def shop_menu(self, state: GameState):
+    def shop_menu(self, state: GameState) -> None:
         # Цикл retry на невалиде / возврате из подменю (1.5.4 — 0.2.1h).
         while True:
             money = _money_line(state)
@@ -62,7 +62,7 @@ class Shop:
             if ask in ('3', '9', '0'):
                 return
 
-    def shop_menu_food_and_water(self, item, money, state: GameState):
+    def shop_menu_food_and_water(self, item: dict, money: str, state: GameState) -> None:
         # Цикл retry на невалиде (1.5.4 — 0.2.1h).
         while True:
             print('\nВы можете купить еду и другие расходные материалы.'
@@ -101,8 +101,8 @@ class Shop:
                 return  # возврат в shop_menu происходит через цикл там
             # любой невалид — повторяем меню.
 
-    def shop_menu_clothes(self, item, money, state: GameState):
-        def _clothes_stub(label, header):
+    def shop_menu_clothes(self, item: dict, money: str, state: GameState) -> None:
+        def _clothes_stub(label: str, header: str) -> None:
             # Generic stub-цикл для одежды (заглушки до 4.7).
             while True:
                 print(f'\n{header}: '
@@ -118,7 +118,7 @@ class Shop:
                 if ask == '0':
                     return
 
-        def clothes_shoes(money):
+        def clothes_shoes(money: str) -> None:
             shoe_specs = {
                 '1': ('c-grade', 1, 25),
                 '2': ('b-grade', 2, 50),
@@ -175,10 +175,10 @@ class Shop:
                 return
             # любой невалид — повторяем меню.
 
-    def shop_menu_equipment(self):
+    def shop_menu_equipment(self) -> None:
         # Раздел для покупки экипировки.
         pass
 
-    def shop_menu_sell_items(self):
+    def shop_menu_sell_items(self) -> None:
         # Раздел для продажи купленных товаров.
         pass

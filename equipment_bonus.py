@@ -1,15 +1,17 @@
 """Бонусы от экипировки. Все функции читают слоты из state.equipment."""
 
+from typing import Optional
+
 from state import GameState
 
 
-def _equipment_slots(state: GameState):
+def _equipment_slots(state: GameState) -> list[Optional[dict]]:
     """Список dict'ов экипировки (или None) из всех слотов state.equipment."""
     eq = state.equipment
     return [eq.head, eq.neck, eq.torso, eq.finger_01, eq.finger_02, eq.legs, eq.foots]
 
 
-def equipment_bonus(state: GameState):
+def equipment_bonus(state: GameState) -> tuple[int, int, int, int]:
     """Сумма бонусов всей экипировки по 4 характеристикам.
 
     Возвращает кортеж (stamina, energy_max, speed_skill, luck).
@@ -34,7 +36,7 @@ def equipment_bonus(state: GameState):
     return eq_stamina, eq_energy_max, eq_speed, eq_luck
 
 
-def equipment_stamina_bonus(state: GameState):
+def equipment_stamina_bonus(state: GameState) -> int:
     total = 0
     for item in _equipment_slots(state):
         if item is not None and item['characteristic'][0] == 'stamina':
@@ -42,7 +44,7 @@ def equipment_stamina_bonus(state: GameState):
     return total
 
 
-def equipment_energy_max_bonus(state: GameState):
+def equipment_energy_max_bonus(state: GameState) -> int:
     total = 0
     for item in _equipment_slots(state):
         if item is not None and item['characteristic'][0] == 'energy_max':
@@ -50,7 +52,7 @@ def equipment_energy_max_bonus(state: GameState):
     return total
 
 
-def equipment_speed_skill_bonus(state: GameState):
+def equipment_speed_skill_bonus(state: GameState) -> int:
     total = 0
     for item in _equipment_slots(state):
         if item is not None and item['characteristic'][0] == 'speed_skill':
@@ -58,7 +60,7 @@ def equipment_speed_skill_bonus(state: GameState):
     return total
 
 
-def equipment_luck_bonus(state: GameState):
+def equipment_luck_bonus(state: GameState) -> int:
     total = 0
     for item in _equipment_slots(state):
         if item is not None and item['characteristic'][0] == 'luck':
