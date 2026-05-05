@@ -8,18 +8,23 @@ def time(x: int) -> str:
 
     Принимает количество минут, возвращает строку с colorama-кодами:
     - x <= 60 → "X мин."
-    - x > 60  → "H час M мин."
+    - x > 60  → "H ч. M мин."
 
     Используется для отображения стоимости активностей (gym/work/adventure)
     в minutes. Для countdown-таймеров используйте `format_timedelta(td)` —
     он умеет в дни / недели / месяцы / годы.
+
+    После 0.2.1s (задача 2.11): несклоняемое полное слово "час"
+    заменено на сокращение "ч.", чтобы все формы (1, 2, 5, 21, 22)
+    отображались одинаково корректно. Точки сохранены как у "мин." —
+    единый стиль сокращений с точкой.
     """
     if x <= 60:
         return f'{Fore.LIGHTBLUE_EX}{x}{Style.RESET_ALL} мин.'
     elif x > 60:
         hours = int(x // 60)
         min = int(x % 60)
-        return f'{Fore.LIGHTBLUE_EX}{hours}{Style.RESET_ALL} час {Fore.LIGHTBLUE_EX}{min}{Style.RESET_ALL} мин.'
+        return f'{Fore.LIGHTBLUE_EX}{hours}{Style.RESET_ALL} ч. {Fore.LIGHTBLUE_EX}{min}{Style.RESET_ALL} мин.'
 
 
 # Константы длительности (секунды) для format_timedelta.
