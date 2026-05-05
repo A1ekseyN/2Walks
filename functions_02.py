@@ -3,28 +3,68 @@ from datetime import timedelta
 from colorama import Fore, Style
 
 
+# Минут в более крупных единицах (для time(x) — задача 2.10).
+_MIN_PER_HOUR = 60
+_MIN_PER_DAY = 24 * 60          # 1440
+_MIN_PER_MONTH = 30 * 24 * 60   # 43 200
+_MIN_PER_YEAR = 365 * 24 * 60   # 525 600
+
+
+def _color(n: int) -> str:
+    """Числовое значение в colorama LIGHTBLUE — единый стиль для всех частей time()."""
+    return f'{Fore.LIGHTBLUE_EX}{n}{Style.RESET_ALL}'
+
+
 def time(x: int) -> str:
-    """Функция для преобразования времени в часы и минуты.
+    """Функция для преобразования времени в часы / дни / месяцы / годы.
 
-    Принимает количество минут, возвращает строку с colorama-кодами:
-    - x <= 60 → "X мин."
-    - x > 60  → "H ч. M мин."
-
+    Принимает количество **минут**, возвращает строку с colorama-кодами.
     Используется для отображения стоимости активностей (gym/work/adventure)
-    в minutes. Для countdown-таймеров используйте `format_timedelta(td)` —
-    он умеет в дни / недели / месяцы / годы.
+    в cost-меню. Для countdown-таймеров используйте `format_timedelta(td)`.
 
-    После 0.2.1s (задача 2.11): несклоняемое полное слово "час"
-    заменено на сокращение "ч.", чтобы все формы (1, 2, 5, 21, 22)
-    отображались одинаково корректно. Точки сохранены как у "мин." —
-    единый стиль сокращений с точкой.
+    Формат (задача 2.10 — расширено в 0.2.1t):
+    - x ≤ 60 минут              → "X мин."
+    - 60 < x < 1440 (1 день)    → "H ч. M мин."
+    - 1440 ≤ x < 43200 (30 дн)  → "D дн. H ч. M мин."
+    - 43200 ≤ x < 525600 (1 г)  → "MO мес. D дн. H ч. M мин."
+    - x ≥ 525600                → "Y г. MO мес. D дн. H ч. M мин."
+
+    Логика "ведущие нули": если значение не превышает порог следующей
+    единицы (например, x < 43200 → нет месяцев), эта единица не
+    показывается. Если есть — показываются ВСЕ младшие компоненты,
+    даже если они равны нулю (например, ровно 3 дня → "3 дн. 0 ч. 0 мин.").
+
+    Месяц приближённо = 30 дней, год = 365 дней (упрощённо, как в
+    `format_timedelta`).
+
+    После 0.2.1s (задача 2.11): несклоняемое полное слово "час" заменено
+    на сокращение "ч.", все единицы — сокращения с точкой ("дн.", "мес.",
+    "г.").
     """
     if x <= 60:
-        return f'{Fore.LIGHTBLUE_EX}{x}{Style.RESET_ALL} мин.'
-    elif x > 60:
-        hours = int(x // 60)
-        min = int(x % 60)
-        return f'{Fore.LIGHTBLUE_EX}{hours}{Style.RESET_ALL} ч. {Fore.LIGHTBLUE_EX}{min}{Style.RESET_ALL} мин.'
+        return f'{_color(x)} мин.'
+
+    if x < _MIN_PER_DAY:
+        h, m = divmod(x, _MIN_PER_HOUR)
+        return f'{_color(h)} ч. {_color(m)} мин.'
+
+    if x < _MIN_PER_MONTH:
+        d, rest = divmod(x, _MIN_PER_DAY)
+        h, m = divmod(rest, _MIN_PER_HOUR)
+        return f'{_color(d)} дн. {_color(h)} ч. {_color(m)} мин.'
+
+    if x < _MIN_PER_YEAR:
+        mo, rest = divmod(x, _MIN_PER_MONTH)
+        d, rest = divmod(rest, _MIN_PER_DAY)
+        h, m = divmod(rest, _MIN_PER_HOUR)
+        return f'{_color(mo)} мес. {_color(d)} дн. {_color(h)} ч. {_color(m)} мин.'
+
+    y, rest = divmod(x, _MIN_PER_YEAR)
+    mo, rest = divmod(rest, _MIN_PER_MONTH)
+    d, rest = divmod(rest, _MIN_PER_DAY)
+    h, m = divmod(rest, _MIN_PER_HOUR)
+    return (f'{_color(y)} г. {_color(mo)} мес. {_color(d)} дн. '
+            f'{_color(h)} ч. {_color(m)} мин.')
 
 
 # Константы длительности (секунды) для format_timedelta.

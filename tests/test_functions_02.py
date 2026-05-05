@@ -9,9 +9,10 @@ helper с colorama-кодами, формат не меняется.
 shift, training, adventure).
 """
 
+import re
 from datetime import timedelta
 
-from functions_02 import format_timedelta
+from functions_02 import format_timedelta, time as time_fmt
 
 
 # ----- Edge cases -----
@@ -128,3 +129,99 @@ def test_format_timedelta_long_training():
 def test_format_timedelta_extreme_extension():
     """Гипотетический extension смены до 100 часов → 4д 4:00:00."""
     assert format_timedelta(timedelta(hours=100)) == "4д 4:00:00"
+
+
+# ---------------------------------------------------------------------------
+# time(x) — форматтер минут для cost-меню Gym/Work/Adventure (задача 2.10).
+# Принимает int минут, возвращает строку с colorama-кодами. Тесты используют
+# regex-strip ANSI-escape для сравнения чистого текста.
+# ---------------------------------------------------------------------------
+
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _strip(s: str) -> str:
+    """Убирает ANSI-escape (colorama) для сравнения чистого текста."""
+    return _ANSI_RE.sub('', s)
+
+
+# ----- minutes only -----
+
+def test_time_minutes_only():
+    """0 < x ≤ 60 → "X мин."."""
+    assert _strip(time_fmt(5)) == "5 мин."
+    assert _strip(time_fmt(60)) == "60 мин."  # граничный случай
+
+
+# ----- hours + minutes (no days) -----
+
+def test_time_under_day():
+    """60 < x < 1440 → "H ч. M мин."."""
+    # 90 мин = 1 ч 30 мин
+    assert _strip(time_fmt(90)) == "1 ч. 30 мин."
+    # 120 мин = 2 ч 0 мин
+    assert _strip(time_fmt(120)) == "2 ч. 0 мин."
+    # 1439 мин = 23 ч 59 мин — последний под суткой
+    assert _strip(time_fmt(1439)) == "23 ч. 59 мин."
+
+
+# ----- days + hours + minutes (no months) -----
+
+def test_time_with_days_exact():
+    """Ровно 1440 мин = 1 дн. — все младшие компоненты показываются нулями."""
+    assert _strip(time_fmt(1440)) == "1 дн. 0 ч. 0 мин."
+
+
+def test_time_with_days_and_partial():
+    """skill_lvl 19 ≈ 2890 мин = 2 дн. 0 ч. 10 мин. (пример из TASKS 2.10)."""
+    assert _strip(time_fmt(2890)) == "2 дн. 0 ч. 10 мин."
+
+
+def test_time_skill_lvl_30():
+    """skill_training_table[30]['time'] = 6000 мин = 4 дн. 4 ч. 0 мин."""
+    assert _strip(time_fmt(6000)) == "4 дн. 4 ч. 0 мин."
+
+
+def test_time_just_under_month():
+    """43199 мин < 30 дн — без месяца. 43200 мин = 30*1440 → 1 мес."""
+    # 43199 = 29 дн 23 ч 59 мин (29*1440 = 41760, 43199-41760 = 1439 → 23ч 59мин)
+    assert _strip(time_fmt(43199)) == "29 дн. 23 ч. 59 мин."
+
+
+# ----- months + days + ... (no years) -----
+
+def test_time_one_month_exact():
+    """43200 мин (30 дней) = 1 мес. 0 дн. 0 ч. 0 мин."""
+    assert _strip(time_fmt(43200)) == "1 мес. 0 дн. 0 ч. 0 мин."
+
+
+def test_time_with_months_partial():
+    """45 дней = 1 мес. 15 дн. 0 ч. 0 мин."""
+    assert _strip(time_fmt(45 * 1440)) == "1 мес. 15 дн. 0 ч. 0 мин."
+
+
+def test_time_just_under_year():
+    """525599 мин (< 365 дней) — без года, с месяцами/днями."""
+    # 525599 = 12 мес (12*43200 = 518400), остаток 7199 = 4 дн 23 ч 59 мин
+    assert _strip(time_fmt(525599)) == "12 мес. 4 дн. 23 ч. 59 мин."
+
+
+# ----- years + ... -----
+
+def test_time_one_year_exact():
+    """525600 мин (365 дней) = 1 г. 0 мес. 0 дн. 0 ч. 0 мин."""
+    assert _strip(time_fmt(525600)) == "1 г. 0 мес. 0 дн. 0 ч. 0 мин."
+
+
+def test_time_year_plus_months_days():
+    """1 год + 1 мес + 5 дн + 3 ч + 30 мин."""
+    x = 525600 + 43200 + 5 * 1440 + 3 * 60 + 30
+    assert _strip(time_fmt(x)) == "1 г. 1 мес. 5 дн. 3 ч. 30 мин."
+
+
+# ----- colorama не теряется -----
+
+def test_time_contains_colorama_codes():
+    """Числа всё ещё обёрнуты в colorama LIGHTBLUE."""
+    out = time_fmt(90)  # 1 ч. 30 мин.
+    assert '\x1b[' in out  # есть ANSI-escape
