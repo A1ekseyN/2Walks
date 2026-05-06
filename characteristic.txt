@@ -16,7 +16,7 @@
     "loc": "home",
     "energy": 20,
     "energy_max": 50,
-    "energy_time_stamp": 1778051813.618387,
+    "energy_time_stamp": 1778066394.138,
     "money": 200,
     "skill_training": false,
     "skill_training_name": null,
@@ -56,5 +56,7 @@
     "adventure_walk_15k_counter": 0,
     "adventure_walk_20k_counter": 0,
     "adventure_walk_25k_counter": 0,
-    "adventure_walk_30k_counter": 0
+    "adventure_walk_30k_counter": 0,
+    "bank_deposit_amount": 0.0,
+    "bank_deposit_last_interest_ts": null
 }

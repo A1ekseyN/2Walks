@@ -120,6 +120,22 @@ class Equipment:
 
 
 @dataclass
+class BankState:
+    """Состояние банковских операций (4.49). Phase 0.0 — только депозит.
+
+    `deposit_amount` хранится как float (тело + капитализированные проценты).
+    `deposit_last_interest_ts` — Unix timestamp последнего начисления процентов
+    (или открытия депозита, если процентов ещё не было). При `deposit_amount=0`
+    timestamp обнуляется в None.
+
+    Loan-поля придут в Phase 4 (4.49.2.1) — `loan_amount`, `loan_last_interest_ts`,
+    + auto-repay toggle в Phase 5 (4.49.2.2).
+    """
+    deposit_amount: float = 0.0
+    deposit_last_interest_ts: Optional[float] = None
+
+
+@dataclass
 class GameState:
     # Time / day
     date_last_enter: str = ''
@@ -140,6 +156,7 @@ class GameState:
     work: WorkSession = field(default_factory=WorkSession)
     adventure: AdventureSession = field(default_factory=AdventureSession)
     equipment: Equipment = field(default_factory=Equipment)
+    bank: BankState = field(default_factory=BankState)
     # Item dicts имеют структуру {item_name: [str], bonus: [int], ...} (списки в
     # полях — legacy decision). Полная типизация TypedDict откладывается до
     # задачи 1.6 (Items as dataclass) — сейчас только `list[dict]`.
@@ -249,6 +266,14 @@ class GameState:
                 foots=d.get('equipment_foots'),
             ),
 
+            # Bank (4.49.0.0). Старые сейвы без bank-keys → defaults BankState().
+            # `deposit_last_interest_ts` хранится как Optional[float] Unix ts —
+            # читаем напрямую без _deser_datetime (по аналогии с adventure end_ts).
+            bank=BankState(
+                deposit_amount=float(d.get('bank_deposit_amount') or 0.0),
+                deposit_last_interest_ts=d.get('bank_deposit_last_interest_ts'),
+            ),
+
             inventory=list(d.get('inventory') or []),
         )
 
@@ -274,6 +299,7 @@ class GameState:
         self.work = new.work
         self.adventure = new.adventure
         self.equipment = new.equipment
+        self.bank = new.bank
         self.inventory = new.inventory
         return self
 
@@ -364,4 +390,8 @@ class GameState:
             'adventure_walk_20k_counter': self.adventure.counters.get('walk_20k', 0),
             'adventure_walk_25k_counter': self.adventure.counters.get('walk_25k', 0),
             'adventure_walk_30k_counter': self.adventure.counters.get('walk_30k', 0),
+
+            # Bank (4.49.0.0)
+            'bank_deposit_amount': self.bank.deposit_amount,
+            'bank_deposit_last_interest_ts': self.bank.deposit_last_interest_ts,
         }

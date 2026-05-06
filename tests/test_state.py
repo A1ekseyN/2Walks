@@ -11,6 +11,7 @@ from state import (
     WorkSession,
     AdventureSession,
     Equipment,
+    BankState,
 )
 
 
@@ -141,10 +142,20 @@ def test_legacy_flat_dict_loads():
     assert s.gym.move_optimization_work == 6
     assert s.adventure.counters['walk_easy'] == 50
     assert s.adventure.counters['walk_30k'] == 0
+    # Bank поля появились в 4.49.0.0 — для legacy сейва без bank-keys defaults.
+    assert s.bank.deposit_amount == 0.0
+    assert s.bank.deposit_last_interest_ts is None
 
-    # Round-trip identity на boundary CSV format.
+    # Round-trip identity на уровне state-объекта (через from_dict обратно).
+    # to_dict() добавляет новые поля (bank_*), которых нет в legacy → strict
+    # dict-равенство не работает; но отсутствующие поля при from_dict дают
+    # defaults, которые записываются в d2 как defaults — поэтому объект
+    # остаётся равен исходному при повторной загрузке.
     d2 = s.to_dict()
-    assert d2 == legacy
+    assert GameState.from_dict(d2) == s
+    # Legacy keys всё ещё подмножество (не пропадают).
+    for k, v in legacy.items():
+        assert d2[k] == v, f"legacy key '{k}' изменилось: {legacy[k]} → {d2[k]}"
 
 
 def test_datetime_fields_preserved_round_trip():
@@ -192,6 +203,63 @@ def test_adventure_end_ts_none_when_missing():
     """Без adventure_end_timestamp в save — end_ts = None (default)."""
     s = GameState.from_dict({})
     assert s.adventure.end_ts is None
+
+
+# ---------------------------------------------------------------------------
+# Bank (4.49.0.0) — депозит state inframgmt без бизнес-логики начисления.
+# ---------------------------------------------------------------------------
+
+def test_bank_state_default_in_new_game():
+    """default_new_game() инициализирует BankState нулями."""
+    s = GameState.default_new_game()
+    assert isinstance(s.bank, BankState)
+    assert s.bank.deposit_amount == 0.0
+    assert s.bank.deposit_last_interest_ts is None
+
+
+def test_bank_state_round_trip():
+    """Деньги на депозите + timestamp переживают to_dict / from_dict."""
+    s1 = GameState(
+        bank=BankState(
+            deposit_amount=1234.56,
+            deposit_last_interest_ts=1700000000.0,
+        ),
+    )
+    d = s1.to_dict()
+    # Flat-keys корректно сериализуют BankState.
+    assert d['bank_deposit_amount'] == 1234.56
+    assert d['bank_deposit_last_interest_ts'] == 1700000000.0
+    s2 = GameState.from_dict(d)
+    assert s2.bank == s1.bank
+    assert s2.bank.deposit_amount == 1234.56
+    assert s2.bank.deposit_last_interest_ts == 1700000000.0
+
+
+def test_bank_state_load_old_save_without_bank_keys():
+    """Сейвы до 4.49.0.0 не содержат bank-ключей — defaults BankState() применяются."""
+    legacy = {'energy': 50, 'money': 100}  # минимум, без bank_*
+    s = GameState.from_dict(legacy)
+    assert s.bank.deposit_amount == 0.0
+    assert s.bank.deposit_last_interest_ts is None
+    assert s.bank == BankState()
+
+
+def test_bank_state_with_zero_amount_and_no_timestamp():
+    """Корректно обрабатывается случай 'депозит закрыт' — amount=0 + ts=None."""
+    s1 = GameState(bank=BankState(deposit_amount=0.0, deposit_last_interest_ts=None))
+    d = s1.to_dict()
+    s2 = GameState.from_dict(d)
+    assert s2.bank.deposit_amount == 0.0
+    assert s2.bank.deposit_last_interest_ts is None
+
+
+def test_bank_state_preserves_float_precision():
+    """deposit_amount хранится как float — копейки от accrue не теряются на round-trip."""
+    s1 = GameState(bank=BankState(deposit_amount=999.99999, deposit_last_interest_ts=1.5))
+    d = s1.to_dict()
+    s2 = GameState.from_dict(d)
+    assert s2.bank.deposit_amount == 999.99999
+    assert s2.bank.deposit_last_interest_ts == 1.5
 
 
 def test_partial_dict_uses_defaults_for_missing():
@@ -277,5 +345,7 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'adventure_walk_hard_counter', 'adventure_walk_15k_counter',
         'adventure_walk_20k_counter', 'adventure_walk_25k_counter',
         'adventure_walk_30k_counter',
+        # Bank (4.49.0.0)
+        'bank_deposit_amount', 'bank_deposit_last_interest_ts',
     }
     assert set(d.keys()) == expected_keys

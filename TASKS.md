@@ -1913,117 +1913,148 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 
 ### 4.49. Локация "Банк" — депозиты, кредиты (зонтичная) `[H / M / todo]`
 
-**Контекст:** в коде уже есть локация `bank` (`locations.py:bank_location`), но она пока stub — печатает "В разработке". Эта задача наполняет её реальной экономической механикой.
+**Контекст:** в коде уже есть `locations.py:bank_location` — печатает "В разработке". Эта зонтичная наполняет локацию реальной экономикой: депозиты с пассивным доходом + кредиты с долговой нагрузкой. CLI-only на старте, web — отдельная задача 4.48.9 после стабилизации CLI.
 
-**Зонтичная задача** с подзадачами:
-- **4.49.0** — Депозиты (базовая реализация).
-- **4.49.1** — Новый Gym-навык `banking_interest_rate` (бонус к ставке депозита).
-- **4.49.2** — Кредиты (идея, нужно обсудить).
-- **4.49.3** — Новый Gym-навык `loan_interest_reduction` (идея, нужно обсудить).
+**Дизайн (06.05.2026, обсуждение перед реализацией):**
 
-Деньги — единственный выходной ресурс, но накопление денег пока бесцельно (тратятся только на Gym training и Shop). Банк добавляет третий путь: длинные накопления с пассивным доходом, что хорошо вписывается в "трекер ходьбы — инвестируешь дисциплину".
+- **Один депозит** (не множественные «вклады»). Top-up прибавляет к существующему телу.
+- **Один кредит** (не множественные займы). Погашение — частичное / полное.
+- **Recompute с capitalize-on-change**, НЕ lock-rate-at-open. Подробности — в каждой подзадаче.
+- **Точность:** `state.bank.deposit_amount` хранится как `float`, отображается с двумя знаками в Bank меню. `state.money` остаётся `int`. Снятие: `floor(deposit_amount)` идёт в `state.money`, копейки остаются на депозите.
+- **Ставки:** годовые. Депозит default = 0%, +1%/level навыка `banking_interest_rate`. Кредит default = 100%, -1%/level навыка `loan_interest_reduction`. Cap'ов нет.
+- **Capitalize-on-change** — формула: перед любым событием, меняющим тело или ставку, начисляются накопленные проценты по ТЕКУЩЕЙ ставке за `elapsed = now - last_accrual_ts`. Триггеры: top-up, withdraw, апгрейд `banking_interest_rate` (хук в `skill_training_check_done`). Это даёт compound-interest эффект с капитализацией на событиях.
+- **Кредитный gate:** новый навык `loan_capacity` (default = 0$, +100$/level). При skill=0 кредит недоступен. Cap = «лимит непогашенного долга», не lifetime.
+- **Penalty:** только daily interest (растущий долг). Auto-repay из зарплаты — опциональный toggle, добавляется отдельной подзадачей. Никакого принудительного списания.
 
-#### 4.49.0. Депозиты — базовая механика `[H / S / todo (blocked by 1.1 — done)]`
+**Phasing (по запросу пользователя — депозиты сначала):**
 
-**Концепция:** игрок кладёт `$N` в банк под фиксированную **годовую %-ставку**. Базовая ставка для всех депозитов одинаковая (например, **10% годовых**), модификаторы — навык 4.49.1 + возможные бонусы экипировки/уровня позже.
-
-**Расчёт процентов по timestamp** (без cron / scheduled jobs):
-- При открытии депозита записывается `open_ts` (текущий `datetime.now().timestamp()`) и `principal`.
-- При закрытии — берём `close_ts = now()`, считаем `elapsed_seconds = close_ts - open_ts`.
-- Доход: `principal * annual_rate * (elapsed_seconds / SECONDS_IN_YEAR)`.
-- На выходе игрок получает `principal + interest` обратно в `state.money`.
-- `SECONDS_IN_YEAR = 365 * 24 * 60 * 60` (упрощённо, без високосных).
-
-**Структура state:**
 ```
-state.bank.deposits: list[Deposit]
+Phase 0 (инфра)        → 4.49.0.0
+Phase 1 (депозиты)     → 4.49.0.1, 4.49.0.2
+Phase 2 (deposit skill)→ 4.49.1.0, 4.49.1.1
+Phase 3 (loan capacity)→ 4.49.2.0
+Phase 4 (кредиты)      → 4.49.2.1
+Phase 5 (auto-repay)   → 4.49.2.2
+Phase 6 (loan skill)   → 4.49.3
 ```
-где `Deposit` — dataclass:
-```
-@dataclass
-class Deposit:
-    amount: int           # principal в момент открытия
-    open_ts: float        # timestamp открытия
-    annual_rate: float    # ставка на момент открытия (фиксируется!)
-```
-Ставка фиксируется при открытии — иначе игрок может качнуть навык, прийти в Банк, забрать деньги по новой ставке (exploit). Депозит работает на тех условиях, на которых открыт.
 
-**Интерфейс:**
-- Меню Bank: "Открыть депозит" / "Список депозитов / Закрыть" / "Назад".
-- При открытии — спросить сумму. Списать с `state.money`, добавить запись в `state.bank.deposits`.
-- При просмотре — показать каждый депозит: `principal`, время открытия, текущий накопленный доход (live preview), общая ставка.
-- При закрытии — выбрать депозит из списка → подтверждение → перевести `principal + interest` в `state.money`, удалить запись.
+#### 4.49.0. Депозиты (зонтичная) `[H / M / todo]`
 
-**Несколько депозитов:** да, разрешены (один игрок может держать N открытых одновременно).
+Базовая инфра + UI ввести/снять + live preview накопленных процентов. Без скиллов — все ставки = 0% (default).
 
-**Частичное снятие:** **не реализуется в первой итерации.** Пока есть несколько депозитов — снимать только целиком. Если позже захотим частичное — оно появится только для случая "1 депозит = 1 запись с amount, можно уменьшить amount, остальное продолжает капать". Перенос на потом.
+##### 4.49.0.0. Bank infra: `BankState` dataclass + save/load `[H / S / done (0.2.2, 06.05.2026)]`
 
-**Save format:** `state.bank.deposits` — list of dicts (после миграции на dataclass — list of Deposit'ов с конвертацией). Round-trip через `from_dict` / `to_dict` в `state.py`. JSON-serializable.
+**Скоуп:**
+1. Новый nested `BankState` в `state.py`: поля `deposit_amount: float = 0.0`, `deposit_last_accrual_ts: Optional[float] = None`. **Loan-поля не добавляются** — придут в Phase 4 (4.49.2.1).
+2. `GameState` получает `bank: BankState = field(default_factory=BankState)`.
+3. `default_new_game()` инициализирует `bank=BankState()`.
+4. `to_dict()` сериализует `bank_deposit_amount` (float) и `bank_deposit_last_accrual_ts` (float | None) — flat-keys чтобы не ломать CSV-формат.
+5. `from_dict()` восстанавливает `BankState` из flat-keys, дефолтит к `BankState()` при отсутствии (старые сейвы).
 
-**Реализация:**
-1. Добавить `BankState` (новый nested dataclass) и `state.bank.deposits` в `state.py`. Update `from_dict` / `to_dict` для CSV/JSON/Sheets round-trip.
-2. Создать `bank.py` с UI-меню и pure logic:
-   - `_calculate_interest(deposit, now_ts) -> int` — pure, тестируется напрямую.
-   - `_open_deposit(state, amount) -> bool` — атомарная операция через `actions.try_spend(state, money=amount)` или прямая мутация `state.money` + append.
-   - `_close_deposit(state, index) -> int` — снимает депозит, возвращает выплаченную сумму, мутирует state.
-   - UI-обёртки `bank_menu(state)`, `bank_menu_open()`, `bank_menu_list_close()`.
-3. Перепрописать `bank_location(state)` в `locations.py` — вместо stub-print вызвать `bank_menu(state)`.
-4. Подключить навык 4.49.1 к расчёту ставки.
-5. Тесты: `tests/test_bank.py` — расчёт процентов на разных timestamp'ах (1 час, 1 день, 1 месяц, 1 год; ставка 10% / 0% / 50%); открытие/закрытие; round-trip нескольких депозитов; интеграция с навыком (выше lvl → выше interest).
+**Что НЕ делается:** `bank.py`, изменения в `locations.py`, какое-либо UI. Только state-слой.
 
-**Edge cases:**
-- Игрок ставит депозит и сразу снимает — `interest = 0` (corner-case при `elapsed_seconds < 1`).
-- `state.money < amount` при открытии — отказ, ничего не списывается.
-- Депозит в `state.bank.deposits` при load из старого сейва (поля нет) — должен корректно дефолтиться в `[]`.
+**Тесты:**
+- `tests/test_state.py` — расширить existing round-trip: `BankState()` со значениями (1234.56, 1700000000.0) → to_dict → from_dict → assert equal.
+- Test «старый сейв без bank-keys» → BankState defaults применяются.
 
-#### 4.49.1. Новый Gym-навык: `banking_interest_rate` (+1% к ставке депозита) `[M / S / todo (blocked by 4.49.0)]`
+##### 4.49.0.1. Депозиты: внести / снять (CLI меню) `[H / S / todo (blocked by 4.49.0.0)]`
 
-Каждый уровень навыка добавляет +1% к **годовой ставке** депозита, открытого с этим уровнем навыка. Базовая ставка 10% → на lvl=20 ставка станет 30%.
+**Скоуп:**
+1. Новый `bank.py`:
+   - `accrue_deposit(state)` — pure helper. Idempotent. Капитализирует проценты по текущей ставке за `now - last_accrual_ts`. При `deposit_amount=0` или `last_accrual_ts=None` — no-op.
+   - `current_deposit_rate_pct(state) -> float` — возвращает `state.gym.banking_interest_rate * 1.0` (skill default 0 → 0%, в Phase 0.1 ещё нет навыка → всегда 0%).
+   - `bank_menu(state)` — главное меню. 3 опции: "1. Внести (произвольная сумма)" / "2. Снять (произвольная сумма)" / "3. Снять всё" / "0. Назад".
+   - `_deposit(state, amount: int)` — вызывает `accrue_deposit` first; проверяет `state.money >= amount`; вычитает из money, прибавляет к `deposit_amount`, обновляет `last_accrual_ts`.
+   - `_withdraw(state, amount: int)` — `accrue_deposit` first; `floor(deposit_amount) >= amount`; уменьшает `deposit_amount`, прибавляет к `state.money`.
+   - `_withdraw_all(state)` — `accrue_deposit` first; `withdrawn = floor(deposit_amount)`; `deposit_amount -= withdrawn`; `state.money += withdrawn`. Копейки остаются.
+2. `locations.py:bank_location()` — заменить stub-print на `bank_menu(state)`.
 
-**Где применять:** в момент **открытия** депозита (4.49.0) — ставка снапшотится в `Deposit.annual_rate` и больше не меняется. Это закрывает потенциальный exploit "качнуть навык → бесплатные проценты на старых депозитах".
+**Отображение:** в Bank меню сумма депозита показывается как `f"{amount:,.2f} $"`. Прочие меню (status_bar и т.п.) не трогаем — они работают со `state.money` (int).
 
-**Реализация:**
-1. Ключ `banking_interest_rate` в `state.gym` (новое поле в `GymSkills` dataclass). Update `from_dict` / `to_dict`.
-2. Запись в `skill_training_table` (общая или собственная — TBD при реализации).
-3. Пункт в меню Gym (станет 9-м или 11-м).
-4. Helper `current_deposit_rate(state) -> float` в `bank.py`: `0.10 + state.gym.banking_interest_rate / 100`.
-5. Вызов в `_open_deposit()` для записи `Deposit.annual_rate`.
-6. Save в трёх форматах.
+**Тесты:**
+- `accrue_deposit` идемпотентность (2× вызов в течение 1 сек = тот же результат с точностью до float).
+- `accrue_deposit` correct interest: deposit 1000$, rate 10%/yr, elapsed 1 day → `1000 * 0.1 / 365 ≈ 0.274$` (с tolerance).
+- `_deposit` / `_withdraw` / `_withdraw_all` корректно мутируют state.
+- Overdraft: `_deposit(amount > money)` → отказ, state не изменён.
+- Withdraw больше остатка → отказ.
 
-**Баланс:** линейный +1% за уровень. Cap не нужен — даже на lvl=100 ставка станет 110% годовых, что сильно, но цена в деньгах для прокачки этого уровня нивелирует выгоду. Конкретное число — после симуляции экономики.
+##### 4.49.0.2. Депозиты: live preview accrued state `[L / XS / todo (blocked by 4.49.0.1)]`
 
-**Зависимость:** `4.49.0` (без депозитов нет смысла в навыке).
+В меню Bank показывать накопленный «виртуальный» остаток (с процентами на текущий момент) БЕЗ мутации state. Только для отображения. Помогает игроку видеть рост.
 
-#### 4.49.2. Идея: Кредиты в Банке `[L / M / todo (нужно обсудить)]`
+**Скоуп:** одна функция `preview_deposit_amount(state) -> float` — pure: возвращает `deposit_amount + interest_for(now - last_accrual_ts)` без записи в state. Использует то же ядро что `accrue_deposit`, но не мутирует.
 
-**⚠️ Идея, требует обсуждения. Пока концептуально, без детального плана.**
+**UI:** в `bank_menu` строка вида: `Депозит: 1,234.56 $ (накоплено: +12.34 $ при ставке 5%/год)`.
 
-Зеркальная механика к депозитам — игрок берёт кредит, получает деньги сейчас, должен вернуть с процентами потом.
+#### 4.49.1. Skill `banking_interest_rate` (зонтичная) `[M / S / todo (blocked by 4.49.0)]`
 
-**Грубая идея:**
-- При взятии кредита: `principal` записывается с timestamp.
-- Базовая ставка кредита **существенно выше депозитной** — например, **100% годовых** (отражает риск + игровая мотивация возвращать).
-- Долг растёт со временем по той же формуле: `debt = principal * (1 + annual_rate * elapsed / year_seconds)`.
-- При возврате — игрок платит `state.money -= debt`. Если `state.money < debt` — частичный возврат? Принудительная продажа инвентаря? Game-over механика? Нужно обсудить.
+##### 4.49.1.0. Gym-инфра нового навыка `[M / S / todo]`
 
-**Открытые вопросы:**
-1. **Сколько кредитов одновременно?** Один или несколько (как депозиты)?
-2. **Cap на сумму** — зависит от уровня персонажа? От `state.money`? Игрок не может взять кредит больше X.
-3. **Что если не вернул вовремя?** Капает бесконечно или есть deadline?
-4. **Можно ли открыть депозит и кредит одновременно?** (По формулам — да, и это будет арбитраж только если ставка депозита + навык > ставки кредита - навык. Нужно балансировать.)
-5. **Меню Bank** — раздел "Кредит" в том же меню, или отдельный?
+**Скоуп:**
+1. Поле `banking_interest_rate: int = 0` в `GymSkills` dataclass (state.py). Update `from_dict` / `to_dict`.
+2. Записи в `skill_training_table` для уровней 1..30 (или общая формула — TBD по аналогии с другими навыками).
+3. Пункт в меню Gym с описанием: «+1% к годовой ставке депозита». Иконка — TBD (📈 / 💹 / 🏦).
+4. `_GYM_SKILL_DISPLAY` в `web/main.py` — наполнение для будущего web (4.48.4 уже unified, добавить запись).
 
-**Зависимость:** `4.49.0` (общая инфраструктура Bank меню).
+**Что НЕ делается:** интеграция с депозитом — будет в 4.49.1.1.
 
-#### 4.49.3. Идея: Gym-навык `loan_interest_reduction` `[L / S / todo (нужно обсудить, blocked by 4.49.2)]`
+##### 4.49.1.1. Capitalize-on-skill-up + recompute интеграция `[M / S / todo (blocked by 4.49.1.0)]`
 
-**⚠️ Идея, зависит от 4.49.2.**
+**Скоуп:**
+1. Хук в `gym.skill_training_check_done(state)` — при завершении тренировки `banking_interest_rate` ПЕРЕД инкрементом скилла вызвать `accrue_deposit(state)`. Это капитализирует проценты по СТАРОЙ ставке за прошлый период; новая ставка применяется только к будущим периодам — математически корректно.
+2. `current_deposit_rate_pct` уже читает skill — этот шаг просто связывает компоненты.
 
-Каждый уровень навыка снижает годовую ставку **взятого кредита** на 1% (фиксируется при оформлении кредита, аналогично 4.49.1).
+**Тесты:**
+- End-to-end: open deposit at skill=0 → 30 days pass (mock `time.time`) → assert `accrue` ничего не начислило (0%) → upgrade skill 0→1 (вызов hook) → 30 days pass → assert `accrue` начислил по 1% за второй период, но не за первый.
+- Top-up при skill>0 — корректная капитализация перед добавлением суммы.
 
-**Баланс:** на низких уровнях ставка остаётся высокой (100% → 95% на lvl=5 → бесполезно). Чтобы навык был осмысленным, нужен либо больший шаг (-2% за уровень), либо высокая базовая ставка (200%+) и diminishing returns. Решается при реализации.
+#### 4.49.2. Кредиты (зонтичная) `[M / M / todo (blocked by 4.49.0)]`
 
-**Зависимость:** `4.49.2` (без кредитов нет смысла в навыке).
+##### 4.49.2.0. Skill `loan_capacity` — gating prerequisite `[M / S / todo]`
+
+Новый Gym-навык: каждый уровень = +100$ к максимальной сумме непогашенного долга. Default = 0 → кредит вообще недоступен (нужно прокачать чтобы получить доступ к механике). Cap = лимит на остаток долга, не lifetime.
+
+**Скоуп:**
+1. Поле `loan_capacity: int = 0` в `GymSkills`. Update from_dict/to_dict.
+2. Записи в `skill_training_table` (уровни 1..N).
+3. Пункт в меню Gym («+100$ к лимиту кредита»).
+4. Helper `max_loan(state) -> int = state.gym.loan_capacity * 100`.
+
+**Реализуется ДО 4.49.2.1**, чтобы UI кредитов сразу мог проверять cap без переписывания.
+
+##### 4.49.2.1. Кредиты: взять / погасить / ежедневные проценты `[M / M / todo (blocked by 4.49.2.0)]`
+
+**Скоуп:**
+1. Расширить `BankState`: `loan_amount: float = 0.0`, `loan_last_accrual_ts: Optional[float] = None`. Update from_dict/to_dict.
+2. `bank.py`:
+   - `accrue_loan(state)` — зеркальная `accrue_deposit`, но по ставке `current_loan_rate_pct(state)`.
+   - `current_loan_rate_pct(state) -> float` — возвращает `100.0 - state.gym.loan_interest_reduction` (Phase 6 добавит навык; пока default 100%).
+   - `_take_loan(state, amount)` — accrue_loan first; проверяет `loan_amount + amount <= max_loan(state)`; добавляет к `loan_amount`, прибавляет к `state.money`, обновляет timestamp.
+   - `_repay_loan(state, amount)` — accrue_loan first; проверяет `state.money >= amount` и `amount <= ceil(loan_amount)`; вычитает из money и из loan_amount.
+3. Расширить `bank_menu` — секция «Кредит»: текущий долг (с live preview через `preview_loan_amount`), max_loan, опции «Взять» / «Погасить» / «Назад».
+
+**Тесты:**
+- accrue_loan корректность.
+- skill=0 → max_loan=0 → take_loan невозможен (любая сумма отвергается).
+- skill=5 → max_loan=500 → take_loan(500) ok, take_loan(501) reject, take_loan(300) ok, потом take_loan(201) reject (overflow cap).
+- repay частичный / полный.
+
+##### 4.49.2.2. Auto-repay toggle: %-отчисление с зарплаты `[L / S / todo (blocked by 4.49.2.1)]`
+
+Опциональный toggle в Bank меню. Игрок включает «отчислять X% с каждой зарплаты на погашение кредита». При выплате зарплаты в `work_check_done` — если toggle ON и `loan_amount > 0` — забрать `salary * X / 100`, отдать в `_repay_loan` (с `accrue_loan` под капотом). Принудительной блокировки зарплаты НЕТ — это user-controlled опция.
+
+**Скоуп:**
+1. `BankState`: `auto_repay_enabled: bool = False`, `auto_repay_pct: int = 20` (или TBD).
+2. `bank_menu` — toggle опция и установка %.
+3. Хук в `work.py:work_check_done(state)` — после крединга salary в state.money, если auto_repay включён — вызвать `_repay_loan(state, floor(salary * pct / 100))`.
+
+#### 4.49.3. Skill `loan_interest_reduction` `[L / S / todo (blocked by 4.49.2.1)]`
+
+Новый Gym-навык: каждый уровень = -1% к годовой ставке кредита. Default = 0 → ставка 100%. Recompute (как `banking_interest_rate`): хук в `skill_training_check_done` для accrue_loan перед инкрементом.
+
+**Скоуп:** аналогично 4.49.1.0 + 4.49.1.1, но для кредита.
+
+**Баланс:** -1%/level — на низких уровнях польза маленькая, нужен длинный grind. Если окажется бесполезно — увеличить шаг до -2% или ввести нелинейность. Решается на этапе реализации.
 
 ---
 
