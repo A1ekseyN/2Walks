@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project context
 
-2Walks is a step-counter RPG written in Python. Real-world steps (entered manually via the `+` command) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it. A Google Fit auto-sync existed historically but was removed on 2026-04-27 (task 4.16); iPhone Shortcut pipeline (4.13) is currently отложено — entry will be via CLI / Web / API (task 4.48.2 `POST /api/steps`).
+2Walks is a step-counter RPG written in Python. Real-world steps (entered manually via the `+` command) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, deposits / loans at the Bank, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it. A Google Fit auto-sync existed historically but was removed on 2026-04-27 (task 4.16); iPhone Shortcut pipeline (4.13) is currently отложено — entry will be via CLI / Web / API (task 4.48.2 `POST /api/steps`).
 
 **Primary interface:** CLI (`game.py`). **Secondary (planned):** Web interface via FastAPI backend on a VPS (task 4.48 — incremental rollout). CLI remains the primary path; web is supplementary and grows feature-by-feature. Single source of truth for both — Google Sheets.
 
@@ -48,7 +48,7 @@ Pytest is the test framework (config in `pytest.ini`, tests in `tests/`). Run al
 
 ### Game state: `GameState` (state.py)
 
-The single source of game state is a `GameState` dataclass in `state.py` with nested subclasses (`StepsState`, `CharLevel`, `GymSkills`, `TrainingSession`, `WorkSession`, `AdventureSession`, `Equipment`). The live instance is held by a container `game = _GameContainer()` in `characteristics.py` and accessed as `game.state` — populated by `init_game_state()` (task 1.2). Most gameplay modules take `state: GameState` as an explicit parameter — there is no implicit global. Mutate `state.<sub>.<field>` to communicate between systems.
+The single source of game state is a `GameState` dataclass in `state.py` with nested subclasses (`StepsState`, `CharLevel`, `GymSkills`, `TrainingSession`, `WorkSession`, `AdventureSession`, `Equipment`, `BankState`). The live instance is held by a container `game = _GameContainer()` in `characteristics.py` and accessed as `game.state` — populated by `init_game_state()` (task 1.2). Most gameplay modules take `state: GameState` as an explicit parameter — there is no implicit global. Mutate `state.<sub>.<field>` to communicate between systems.
 
 A historical legacy dict `char_characteristic` and proxy class were removed in version 0.2.0 (task 1.1). If you encounter that name in old commits or external docs, it referred to today's `game.state`.
 
@@ -120,7 +120,8 @@ Non-trivial mutations go through `actions.py` to keep invariants in one place:
 ### Gameplay module map
 
 - `locations.py` — dispatch layer between `game.py` and each location module; `icon_loc(state)` maps `state.loc` to an emoji.
-- `gym.py`, `work.py`, `adventure.py`, `shop.py`, `inventory.py`, `equipment.py` — one per location/menu. `work_check_done(state)` and `skill_training_check_done(state)` are polled from the main loop to finalize timer-based activities; if you add another timed action, follow the same "check on every tick" pattern.
+- `gym.py`, `work.py`, `adventure.py`, `shop.py`, `inventory.py`, `equipment.py`, `bank.py` — one per location/menu. `work_check_done(state)` and `skill_training_check_done(state)` are polled from the main loop to finalize timer-based activities; if you add another timed action, follow the same "check on every tick" pattern.
+- `bank.py` (since 0.2.2 / task 4.49) — депозиты + кредиты. **Capitalize-on-change**: `accrue_deposit(state)` / `accrue_loan(state)` капитализируют накопленные проценты по ТЕКУЩЕЙ ставке за `now - last_interest_ts` перед любым событием, меняющим тело или ставку. Триггеры: top-up / withdraw / take_loan / repay / апгрейд `banking_interest_rate` / апгрейд `loan_interest_reduction` (хук в `gym.skill_training_check_done` через lazy import). Ставки recompute (не lock-on-open): прокачал скилл — старый депозит / кредит сразу идёт по новой ставке (compound на событиях, exploit «качнуть → собрать ретроактивно» закрыт через accrue ПЕРЕД инкрементом). Скиллы-gate'ы: `banking_interest_rate >= 1` гейтит депозит (`can_open_deposit` + `can_withdraw`), `loan_capacity >= 1` гейтит кредит (`can_take_loan`); `loan_interest_reduction` снижает ставку с дефолтных 100% годовых. Display: 2 знака в Bank-меню, `:,.0f` в остальных меню; `state.money: float` (а не int) чтобы копейки текли между кошельком и депозитом без потерь.
 - `drop.py` — item drop logic for Adventure. Grades are `c/b/a/s/s+`, weighted by `drop_percent_*` constants. `current_luck(state)` is computed at the moment of the drop (no module-level pinning).
 - `level.py` (`CharLevel`), `characteristics.py` (`save_characteristic`), `bonus.py`, `equipment_bonus.py`, `skill_bonus.py` — stat/bonus math. All take `state` explicitly.
 - `adventure_data.py` — static data table for adventures. Adventure `__init__` copies entries before applying `move_optimization` so the table itself is never mutated.

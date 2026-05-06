@@ -71,7 +71,9 @@ class GymSkills:
     move_optimization_work: int = 0
     mechanics: int = 0
     it_technologies: int = 0
-    banking_interest_rate: int = 0   # 4.49 — bonus к ставке депозита (+1%/level)
+    banking_interest_rate: int = 0       # 4.49 — bonus к ставке депозита (+1%/level)
+    loan_capacity: int = 0               # 4.49 — +100 $ к максимальной сумме кредита (default 0 → нельзя взять)
+    loan_interest_reduction: int = 0     # 4.49 — снижение ставки кредита (-1%/level от базовых 100%)
 
 
 @dataclass
@@ -122,18 +124,24 @@ class Equipment:
 
 @dataclass
 class BankState:
-    """Состояние банковских операций (4.49). Phase 0.0 — только депозит.
+    """Состояние банковских операций (4.49).
 
-    `deposit_amount` хранится как float (тело + капитализированные проценты).
-    `deposit_last_interest_ts` — Unix timestamp последнего начисления процентов
-    (или открытия депозита, если процентов ещё не было). При `deposit_amount=0`
-    timestamp обнуляется в None.
+    Депозит (Phase 0.1, 4.49.0.1):
+      - `deposit_amount` — float (тело + капитализированные проценты).
+      - `deposit_last_interest_ts` — Unix timestamp последней капитализации.
+        Обнуляется в None при полном снятии депозита.
 
-    Loan-поля придут в Phase 4 (4.49.2.1) — `loan_amount`, `loan_last_interest_ts`,
-    + auto-repay toggle в Phase 5 (4.49.2.2).
+    Кредит (Phase 4, 4.49.2.1):
+      - `loan_amount` — float (тело + капитализированные проценты).
+      - `loan_last_interest_ts` — Unix timestamp последней капитализации
+        долга. Обнуляется в None при полном погашении.
+
+    Auto-repay toggle (Phase 5, 4.49.2.2) — будет добавлен позже.
     """
     deposit_amount: float = 0.0
     deposit_last_interest_ts: Optional[float] = None
+    loan_amount: float = 0.0
+    loan_last_interest_ts: Optional[float] = None
 
 
 @dataclass
@@ -214,6 +222,8 @@ class GameState:
                 mechanics=int(d.get('mechanics', 0)),
                 it_technologies=int(d.get('it_technologies', 0)),
                 banking_interest_rate=int(d.get('banking_interest_rate', 0)),
+                loan_capacity=int(d.get('loan_capacity', 0)),
+                loan_interest_reduction=int(d.get('loan_interest_reduction', 0)),
             ),
 
             training=TrainingSession(
@@ -268,12 +278,14 @@ class GameState:
                 foots=d.get('equipment_foots'),
             ),
 
-            # Bank (4.49.0.0). Старые сейвы без bank-keys → defaults BankState().
-            # `deposit_last_interest_ts` хранится как Optional[float] Unix ts —
-            # читаем напрямую без _deser_datetime (по аналогии с adventure end_ts).
+            # Bank (4.49.0.0 / 4.49.2.1). Старые сейвы без bank-keys → defaults BankState().
+            # `*_last_interest_ts` хранится как Optional[float] Unix ts — читаем
+            # напрямую без _deser_datetime (по аналогии с adventure end_ts).
             bank=BankState(
                 deposit_amount=float(d.get('bank_deposit_amount') or 0.0),
                 deposit_last_interest_ts=d.get('bank_deposit_last_interest_ts'),
+                loan_amount=float(d.get('bank_loan_amount') or 0.0),
+                loan_last_interest_ts=d.get('bank_loan_last_interest_ts'),
             ),
 
             inventory=list(d.get('inventory') or []),
@@ -353,6 +365,8 @@ class GameState:
             'mechanics': self.gym.mechanics,
             'it_technologies': self.gym.it_technologies,
             'banking_interest_rate': self.gym.banking_interest_rate,
+            'loan_capacity': self.gym.loan_capacity,
+            'loan_interest_reduction': self.gym.loan_interest_reduction,
 
             # Move optimization
             'move_optimization_adventure': self.gym.move_optimization_adventure,
@@ -394,7 +408,9 @@ class GameState:
             'adventure_walk_25k_counter': self.adventure.counters.get('walk_25k', 0),
             'adventure_walk_30k_counter': self.adventure.counters.get('walk_30k', 0),
 
-            # Bank (4.49.0.0)
+            # Bank (4.49.0.0 / 4.49.2.1)
             'bank_deposit_amount': self.bank.deposit_amount,
             'bank_deposit_last_interest_ts': self.bank.deposit_last_interest_ts,
+            'bank_loan_amount': self.bank.loan_amount,
+            'bank_loan_last_interest_ts': self.bank.loan_last_interest_ts,
         }

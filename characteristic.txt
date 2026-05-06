@@ -16,7 +16,7 @@
     "loc": "home",
     "energy": 20,
     "energy_max": 50,
-    "energy_time_stamp": 1778074885.562789,
+    "energy_time_stamp": 1778080451.487395,
     "money": 200,
     "skill_training": false,
     "skill_training_name": null,
@@ -30,6 +30,8 @@
     "mechanics": 0,
     "it_technologies": 0,
     "banking_interest_rate": 0,
+    "loan_capacity": 0,
+    "loan_interest_reduction": 0,
     "move_optimization_adventure": 0,
     "move_optimization_gym": 0,
     "move_optimization_work": 0,
@@ -59,5 +61,7 @@
     "adventure_walk_25k_counter": 0,
     "adventure_walk_30k_counter": 0,
     "bank_deposit_amount": 0.0,
-    "bank_deposit_last_interest_ts": null
+    "bank_deposit_last_interest_ts": null,
+    "bank_loan_amount": 0.0,
+    "bank_loan_last_interest_ts": null
 }

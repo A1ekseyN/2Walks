@@ -248,6 +248,18 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "effect": "+1 % к годовой ставке депозита",
         "available": True,
     },
+    "loan_capacity": {
+        "title": "Кредитный лимит", "icon": "💳",
+        "field": "loan_capacity",
+        "effect": "+100 $ к максимальной сумме кредита",
+        "available": True,
+    },
+    "loan_interest_reduction": {
+        "title": "Снижение ставки по кредиту", "icon": "📉",
+        "field": "loan_interest_reduction",
+        "effect": "−1 % к годовой ставке кредита",
+        "available": True,
+    },
 }
 
 

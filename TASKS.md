@@ -2022,34 +2022,60 @@ Phase 6 (loan skill)   → 4.49.3
 
 #### 4.49.2. Кредиты (зонтичная) `[M / M / todo (blocked by 4.49.0)]`
 
-##### 4.49.2.0. Skill `loan_capacity` — gating prerequisite `[M / S / todo]`
+##### 4.49.2.0. Skills `loan_capacity` + `loan_interest_reduction` — Gym registration `[M / S / done (0.2.2, 06.05.2026)]`
 
-Новый Gym-навык: каждый уровень = +100$ к максимальной сумме непогашенного долга. Default = 0 → кредит вообще недоступен (нужно прокачать чтобы получить доступ к механике). Cap = лимит на остаток долга, не lifetime.
+Объединили два кредитных скилла (бывшая 4.49.3 — `loan_interest_reduction` — сюда влилась) в один шаг. Оба skills регистрируются в Gym ДО реализации кредитов (4.49.2.1) — это даёт игроку возможность начать прокачку заранее.
 
-**Скоуп:**
-1. Поле `loan_capacity: int = 0` в `GymSkills`. Update from_dict/to_dict.
-2. Записи в `skill_training_table` (уровни 1..N).
-3. Пункт в меню Gym («+100$ к лимиту кредита»).
-4. Helper `max_loan(state) -> int = state.gym.loan_capacity * 100`.
+**Реализация (06.05.2026):**
 
-**Реализуется ДО 4.49.2.1**, чтобы UI кредитов сразу мог проверять cap без переписывания.
+1. `state.py:GymSkills`:
+   - `loan_capacity: int = 0` — каждый уровень = +100 $ к максимальной сумме кредита (`max_loan = loan_capacity * 100`). Default 0 → кредит вообще недоступен (gate-механика).
+   - `loan_interest_reduction: int = 0` — каждый уровень снижает годовую ставку кредита на 1% (от базовых 100%).
+   - Round-trip: оба добавлены в `from_dict` (с default=0 для legacy) и `to_dict`.
 
-##### 4.49.2.1. Кредиты: взять / погасить / ежедневные проценты `[M / M / todo (blocked by 4.49.2.0)]`
+2. `gym.py:_SKILL_DESCRIPTIONS`:
+   - `loan_capacity`: title «Кредитный лимит», description «Каждый уровень добавляет +100 $ к максимальной сумме кредита.»
+   - `loan_interest_reduction`: title «Снижение ставки по кредиту», description «Каждый уровень снижает годовую ставку кредита на 1% (от базовых 100%).»
 
-**Скоуп:**
-1. Расширить `BankState`: `loan_amount: float = 0.0`, `loan_last_accrual_ts: Optional[float] = None`. Update from_dict/to_dict.
-2. `bank.py`:
-   - `accrue_loan(state)` — зеркальная `accrue_deposit`, но по ставке `current_loan_rate_pct(state)`.
-   - `current_loan_rate_pct(state) -> float` — возвращает `100.0 - state.gym.loan_interest_reduction` (Phase 6 добавит навык; пока default 100%).
-   - `_take_loan(state, amount)` — accrue_loan first; проверяет `loan_amount + amount <= max_loan(state)`; добавляет к `loan_amount`, прибавляет к `state.money`, обновляет timestamp.
-   - `_repay_loan(state, amount)` — accrue_loan first; проверяет `state.money >= amount` и `amount <= ceil(loan_amount)`; вычитает из money и из loan_amount.
-3. Расширить `bank_menu` — секция «Кредит»: текущий долг (с live preview через `preview_loan_amount`), max_loan, опции «Взять» / «Погасить» / «Назад».
+3. `gym.py:gym_menu` skill_options: пункты `'10'` (loan_capacity) и `'11'` (loan_interest_reduction). Стоимость прокачки шарится из общей `skill_training_table`.
 
-**Тесты:**
-- accrue_loan корректность.
-- skill=0 → max_loan=0 → take_loan невозможен (любая сумма отвергается).
-- skill=5 → max_loan=500 → take_loan(500) ok, take_loan(501) reject, take_loan(300) ok, потом take_loan(201) reject (overflow cap).
-- repay частичный / полный.
+4. `web/main.py:_GYM_SKILL_DISPLAY`:
+   - `loan_capacity`: icon 💳, effect «+100 $ к максимальной сумме кредита», available=True.
+   - `loan_interest_reduction`: icon 📉, effect «−1 % к годовой ставке кредита», available=True.
+
+5. **БЕЗ хука capitalize-on-skill-up для `loan_interest_reduction`** — это будет добавлено в 4.49.2.1 одновременно с `accrue_loan` (сейчас функции просто нет).
+
+**Тесты:** 6 новых в test_bank.py — `loan_capacity` / `loan_interest_reduction` defaults, round-trip обоих, наличие в `_SKILL_DESCRIPTIONS` (с правильным текстом), наличие в `gym_menu` (pre-rendering меню), наличие в `_GYM_SKILL_DISPLAY` (icon / available). 2 существующих теста в test_web_main.py обновлены: `_returns_all_entries` (теперь 11 навыков), `nested_details` (1 внешний + 11 nested = 12). 2 теста в test_state.py обновлены (expected_keys включает 2 новых). All 464 tests pass, mypy 0 issues.
+
+**Что НЕ делалось в этом шаге:** UI кредитов / mutation helpers / accrue_loan / хук capitalize-on-skill-up для loan_interest_reduction — всё в 4.49.2.1. Сейчас оба скилла прокачиваются через стандартный flow Gym, но не имеют игрового эффекта (loan-механики ещё нет).
+
+##### 4.49.2.1. Кредиты: взять / погасить / ежедневные проценты `[M / M / done (0.2.2, 06.05.2026)]`
+
+**Реализация (06.05.2026):**
+
+1. `state.BankState` расширен: `loan_amount: float = 0.0`, `loan_last_interest_ts: Optional[float] = None`. Round-trip через flat-keys `bank_loan_amount` / `bank_loan_last_interest_ts`. Старые сейвы → defaults (0.0 / None).
+
+2. `bank.py` — pure helpers:
+   - `current_loan_rate_pct(state)` = `max(0.0, 100.0 - state.gym.loan_interest_reduction)` — default 100% годовых, clamp на 0 для skill > 100.
+   - `max_loan(state)` = `state.gym.loan_capacity * 100`.
+   - `can_take_loan(state)` = `max_loan > 0 AND loan_amount < max_loan`.
+   - `can_repay_loan(state)` = `loan_amount > 0` (НЕ требует skill — игрок не должен застрять с долгом).
+   - `accrue_loan(state)` — симметричен `accrue_deposit`. Идемпотентен. No-op при `loan_amount=0` или ts=None. Защита от clock-skew.
+   - `preview_loan_amount(state)` — pure, без мутации.
+   - `_take_loan(state, amount)` — accrue first; проверка cap (`loan_amount + amount <= max_loan`); `state.money += amount`, `loan_amount += amount`, set ts.
+   - `_repay_loan(state, amount)` — accrue first; auto-promote: при `amount == ceil(loan_amount)` списываем точную float-сумму (`state.money -= loan_amount`), кредит закрывается. Иначе — strict integer (копейки на долге остаются). Reject при amount<=0 / нет долга / amount > ceil(loan) / state.money < amount.
+   - `_repay_loan_all(state)` — accrue first; точное float-списание (`state.money -= loan_amount`), `loan_amount = 0`, ts = None. Reject при insufficient money.
+
+3. UI (`_print_bank_header` + `bank_menu`):
+   - Шапка имеет два блока — «Депозит» (как было) и «Кредит» (новый, всегда виден). Кредит показывает `💳 Кредит: X.XX / Y.YY $ (лимит)`, `📉 Ставка кред.: N% годовых`, `💢 Начислено: +X.XX $` (если accrued > 0). При `max_loan=0` — строка `🔒 Кредит заблокирован — прокачай "Кредитный лимит"...`.
+   - Меню — две секции с разделителями `═══ Депозит ═══` и `═══ Кредит ═══`. 7 действий + `0. Назад`. `🔒` префиксы независимо для каждого блока (1+2 при !can_open_deposit, 3+4 при !can_withdraw, 5 при !can_take_loan, 6+7 при !can_repay_loan).
+   - Handler `_do_take_loan` — confirmation prompt `"Взять {amount} $ под {rate}% годовых? (y/n)"` (двойное подтверждение для дорогой операции).
+   - Handler `_do_repay_loan` — auto-promote message: `Кредит закрыт. Спасибо за пользование банком.` при X == ceil(loan); иначе остаток.
+   - Handler `_do_repay_loan_all` — точное float-списание + сообщение «Кредит закрыт. Спасибо за пользование банком.»
+
+4. Хук в `gym.skill_training_check_done`: при `skill_name=='loan_interest_reduction'` ПЕРЕД инкрементом вызывается `accrue_loan` (через lazy import). Симметрично хуку для `banking_interest_rate` — закрывает exploit «качнуть навык → накопленные проценты пересчитаются по новой ставке».
+
+**Тесты:** 35 новых в test_bank.py (current_loan_rate / max_loan / can_take/repay matrix, accrue_loan idempotent / 100% / no-op, preview no-mutation, _take_loan blocked at skill=0 / normal / cap respect / zero, _repay_loan partial / auto-promote at ceil / over reject / insufficient / no debt / zero, _repay_loan_all exact float / insufficient / no debt, hook capitalize on skill-up для loan_interest_reduction / not on other skills, UI shows credit section / unlocked / take confirmation flow / cancel / repay full message). 1 тест в test_state.py обновлён (expected_keys: +2 ключа). All 499 tests pass (464 + 35), mypy 0 issues.
 
 ##### 4.49.2.2. Auto-repay toggle: %-отчисление с зарплаты `[L / S / todo (blocked by 4.49.2.1)]`
 
@@ -2060,13 +2086,9 @@ Phase 6 (loan skill)   → 4.49.3
 2. `bank_menu` — toggle опция и установка %.
 3. Хук в `work.py:work_check_done(state)` — после крединга salary в state.money, если auto_repay включён — вызвать `_repay_loan(state, floor(salary * pct / 100))`.
 
-#### 4.49.3. Skill `loan_interest_reduction` `[L / S / todo (blocked by 4.49.2.1)]`
+#### 4.49.3. Skill `loan_interest_reduction` `[merged into 4.49.2.0 + 4.49.2.1 — done]`
 
-Новый Gym-навык: каждый уровень = -1% к годовой ставке кредита. Default = 0 → ставка 100%. Recompute (как `banking_interest_rate`): хук в `skill_training_check_done` для accrue_loan перед инкрементом.
-
-**Скоуп:** аналогично 4.49.1.0 + 4.49.1.1, но для кредита.
-
-**Баланс:** -1%/level — на низких уровнях польза маленькая, нужен длинный grind. Если окажется бесполезно — увеличить шаг до -2% или ввести нелинейность. Решается на этапе реализации.
+**Объединено:** регистрация скилла в Gym переехала в **4.49.2.0** (вместе с `loan_capacity`). Хук capitalize-on-skill-up уйдёт в **4.49.2.1** одновременно с `accrue_loan`. Эта подзадача больше не самостоятельная.
 
 ---
 

@@ -2317,11 +2317,11 @@ def test_gym_skills_use_nested_details():
     next_section_pos = body.find('id="bonuses"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
-    # (после 4.49.1.0 — 9 навыков с banking_interest_rate).
+    # (после 4.49.2.0 — 11 навыков: + loan_capacity + loan_interest_reduction).
     import re
     details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
-    # 1 внешний + 9 nested = 10.
-    assert len(details_tags) == 10
+    # 1 внешний + 11 nested = 12.
+    assert len(details_tags) == 12
     # Ни один не должен быть `open`.
     for tag in details_tags:
         assert "open" not in tag, f"details unexpectedly open: {tag}"
@@ -2566,11 +2566,13 @@ def test_build_gym_skills_returns_all_entries():
     keys = [s["key"] for s in skills]
     # После 0.2.1g (4.48.4.1) — ключ 'energy_max' переименован в 'energy_max_skill'.
     # После 0.2.2 (4.49.1.0) — добавлен banking_interest_rate (9-й навык).
+    # После 0.2.2 (4.49.2.0) — добавлены loan_capacity + loan_interest_reduction
+    # (10-й и 11-й навыки).
     assert keys == [
         "stamina", "energy_max_skill", "speed_skill", "luck_skill",
         "move_optimization_adventure", "move_optimization_gym",
         "move_optimization_work", "neatness_in_using_things",
-        "banking_interest_rate",
+        "banking_interest_rate", "loan_capacity", "loan_interest_reduction",
     ]
 
 

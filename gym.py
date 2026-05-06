@@ -124,6 +124,16 @@ _SKILL_DESCRIPTIONS = {
         'banking_interest_rate',
         'Каждый уровень добавляет +1% к годовой ставке депозита в Банке.',
     ),
+    'loan_capacity': (
+        'Кредитный лимит',
+        'loan_capacity',
+        'Каждый уровень добавляет +100 $ к максимальной сумме кредита.',
+    ),
+    'loan_interest_reduction': (
+        'Снижение ставки по кредиту',
+        'loan_interest_reduction',
+        'Каждый уровень снижает годовую ставку кредита на 1% (от базовых 100%).',
+    ),
 }
 
 
@@ -177,6 +187,10 @@ def gym_menu(state: GameState) -> None:
               state.gym.neatness_in_using_things + 1),
         '9': ('banking_interest_rate', 'Банковская ставка:                ',
               state.gym.banking_interest_rate + 1),
+        '10': ('loan_capacity', 'Кредитный лимит:                  ',
+               state.gym.loan_capacity + 1),
+        '11': ('loan_interest_reduction', 'Снижение ставки по кредиту:       ',
+               state.gym.loan_interest_reduction + 1),
     }
 
     # Цикл retry на невалиде / отказе от подтверждения (1.5.6 — 0.2.1h, было:
@@ -226,13 +240,16 @@ def skill_training_check_done(state: GameState) -> None:
         return
 
     skill_name = state.training.skill_name
-    # 4.49.1.1: capitalize-on-skill-up — для banking_interest_rate сначала
-    # начисляем проценты по СТАРОЙ ставке за прошедший период, потом инкрементим
-    # скилл. Иначе новая ставка применилась бы задним числом (exploit).
-    # Lazy import — избегаем циклов (bank.py импортит state, не gym).
+    # 4.49.1.1 / 4.49.2.1: capitalize-on-skill-up — для banking_interest_rate
+    # и loan_interest_reduction сначала начисляем проценты по СТАРОЙ ставке за
+    # прошедший период, потом инкрементим скилл. Иначе новая ставка применилась
+    # бы задним числом (exploit). Lazy import — избегаем циклов.
     if skill_name == 'banking_interest_rate':
         from bank import accrue_deposit
         accrue_deposit(state)
+    elif skill_name == 'loan_interest_reduction':
+        from bank import accrue_loan
+        accrue_loan(state)
     new_level = getattr(state.gym, skill_name) + 1
     setattr(state.gym, skill_name, new_level)
     print(f'\n🏋 Навык {skill_name.title()} улучшен до {new_level}')
