@@ -1,5 +1,5 @@
 {
-    "date_last_enter": "2026-05-05",
+    "date_last_enter": "2026-05-06",
     "timestamp_last_enter": 0.0,
     "steps_today": 10000,
     "steps_can_use": 10400,
@@ -16,7 +16,7 @@
     "loc": "home",
     "energy": 20,
     "energy_max": 50,
-    "energy_time_stamp": 1777992026.880807,
+    "energy_time_stamp": 1778049499.593347,
     "money": 200,
     "skill_training": false,
     "skill_training_name": null,

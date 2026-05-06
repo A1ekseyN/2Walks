@@ -132,6 +132,9 @@
             {% else %}
                 —
             {% endif %}
+            {% if work_start_ts and work_end_ts %}
+                <progress data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}" value="{{ '%.2f' % work_progress }}" max="100"></progress>
+            {% endif %}
         </p>
         {% endif %}
 
@@ -168,7 +171,7 @@
             🏭 <strong>Работа</strong>
             {%- if state.work.active and state.work.work_type %}
                 · {{ state.work.work_type.title() }}
-                <small>· {{ state.work.salary * state.work.hours }} $ ({{ state.work.hours }} ч)</small>
+                <small>· {{ state.work.salary * state.work.hours }} $ ({{ format_hours(state.work.hours) }})</small>
             {%- else %}
                 <small>· выбери вакансию</small>
             {%- endif %}

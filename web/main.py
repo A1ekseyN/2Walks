@@ -45,6 +45,7 @@ from equipment_bonus import (
     equipment_stamina_bonus,
 )
 from functions import bonus_percentage, energy_time_charge, save_game_date_last_enter, total_bonus_steps
+from functions_02 import format_hours
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from google_sheets_db import StepsLogRepo
 from inventory import Wear_Equipped_Items
@@ -55,7 +56,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.1u"
+VERSION = "0.2.1v"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -371,6 +372,7 @@ def _build_skill_options(state) -> list:
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.globals["format_hours"] = format_hours
 
 
 @asynccontextmanager
@@ -559,8 +561,9 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     )
 
     # Initial server-side значения прогресс-баров (клиент будет двигать раз в секунду).
-    # Work — без progress (0.2.1c follow-up): таймер достаточен, % перегружал блок.
+    # Work progress вернулся в 0.2.1v (запрос пользователя) — без подписи %, чисто бар.
     training_progress = _compute_progress_pct(training_start_ts, training_end_ts, now_ts)
+    work_progress = _compute_progress_pct(work_start_ts, work_end_ts, now_ts)
     adv_progress = _compute_progress_pct(adv_start_ts, adv_end_ts, now_ts)
 
     # Уровень навыка для текущей тренировки — для отображения "до какого уровня".
@@ -635,6 +638,7 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "training_skill_target": training_skill_target,
         "work_start_ts": work_start_ts,
         "work_end_ts": work_end_ts,
+        "work_progress": work_progress,
         "adv_start_ts": adv_start_ts,
         "adv_end_ts": adv_end_ts,
         "adv_progress": adv_progress,

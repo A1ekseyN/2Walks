@@ -12,7 +12,7 @@ shift, training, adventure).
 import re
 from datetime import timedelta
 
-from functions_02 import format_timedelta, time as time_fmt
+from functions_02 import format_hours, format_timedelta, time as time_fmt
 
 
 # ----- Edge cases -----
@@ -225,3 +225,71 @@ def test_time_contains_colorama_codes():
     """Числа всё ещё обёрнуты в colorama LIGHTBLUE."""
     out = time_fmt(90)  # 1 ч. 30 мин.
     assert '\x1b[' in out  # есть ANSI-escape
+
+
+# ---------------------------------------------------------------------------
+# format_hours(hours) — форматтер часов для web summary смены работы
+# (0.2.1v). Стиль аналогичен time(), но без минут и без colorama.
+# ---------------------------------------------------------------------------
+
+def test_format_hours_zero():
+    """0 часов → "0 ч." (граничный случай)."""
+    assert format_hours(0) == "0 ч."
+
+
+def test_format_hours_one():
+    assert format_hours(1) == "1 ч."
+
+
+def test_format_hours_under_day():
+    """1 ≤ h < 24 → "X ч."."""
+    assert format_hours(8) == "8 ч."
+    assert format_hours(23) == "23 ч."
+
+
+def test_format_hours_one_day_exact():
+    """24 часа = 1 дн. 0 ч. (ведущие нули — все младшие компоненты показываются)."""
+    assert format_hours(24) == "1 дн. 0 ч."
+
+
+def test_format_hours_typical_work_shift():
+    """71 час = 2 дн. 23 ч. (пример из dashboard, смена с продлениями)."""
+    assert format_hours(71) == "2 дн. 23 ч."
+
+
+def test_format_hours_just_under_month():
+    """719 часов < 30 дней → без месяца. 29 дн. 23 ч."""
+    assert format_hours(719) == "29 дн. 23 ч."
+
+
+def test_format_hours_one_month_exact():
+    """720 часов (30 дней) = 1 мес. 0 дн. 0 ч."""
+    assert format_hours(720) == "1 мес. 0 дн. 0 ч."
+
+
+def test_format_hours_month_plus_partial():
+    """720 + 5*24 + 3 = 863 часа = 1 мес. 5 дн. 3 ч."""
+    assert format_hours(720 + 5 * 24 + 3) == "1 мес. 5 дн. 3 ч."
+
+
+def test_format_hours_just_under_year():
+    """8759 часов (< 365 дней) — без года, с месяцами/днями."""
+    # 8759 = 12 мес (12*720 = 8640), остаток 119 = 4 дн. 23 ч.
+    assert format_hours(8759) == "12 мес. 4 дн. 23 ч."
+
+
+def test_format_hours_one_year_exact():
+    """8760 часов (365 дней) = 1 г. 0 мес. 0 дн. 0 ч."""
+    assert format_hours(8760) == "1 г. 0 мес. 0 дн. 0 ч."
+
+
+def test_format_hours_year_plus_full():
+    """1 год + 1 мес + 5 дн + 3 ч."""
+    h = 8760 + 720 + 5 * 24 + 3
+    assert format_hours(h) == "1 г. 1 мес. 5 дн. 3 ч."
+
+
+def test_format_hours_no_colorama():
+    """Plain text — никаких ANSI-escape, идёт прямо в HTML."""
+    out = format_hours(71)
+    assert '\x1b[' not in out

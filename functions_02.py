@@ -118,3 +118,41 @@ def format_timedelta(td) -> str:
     m, s = divmod(total, _MINUTE_S)
     parts.append(f"{h}:{m:02d}:{s:02d}")
     return " ".join(parts)
+
+
+# Часов в более крупных единицах (для format_hours — 0.2.1v).
+_HOURS_PER_DAY = 24
+_HOURS_PER_MONTH = 30 * 24    # 720
+_HOURS_PER_YEAR = 365 * 24    # 8760
+
+
+def format_hours(hours: int) -> str:
+    """Часы → "Y г. MO мес. D дн. H ч." с ведущими нулями. Plain text без colorama.
+
+    Используется на web для длительности смены работы (`state.work.hours`),
+    чтобы не показывать "71 ч" вместо "2 дн. 23 ч.". Стиль аналогичен CLI
+    `time(x)`, но входное значение — часы (а не минуты), компонента "минуты"
+    исключена, и colorama НЕ применяется (текст идёт прямо в HTML).
+
+    Логика "ведущие нули": если значение не превышает порог следующей единицы
+    (например, hours < 720 → нет месяцев), эта единица не показывается. Если
+    есть — показываются ВСЕ младшие компоненты, даже если они равны нулю
+    (3 дня → "3 дн. 0 ч."). Месяц = 30 дней, год = 365 дней (как в `time()`
+    и `format_timedelta`).
+    """
+    if hours < _HOURS_PER_DAY:
+        return f"{hours} ч."
+
+    if hours < _HOURS_PER_MONTH:
+        d, h = divmod(hours, _HOURS_PER_DAY)
+        return f"{d} дн. {h} ч."
+
+    if hours < _HOURS_PER_YEAR:
+        mo, rest = divmod(hours, _HOURS_PER_MONTH)
+        d, h = divmod(rest, _HOURS_PER_DAY)
+        return f"{mo} мес. {d} дн. {h} ч."
+
+    y, rest = divmod(hours, _HOURS_PER_YEAR)
+    mo, rest = divmod(rest, _HOURS_PER_MONTH)
+    d, h = divmod(rest, _HOURS_PER_DAY)
+    return f"{y} г. {mo} мес. {d} дн. {h} ч."

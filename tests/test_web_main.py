@@ -372,9 +372,9 @@ def test_equipment_filled_slot_shows_item_details():
 
 # ----- Progress bars (active sessions) -----
 
-def test_active_work_does_not_render_progress_bar():
-    """Work — только таймер до конца смены, без progress bar и без % текста
-    (0.2.1c follow-up — упрощение UI)."""
+def test_active_work_renders_progress_bar_without_percent():
+    """Work — таймер до конца смены + прогресс-бар (вернулся в 0.2.1v по запросу
+    пользователя). Без % текста — только сам бар."""
     state = GameState.default_new_game()
     state.work.active = True
     state.work.work_type = "factory"
@@ -388,11 +388,13 @@ def test_active_work_does_not_render_progress_bar():
     body = response.text
     # Таймер на месте.
     assert "data-end-ts=" in body
-    # Прогресс-бар работы убран — но adventure/training-прогресс может ещё быть,
-    # так что проверяем что внутри Work-блока нет <progress>. Adventure/training
-    # не активны — секции для них не рендерятся.
-    # Считаем что весь "data-progress-start-ts" должен отсутствовать.
-    assert "data-progress-start-ts=" not in body
+    # Прогресс-бар Work присутствует (training/adventure не активны — это
+    # единственный <progress> в active sessions).
+    assert "data-progress-start-ts=" in body
+    assert "<progress" in body
+    # Подписи "% Завершено" нет — work без процентного текста, в отличие от
+    # training/adventure.
+    assert "Завершено" not in body
 
 
 def test_active_training_renders_progress_bar():
