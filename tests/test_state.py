@@ -326,6 +326,7 @@ def test_default_state_to_dict_has_all_legacy_keys():
         # Gym skills
         'stamina', 'energy_max_skill', 'speed_skill', 'luck_skill',
         'neatness_in_using_things', 'mechanics', 'it_technologies',
+        'banking_interest_rate',
         'move_optimization_adventure', 'move_optimization_gym',
         'move_optimization_work',
         # Work

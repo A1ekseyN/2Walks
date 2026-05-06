@@ -90,7 +90,7 @@ class Adventure:
         не раздувалось до 50 строк."""
         state = self._state
         print('\n ️🗺 ️--- Меню Приключения --- 🗺️')
-        print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money} $,")
+        print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money:,.0f} $,")
         print('Вы можете отправить персонажа в приключение.'
               '\nВ приключении, персонаж может получить полезные предметы.')
 

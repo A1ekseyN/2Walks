@@ -71,6 +71,7 @@ class GymSkills:
     move_optimization_work: int = 0
     mechanics: int = 0
     it_technologies: int = 0
+    banking_interest_rate: int = 0   # 4.49 — bonus к ставке депозита (+1%/level)
 
 
 @dataclass
@@ -144,7 +145,7 @@ class GameState:
     # Resources
     energy: int = 50
     energy_max: int = 50
-    money: int = 0
+    money: float = 0.0    # 4.49 — float чтобы поддержать копейки на кошельке (после Снять всё)
     energy_time_stamp: float = 0.0
     loc: str = 'home'
 
@@ -179,7 +180,7 @@ class GameState:
             timestamp_last_enter=float(d.get('timestamp_last_enter') or 0.0),
             energy=int(d.get('energy', 50)),
             energy_max=int(d.get('energy_max', 50)),
-            money=int(d.get('money', 0)),
+            money=float(d.get('money', 0) or 0),
             energy_time_stamp=float(d.get('energy_time_stamp') or 0.0),
             loc=d.get('loc', 'home') or 'home',
 
@@ -212,6 +213,7 @@ class GameState:
                 move_optimization_work=int(d.get('move_optimization_work', 0)),
                 mechanics=int(d.get('mechanics', 0)),
                 it_technologies=int(d.get('it_technologies', 0)),
+                banking_interest_rate=int(d.get('banking_interest_rate', 0)),
             ),
 
             training=TrainingSession(
@@ -350,6 +352,7 @@ class GameState:
             'neatness_in_using_things': self.gym.neatness_in_using_things,
             'mechanics': self.gym.mechanics,
             'it_technologies': self.gym.it_technologies,
+            'banking_interest_rate': self.gym.banking_interest_rate,
 
             # Move optimization
             'move_optimization_adventure': self.gym.move_optimization_adventure,

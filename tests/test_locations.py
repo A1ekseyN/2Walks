@@ -66,7 +66,12 @@ def test_auto_dialer_location_prints_header(capsys):
     assert 'Auto Dialer Location' in capsys.readouterr().out
 
 
-def test_bank_location_prints_header(capsys):
+def test_bank_location_opens_menu(monkeypatch, capsys):
+    """С 0.2.2 / 4.49.0.1 bank_location вызывает интерактивное меню банка.
+    Передаём '0' (Назад) — меню должно отрисоваться и сразу вернуться."""
     state = GameState.default_new_game()
+    monkeypatch.setattr('builtins.input', lambda *args, **kwargs: '0')
     bank_location(state)
-    assert 'Bank Location' in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert 'Bank Location' in out
+    assert 'Депозит' in out

@@ -242,6 +242,12 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "effect": "-1 % износ экипировки",
         "available": True,
     },
+    "banking_interest_rate": {
+        "title": "Банковская ставка", "icon": "🏦",
+        "field": "banking_interest_rate",
+        "effect": "+1 % к годовой ставке депозита",
+        "available": True,
+    },
 }
 
 
@@ -341,7 +347,7 @@ def _validate_and_apply_training(state, skill_name: str) -> Optional[str]:
     if state.energy < cost_raw["energy"]:
         return f"Не хватает 🔋: нужно {cost_raw['energy']}, есть {state.energy}."
     if state.money < cost_raw["money"]:
-        return f"Не хватает 💰: нужно {cost_raw['money']}, есть {state.money}."
+        return f"Не хватает 💰: нужно {cost_raw['money']}, есть {state.money:,.0f}."
 
     # Старт через существующий CLI helper. Skill_Training.check_requirements
     # печатает в stdout (CLI noise — допустимо в uvicorn логе) и при недостаче

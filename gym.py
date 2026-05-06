@@ -119,6 +119,11 @@ _SKILL_DESCRIPTIONS = {
         'neatness_in_using_things',
         'Каждый уровень навыка уменьшает износ вещей на 1 %.',
     ),
+    'banking_interest_rate': (
+        'Банковская ставка',
+        'banking_interest_rate',
+        'Каждый уровень добавляет +1% к годовой ставке депозита в Банке.',
+    ),
 }
 
 
@@ -142,7 +147,7 @@ def display_skill_description(skill_name: str, state: GameState) -> None:
 def _render_gym_menu(state: GameState, skill_options: dict) -> None:
     """Печать меню Gym (1.5.6 — 0.2.1h, helper для loop'а в gym_menu)."""
     print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
-    print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money} $.")
+    print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money:,.0f} $.")
     print('На данный момент вы можете улучшить: ')
     for key, (skill, name, level) in skill_options.items():
         print(f'\t{key}. {name}{Fore.LIGHTCYAN_EX}{level}{Style.RESET_ALL} lvl ({get_lvl_up_info(skill, level, state)})')
@@ -170,6 +175,8 @@ def gym_menu(state: GameState) -> None:
               state.gym.move_optimization_work + 1),
         '8': ('neatness_in_using_things', 'Аккуратность использования вещей: ',
               state.gym.neatness_in_using_things + 1),
+        '9': ('banking_interest_rate', 'Банковская ставка:                ',
+              state.gym.banking_interest_rate + 1),
     }
 
     # Цикл retry на невалиде / отказе от подтверждения (1.5.6 — 0.2.1h, было:
@@ -219,6 +226,13 @@ def skill_training_check_done(state: GameState) -> None:
         return
 
     skill_name = state.training.skill_name
+    # 4.49.1.1: capitalize-on-skill-up — для banking_interest_rate сначала
+    # начисляем проценты по СТАРОЙ ставке за прошедший период, потом инкрементим
+    # скилл. Иначе новая ставка применилась бы задним числом (exploit).
+    # Lazy import — избегаем циклов (bank.py импортит state, не gym).
+    if skill_name == 'banking_interest_rate':
+        from bank import accrue_deposit
+        accrue_deposit(state)
     new_level = getattr(state.gym, skill_name) + 1
     setattr(state.gym, skill_name, new_level)
     print(f'\n🏋 Навык {skill_name.title()} улучшен до {new_level}')
@@ -257,7 +271,7 @@ class Skill_Training:
         if self._state.energy <= cost['energy']:
             print(f'\t- 🔋: Не хватает - {cost["energy"] - self._state.energy} энергии.')
         if self._state.money <= cost['money']:
-            print(f'\t- 💰: Не хватает - {cost["money"] - self._state.money} money.')
+            print(f'\t- 💰: Не хватает - {cost["money"] - self._state.money:,.0f} money.')
         # Удалён рекурсивный вызов gym_menu(self._state) (1.5.6 — 0.2.1h):
         # с while-loop в gym_menu вызывающий код сам перерисует меню через
         # `continue` при возврате False.

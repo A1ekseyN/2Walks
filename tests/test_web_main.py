@@ -2307,7 +2307,7 @@ def test_gym_section_disabled_button_when_not_enough_resources():
 
 
 def test_gym_skills_use_nested_details():
-    """4.48.4 follow-up: каждый из 8 навыков обёрнут в собственный nested
+    """4.48.4 follow-up: каждый навык обёрнут в собственный nested
     <details>, свёрнут по умолчанию — игрок раскрывает только нужные."""
     _setup_state(_state_for_gym())
     with TestClient(app) as client:
@@ -2316,11 +2316,12 @@ def test_gym_skills_use_nested_details():
     gym_pos = body.find('id="gym"')
     next_section_pos = body.find('id="bonuses"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
-    # Внутри Gym-блока есть 8 nested <details> — по одному на каждый навык.
+    # Внутри Gym-блока — nested <details> по одному на каждый навык
+    # (после 4.49.1.0 — 9 навыков с banking_interest_rate).
     import re
     details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
-    # 1 внешний + 8 nested = 9.
-    assert len(details_tags) == 9
+    # 1 внешний + 9 nested = 10.
+    assert len(details_tags) == 10
     # Ни один не должен быть `open`.
     for tag in details_tags:
         assert "open" not in tag, f"details unexpectedly open: {tag}"
@@ -2558,16 +2559,18 @@ def test_dashboard_does_not_finalize_active_unfinished_training():
 
 # ----- _build_gym_skills helper -----
 
-def test_build_gym_skills_returns_8_entries():
+def test_build_gym_skills_returns_all_entries():
     from web.main import _build_gym_skills
     state = _state_for_gym()
     skills = _build_gym_skills(state)
     keys = [s["key"] for s in skills]
     # После 0.2.1g (4.48.4.1) — ключ 'energy_max' переименован в 'energy_max_skill'.
+    # После 0.2.2 (4.49.1.0) — добавлен banking_interest_rate (9-й навык).
     assert keys == [
         "stamina", "energy_max_skill", "speed_skill", "luck_skill",
         "move_optimization_adventure", "move_optimization_gym",
         "move_optimization_work", "neatness_in_using_things",
+        "banking_interest_rate",
     ]
 
 

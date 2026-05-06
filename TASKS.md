@@ -1957,56 +1957,68 @@ Phase 6 (loan skill)   → 4.49.3
 - `tests/test_state.py` — расширить existing round-trip: `BankState()` со значениями (1234.56, 1700000000.0) → to_dict → from_dict → assert equal.
 - Test «старый сейв без bank-keys» → BankState defaults применяются.
 
-##### 4.49.0.1. Депозиты: внести / снять (CLI меню) `[H / S / todo (blocked by 4.49.0.0)]`
+##### 4.49.0.1. Депозиты: внести / снять / preview (CLI меню) `[H / S / done (0.2.2, 06.05.2026)]`
 
-**Скоуп:**
-1. Новый `bank.py`:
-   - `accrue_deposit(state)` — pure helper. Idempotent. Капитализирует проценты по текущей ставке за `now - last_accrual_ts`. При `deposit_amount=0` или `last_accrual_ts=None` — no-op.
-   - `current_deposit_rate_pct(state) -> float` — возвращает `state.gym.banking_interest_rate * 1.0` (skill default 0 → 0%, в Phase 0.1 ещё нет навыка → всегда 0%).
-   - `bank_menu(state)` — главное меню. 3 опции: "1. Внести (произвольная сумма)" / "2. Снять (произвольная сумма)" / "3. Снять всё" / "0. Назад".
-   - `_deposit(state, amount: int)` — вызывает `accrue_deposit` first; проверяет `state.money >= amount`; вычитает из money, прибавляет к `deposit_amount`, обновляет `last_accrual_ts`.
-   - `_withdraw(state, amount: int)` — `accrue_deposit` first; `floor(deposit_amount) >= amount`; уменьшает `deposit_amount`, прибавляет к `state.money`.
-   - `_withdraw_all(state)` — `accrue_deposit` first; `withdrawn = floor(deposit_amount)`; `deposit_amount -= withdrawn`; `state.money += withdrawn`. Копейки остаются.
-2. `locations.py:bank_location()` — заменить stub-print на `bank_menu(state)`.
+**Реализация (06.05.2026):**
 
-**Отображение:** в Bank меню сумма депозита показывается как `f"{amount:,.2f} $"`. Прочие меню (status_bar и т.п.) не трогаем — они работают со `state.money` (int).
+1. `state.py`:
+   - `state.money: int → float` — чтобы копейки могли течь между кошельком и депозитом без потерь (`Снять всё` забирает дробную часть). Display везде кроме Bank — `f"{state.money:,.0f}"`.
+   - `GymSkills.banking_interest_rate: int = 0` — добавлено сейчас (Phase 2 потом только подключит к Gym training-table + меню). +1 ключ в `to_dict` / `from_dict`.
 
-**Тесты:**
-- `accrue_deposit` идемпотентность (2× вызов в течение 1 сек = тот же результат с точностью до float).
-- `accrue_deposit` correct interest: deposit 1000$, rate 10%/yr, elapsed 1 day → `1000 * 0.1 / 365 ≈ 0.274$` (с tolerance).
-- `_deposit` / `_withdraw` / `_withdraw_all` корректно мутируют state.
-- Overdraft: `_deposit(amount > money)` → отказ, state не изменён.
-- Withdraw больше остатка → отказ.
+2. Новый `bank.py`:
+   - `accrue_deposit(state)` — pure mutation. Идемпотентна. No-op при amount=0 или ts=None. Защита от clock-skew (now < last_ts → обновить ts до now без отрицательных процентов).
+   - `current_deposit_rate_pct(state)` — `state.gym.banking_interest_rate * 1.0`.
+   - `preview_deposit_amount(state)` — pure, без мутации. Используется в шапке меню для показа «виртуального» остатка.
+   - `_deposit(state, amount: int)` — accrue first, deduct from money, add to deposit. Overdraft / amount<=0 → False.
+   - `_deposit_all(state)` — переносит ВЕСЬ кошелёк (включая копейки) на депозит. Симметричен `_withdraw_all`.
+   - `_withdraw(state, amount: int)` — strict floor. Auto-promote отключён — если игрок ввёл `100` при остатке `100.42`, копейки остаются на депозите (для полного снятия — отдельная опция «Снять всё»).
+   - `_withdraw_all(state)` — `state.money += deposit_amount` (включая копейки), `deposit_amount = 0.0`, `last_interest_ts = None`.
+   - `bank_menu(state)` — UI loop с шапкой: кошелёк / депозит / ставка / накоплено-с-прошлой-капитализации (если > 0). 5 опций: «Внести / Внести всё / Снять / Снять всё / Назад». При ставке 0% — приписка «(прокачай навык в Спортзале)».
 
-##### 4.49.0.2. Депозиты: live preview accrued state `[L / XS / todo (blocked by 4.49.0.1)]`
+3. `locations.py:bank_location()` — заменён stub-print на `bank_menu(state)`.
 
-В меню Bank показывать накопленный «виртуальный» остаток (с процентами на текущий момент) БЕЗ мутации state. Только для отображения. Помогает игроку видеть рост.
+4. Display rules: Bank меню — 2 знака; status_bar / shop / gym / adventure / web — `:,.0f` (целое + разделители тысяч). Обновлено в `adventure.py`, `gym.py`, `shop.py`, `web/main.py`, `web/templates/_status_fragment.html`.
 
-**Скоуп:** одна функция `preview_deposit_amount(state) -> float` — pure: возвращает `deposit_amount + interest_for(now - last_accrual_ts)` без записи в state. Использует то же ядро что `accrue_deposit`, но не мутирует.
+**Тесты (`tests/test_bank.py`):** 31 новый тест — `current_deposit_rate_pct` (default / skill 5), `accrue_deposit` (no-op / 0% / 10%/1day / idempotent / clock-skew), `preview_deposit_amount` (no mutation / empty), `_deposit` (normal / overdraft / zero / top-up капитализирует first), `_deposit_all` (cents / empty), `_withdraw` (strict floor / partial / over / zero), `_withdraw_all` (cents / empty / clears ts), `bank_menu` UI flow (exit / deposit flow / invalid choice / zero-rate hint / nonzero-rate hint / invalid amount / overdraft message / withdraw_all flow / deposit_all flow). Один существующий тест в `test_locations.py` обновлён (bank_location теперь интерактивное меню — monkeypatch input='0'). 443 tests total pass.
 
-**UI:** в `bank_menu` строка вида: `Депозит: 1,234.56 $ (накоплено: +12.34 $ при ставке 5%/год)`.
+**Что НЕ делалось:** интеграция с Gym training-table (Phase 2 / 4.49.1.0); хук accrue в `skill_training_check_done` (Phase 2 / 4.49.1.1); web UI Банка (4.48.9 потом).
+
+##### 4.49.0.2. Gate: открытие и снятие депозита требуют skill ≥ 1 `[L / XS / done (0.2.2, 06.05.2026)]`
+
+**Проблема:** до этой задачи игрок мог открыть депозит даже при `banking_interest_rate=0` — но при этом проценты не капали (0% годовых), и smysla во вложении не было. UX подсказывал лишь «прокачай навык в Спортзале», но не блокировал бессмысленную операцию.
+
+**Решение (06.05.2026):** скилл стал полным геймплейным gate'ом для всех операций Bank. **Внести / Внести всё** заблокированы при `skill < 1`; **Снять / Снять всё** заблокированы при `skill < 1` ИЛИ `deposit_amount == 0` (запрос пользователя — консистентность UX и блокировка операций без смысла). Если skill упал до 0 (legacy / future prestige) — снятие тоже блокируется, игрок должен снова прокачать навык; жёсткий gate приоритетнее «спасения средств». В нормальном игровом flow игрок не теряет деньги — депозит можно открыть только после прокачки, а downgrade пока невозможен.
+
+**Реализация:**
+- Pure helper `bank.can_open_deposit(state) -> bool` = `state.gym.banking_interest_rate >= 1`.
+- Pure helper `bank.can_withdraw(state) -> bool` = `can_open_deposit(state) and state.bank.deposit_amount > 0`.
+- `_deposit` / `_deposit_all` — проверяют `can_open_deposit` первой строкой; при False возвращают False / 0.0 без мутаций.
+- `_withdraw` / `_withdraw_all` — проверяют `can_withdraw` первой строкой; при False возвращают False / 0.0 без мутаций.
+- UI:
+  - Шапка `bank_menu` при skill=0 — строка `🔒 Банк заблокирован — прокачай навык до 1 уровня в Спортзале.`
+  - Пункты меню префиксуются `🔒` независимо: `1. Внести` / `2. Внести всё` — при `not can_open_deposit`; `3. Снять` / `4. Снять всё` — при `not can_withdraw`.
+  - Handler'ы `_do_*` — при skill=0 печатают `🔒 Банк заблокирован. Прокачай навык...` и возвращаются без prompt'а. При skill≥1 но `deposit=0` для withdraw'а — печатают `Депозит пуст — нечего снимать.` (без 🔒, это не gate а пустой остаток).
+
+**Тесты:** 12 новых (can_open_deposit и can_withdraw по разным комбинациям skill / deposit, _deposit / _deposit_all blocked at skill=0, _withdraw / _withdraw_all blocked at skill=0, _withdraw blocked when deposit=0, UI shows lock at skill=0, no lock at skill=1, deposit attempt at skill=0 shows message). 9 существующих deposit/withdraw-тестов обновлены: добавлен `s.gym.banking_interest_rate = 1` для разблокировки + `monkeypatch.setattr(bank.time, 'time', lambda: 1000.0)` чтобы accrue_deposit не насчитал многолетние проценты по timestamp=1000.0 при skill=1 (раньше при skill=0 это работало без mock'а — accrue был no-op). All 458 tests pass, mypy 0 issues.
+
+**Что НЕ делалось:** ослабление gate (например, разрешить вывести при skill=0 как «defensive recovery») — пользователь явно попросил полную консистентность gate'а.
 
 #### 4.49.1. Skill `banking_interest_rate` (зонтичная) `[M / S / todo (blocked by 4.49.0)]`
 
-##### 4.49.1.0. Gym-инфра нового навыка `[M / S / todo]`
+##### 4.49.1.0. Gym-инфра нового навыка `[M / S / done (0.2.2, 06.05.2026)]`
 
-**Скоуп:**
-1. Поле `banking_interest_rate: int = 0` в `GymSkills` dataclass (state.py). Update `from_dict` / `to_dict`.
-2. Записи в `skill_training_table` для уровней 1..30 (или общая формула — TBD по аналогии с другими навыками).
-3. Пункт в меню Gym с описанием: «+1% к годовой ставке депозита». Иконка — TBD (📈 / 💹 / 🏦).
-4. `_GYM_SKILL_DISPLAY` в `web/main.py` — наполнение для будущего web (4.48.4 уже unified, добавить запись).
+**Реализация (06.05.2026):**
+- Поле `banking_interest_rate: int = 0` уже добавлено в `GymSkills` ещё в Phase 0.1 (4.49.0.1). Здесь только подключение к UI.
+- `_SKILL_DESCRIPTIONS` (gym.py): запись с title «Банковская ставка», body «Каждый уровень добавляет +1% к годовой ставке депозита в Банке.».
+- `gym_menu skill_options`: пункт `'9'` (Банковская ставка). Стоимость шарится из общей `skill_training_table` — отдельная цена не нужна.
+- `_GYM_SKILL_DISPLAY` (web/main.py): запись с иконкой 🏦, effect «+1 % к годовой ставке депозита», available=True. Web Gym 4.48.4 universal — 9-й навык подхватился без изменений шаблонов.
 
-**Что НЕ делается:** интеграция с депозитом — будет в 4.49.1.1.
+##### 4.49.1.1. Capitalize-on-skill-up + recompute интеграция `[M / S / done (0.2.2, 06.05.2026)]`
 
-##### 4.49.1.1. Capitalize-on-skill-up + recompute интеграция `[M / S / todo (blocked by 4.49.1.0)]`
-
-**Скоуп:**
-1. Хук в `gym.skill_training_check_done(state)` — при завершении тренировки `banking_interest_rate` ПЕРЕД инкрементом скилла вызвать `accrue_deposit(state)`. Это капитализирует проценты по СТАРОЙ ставке за прошлый период; новая ставка применяется только к будущим периодам — математически корректно.
-2. `current_deposit_rate_pct` уже читает skill — этот шаг просто связывает компоненты.
-
-**Тесты:**
-- End-to-end: open deposit at skill=0 → 30 days pass (mock `time.time`) → assert `accrue` ничего не начислило (0%) → upgrade skill 0→1 (вызов hook) → 30 days pass → assert `accrue` начислил по 1% за второй период, но не за первый.
-- Top-up при skill>0 — корректная капитализация перед добавлением суммы.
+**Реализация (06.05.2026):**
+- Хук в `gym.skill_training_check_done(state)` — при `skill_name=='banking_interest_rate'` ПЕРЕД `setattr(state.gym, ...)` вызывается `accrue_deposit(state)` через lazy import (избегает циклов). Накопленные проценты идут по СТАРОЙ ставке за прошедший период, новая применяется только к будущим — compound interest с капитализацией на событиях, exploit «качнуть навык → бесплатные старые проценты» закрыт.
+- 4 новых теста в test_bank.py: end-to-end сценарий 30+30 дней с upgrade посередине; хук НЕ срабатывает для других навыков; banking_interest_rate в _SKILL_DESCRIPTIONS и _GYM_SKILL_DISPLAY.
+- 2 существующих теста в test_web_main.py обновлены под 9-й навык. All 447 tests pass, mypy 0 issues.
 
 #### 4.49.2. Кредиты (зонтичная) `[M / M / todo (blocked by 4.49.0)]`
 

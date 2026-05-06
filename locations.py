@@ -1,5 +1,6 @@
 """Locations — диспатчер между game.py и каждой локацией."""
 
+from bank import bank_menu
 from gym import gym_menu
 from work import Work
 from shop import Shop
@@ -57,6 +58,4 @@ def auto_dialer_location(state: GameState):
 
 
 def bank_location(state: GameState):
-    print('\n--- 🏛 Bank Location 🏛 ---')
-    print('В данный момент вы находитесь в Банке.')
-    print('Содержимое локации находится в разработке.')
+    bank_menu(state)

@@ -10,7 +10,7 @@ from state import GameState
 
 
 def _money_line(state: GameState) -> str:
-    return f'Money 💰: {Fore.LIGHTYELLOW_EX}{state.money}{Style.RESET_ALL} $.'
+    return f'Money 💰: {Fore.LIGHTYELLOW_EX}{state.money:,.0f}{Style.RESET_ALL} $.'
 
 
 def _empty_item() -> dict:
@@ -145,7 +145,7 @@ class Shop:
                     if _buy_item(state, shoe, price):
                         print(f'\nВы приобрели: Кеды - {grade.upper()} (+ {bonus} % шагов) за - {price} $.')
                         return
-                    print(f'\nУ вас не достаточно денег. Не хватает 💰: {price - state.money} $.')
+                    print(f'\nУ вас не достаточно денег. Не хватает 💰: {price - state.money:,.0f} $.')
                     return
                 if ask == '0':
                     return
