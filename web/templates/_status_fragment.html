@@ -25,7 +25,7 @@
                     <input name="steps" type="number"
                            min="{{ state.steps.today + 1 }}"
                            required autocomplete="off"
-                           placeholder="введи число с браслета"
+                           placeholder="Введите число пройденных шагов. Сегодня пройдено: {{ '{:,}'.format(state.steps.today) }}"
                            style="flex: 1; min-width: 8rem;">
                     <button type="submit" style="margin: 0;">
                         <span class="steps-btn-default">Применить</span>

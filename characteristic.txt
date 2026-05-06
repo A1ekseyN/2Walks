@@ -16,7 +16,7 @@
     "loc": "home",
     "energy": 20,
     "energy_max": 50,
-    "energy_time_stamp": 1778049499.593347,
+    "energy_time_stamp": 1778051813.618387,
     "money": 200,
     "skill_training": false,
     "skill_training_name": null,
