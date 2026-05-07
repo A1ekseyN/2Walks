@@ -33,7 +33,8 @@ from bonus import (
     equipment_bonus_stamina_steps,
     level_steps_bonus,
 )
-from characteristics import game, init_game_state, skill_training_table
+from characteristics import game, init_game_state
+from skill_training_data import skill_training_table
 from gym import (
     Skill_Training,
     _apply_speed_bonus,
@@ -57,7 +58,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.3d"
+VERSION = "0.2.3e"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {

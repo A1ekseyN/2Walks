@@ -5,7 +5,8 @@ from typing import Optional
 
 from colorama import Fore, Style
 
-from characteristics import skill_training_table, save_characteristic, get_energy_training_data
+from characteristics import save_characteristic
+from skill_training_data import skill_training_table, get_energy_training_data
 from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def
 from functions_02 import format_money, time

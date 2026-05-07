@@ -67,9 +67,33 @@
 
 **Что было удалено:** module-level переменные в `characteristics.py:441-468` — 20 unused `energy`, `energy_max`, `stamina`, `mechanics`, `it_technologies`, и 13 *_walking + 2 resistance_* переменных. Все = 0 / 50 на module level, дубликаты с реальными полями `state.gym.*` или `state.energy*`. **Grep подтвердил:** ни одна не импортируется в проекте. Удалены 29 строк (467 → 438). 530 tests pass без изменений, mypy 0 issues. Функция `steps_today_update_manual_nocodeapi_old()` уже была удалена ранее (упоминание в исходной 1.3 устарело).
 
-#### 1.3.2. Вынести `skill_training_table` в `skill_training_data.py` `[L / S / todo]`
+#### 1.3.2. Вынести `skill_training_table` в `skill_training_data.py` `[L / S / done (0.2.3e, 07.05.2026)]`
 
-Lookup-таблица занимает 230 строк в characteristics.py:165-393 (~30 уровней + 2 helper'а `get_skill_training`, `get_energy_training_data`). Логически отдельная сущность от state. По аналогии с уже существующим `adventure_data.py` — вынести в `skill_training_data.py`. Импорты обновить в `gym.py`, `web/main.py`. Без риска, без breaking changes.
+**Реализация (07.05.2026):**
+
+1. Создан новый файл `skill_training_data.py` (~230 строк) с:
+   - `skill_training_table` — dict 1..30 уровни (steps / energy / money / time).
+   - `get_skill_training(level)` — экстраполяция по формуле для уровней > 30.
+   - `get_energy_training_data(level)` — wrapper для Daily Bonus.
+2. Удалён блок 165-390 из `characteristics.py` (~225 строк). characteristics.py: 438 → 215 строк.
+3. Импортёры обновлены **hard break** (без backwards-compat shim'а):
+   - `gym.py:8` — `from skill_training_data import skill_training_table, get_energy_training_data`.
+   - `web/main.py:35` — `from skill_training_data import skill_training_table`.
+4. Добавлен `tests/test_skill_training_data.py` — 10 новых тестов: структура таблицы (1..30 уровни / 4 ключа / level 1 baseline / level 30 baseline / монотонный рост steps), `get_skill_training` (table identity для 1..30, формула для > 30, конкретные значения для lvl 31, lvl 50), `get_energy_training_data` (table delegation, fallback на extrapolation).
+
+**Тесты:** All 540 pass (530 + 10), mypy 0 issues.
+
+#### 1.3.2.1. Audit follow-up: проверить отсутствие stale ссылок на skill_training_table из characteristics `[L / XS / todo]`
+
+После hard break в 1.3.2 нужно периодически проверять, что в проекте не появляются новые импорты вида `from characteristics import skill_training_table` (например, копипастой из старого кода / branch'ей). Если найдутся — переключить на `from skill_training_data import skill_training_table`.
+
+**Скоуп:** один-shot grep:
+```bash
+grep -rn "from characteristics import.*skill_training\|from characteristics import.*get_energy_training\|from characteristics import.*get_skill_training" .
+```
+Должно вернуть пусто. Если что-то найдётся — fix import.
+
+**Зависимость:** не блокирующая. Делается при найденном случае или раз в N недель как routine cleanup.
 
 #### 1.3.3. Вынести save/load в `persistence.py` `[M / M / todo (связано с 1.4.2/1.4.3)]`
 
