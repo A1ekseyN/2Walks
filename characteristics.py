@@ -401,33 +401,28 @@ DATE_KEYS = [
 ]
 
 
-def json_serial(obj: Any) -> str:
-    """
-    Функция для преобразования str() -> datetime.
-    Функция нужна для нормальной работы времени в игре.
-
-    Используется как `default` callback в `json.dump` — для несериализуемых
-    типов (datetime) возвращает строку, для неподдерживаемых типов
-    выбрасывает TypeError (контракт `json.dump`).
-    """
-    if isinstance(obj, datetime):
-        return obj.strftime('%Y-%m-%d %H:%M:%S.%f')
-    raise TypeError("Type not serializable")
-
-
 def save_characteristic() -> None:
-    """Записывает характеристики в файл в формате JSON и CSV."""
+    """Записывает характеристики в локальный CSV-файл (offline fallback).
+
+    Sheets-сохранение делается отдельно через `GameStateRepo().save(...)`
+    в вызывающем коде (game.py / web). CSV — backup на случай отсутствия
+    интернета или ошибки Sheets API.
+
+    Формат сохранения (4.20.1, 0.2.3b): `state_dict = game.state.to_dict()`
+    — flat-dict со всеми полями. dict / list-значения серилазуются как
+    JSON-строки (через `json.dumps`). Datetime — через `__str__()` (CSV
+    DictWriter автоматически приводит).
+
+    Историческая заметка (1.4.1, 0.2.3c — 07.05.2026): раньше save также
+    писал в `characteristic.txt` (JSON), который никогда не читался —
+    write-only zombie файл. Удалён в этой задаче. Helper `json_serial`
+    тоже удалён — он использовался только для .txt записи.
+    """
     if game.state is None:
         raise RuntimeError("game.state не инициализирован — вызови init_game_state() до save_characteristic().")
     state_dict = game.state.to_dict()
     if debug_mode:
         print(f'Сохраняем данные: {state_dict}')
-    try:
-        with open('characteristic.txt', 'w', encoding='utf-8') as f:
-            json.dump(state_dict, f, ensure_ascii=False, indent=4, default=json_serial)
-    except Exception as e:
-        print(f"Ошибка записи в characteristic.txt: {e}")
-    # Сохранение в CSV без изменений структуры, но с источником state_dict.
     try:
         with open('characteristic.csv', 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=state_dict.keys())

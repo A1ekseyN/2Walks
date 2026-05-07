@@ -56,11 +56,10 @@ A historical legacy dict `char_characteristic` and proxy class were removed in v
 
 ### Persistence layers (three of them)
 
-Saves are written to **all three** on save; loads prefer Google Sheets with CSV fallback:
+Saves are written to **both** on save; loads prefer Google Sheets with CSV fallback:
 
-1. `characteristic.csv` — flat CSV. `save_characteristic()` writes `game.state.to_dict()`; `load_characteristic()` parses back via `ast.literal_eval` for nested dicts/lists. `GameState.from_dict()` then reconstructs the dataclass. Datetime keys (`skill_training_time_end`, `working_end`, `adventure_end_timestamp`) are parsed via `%Y-%m-%d %H:%M:%S.%f`.
-2. `characteristic.txt` — JSON mirror, same `to_dict()` format.
-3. Google Sheets — two specialized worksheets in one spreadsheet (task 4.14, version 0.2.0d):
+1. `characteristic.csv` — flat CSV (offline fallback). `save_characteristic()` writes `game.state.to_dict()`; `load_characteristic()` parses back via `ast.literal_eval` for nested dicts/lists. `GameState.from_dict()` then reconstructs the dataclass. Datetime keys (`skill_training_time_end`, `working_end`, `adventure_end_timestamp`) are parsed via `%Y-%m-%d %H:%M:%S.%f`. Раньше существовал ещё третий формат — `characteristic.txt` (JSON mirror) — но он был write-only zombie (нигде не читался) и удалён в 0.2.3c (задача 1.4.1). Дальнейшая унификация Sheets/CSV — задачи 1.4.2 (общий parser) и 1.4.3 (JSON-blob в Sheets).
+2. Google Sheets — two specialized worksheets in one spreadsheet (task 4.14, version 0.2.0d):
     - `game_state` — full state snapshot (Key/Value layout). Renamed from legacy `Sheet1`.
     - `steps_log` — append-only log of step measurements (`ts | user_id | steps | source`). `ts` is Unix timestamp (`float`); `source` is `'manual'` (CLI), `'web'` (web form / `POST /api/steps`), `'auto'` (future iPhone Shortcut, currently отложено). Used by max-merge (`apply_steps_log_max_merge`, task 4.15) — applied on every load (CLI start + web reload) so any input channel reflects on next start, even if the `game_state` snapshot is stale.
 

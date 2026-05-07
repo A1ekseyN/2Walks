@@ -73,15 +73,63 @@ tables/         — skill_training_table, adventure_data_table
 
 ---
 
-### 1.4. Единый формат сохранения (JSON как источник правды) `[M / M / todo]`
+### 1.4. Единый формат сохранения (зонтичная) `[M / M / todo]`
 
-Сейчас три параллельных формата: `characteristic.csv` (ast.literal_eval), `characteristic.txt` (JSON), Google Sheets (гибрид). Каждое новое поле нужно руками поддержать в трёх местах — отсюда баги с датами.
+Сейчас параллельные форматы сохранения: `characteristic.csv` (ast.literal_eval), Google Sheets (гибридный парсинг), и был `characteristic.txt` (JSON, удалён в 1.4.1). Каждое новое поле требует поддержки в нескольких местах — отсюда баги с датами и типами (например 5.6.1 для adventure end_ts).
 
-**Как подступиться:**
-1. JSON — канонический формат. Все datetime сериализуются ISO-8601.
-2. Google Sheets читает/пишет тот же JSON (одна ячейка со всей структурой, либо нормализованные колонки — но единая схема).
-3. CSV либо удалить, либо оставить как readonly экспорт для анализа.
-4. Миграционный скрипт `migrate_save.py` для существующих сейвов.
+**Phasing (07.05.2026, обсуждение):** Разбито на три фазы по нарастающей сложности.
+
+#### 1.4.1. Удалить `characteristic.txt` (write-only zombie) `[L / XS / done (0.2.3c, 07.05.2026)]`
+
+**Проблема:** `characteristic.txt` — JSON-копия state, которая писалась на каждый `save_characteristic()`, но **никогда не читалась** нигде в проекте (ни load_characteristic, ни load_data_from_google_sheet_or_csv, ни тесты, ни web). Третий, дубликатный, никогда не используемый источник.
+
+**Решение (07.05.2026):**
+- Удалён блок `with open('characteristic.txt', ...) ... json.dump(...)` из `save_characteristic()` (~5 строк).
+- Удалён helper `json_serial(obj)` — он использовался только для default-callback в `json.dump` для .txt; больше не нужен.
+- Удалён файл `characteristic.txt` из git.
+- `import json` оставлен — используется в CSV serialization для dict/list values.
+- CLAUDE.md / changelog обновлены: «3 формата» → «2 формата».
+
+**Не сломалось:**
+- Sheets save/load — primary, без изменений.
+- CSV save/load — offline fallback, без изменений.
+- 530 tests pass, mypy 0 issues.
+
+#### 1.4.2. Унификация парсеров CSV ↔ Sheets `[M / S / todo]`
+
+После 1.4.1 у нас 2 формата с РАЗНЫМ парсингом:
+- CSV: `ast.literal_eval` для nested dict/list, плюс explicit conversion в `from_dict`.
+- Sheets: hybrid `_rows_to_state_dict` пробует `json.loads` → `ast.literal_eval` → manual int/float/bool/None/datetime detection.
+
+**Цель:** один общий helper `_parse_value(v) -> Any`, который принимает строку из любого источника и возвращает Python-значение по тому же набору правил. Удаляет дубликат логики между `characteristics.py:load_characteristic` и `google_sheets_db.py:_rows_to_state_dict`.
+
+**Скоуп (~50 строк):**
+1. Helper `_parse_value(v: str) -> Any` в `state.py` (или новый `serialization.py`).
+2. `load_characteristic` использует его для каждой ячейки CSV.
+3. `_rows_to_state_dict` использует его для Value-колонки Sheets.
+4. Тесты на единый набор edge cases (datetime / dict / list / int / float / bool / None / empty).
+
+**НЕ меняет формат сейвов** — backwards-compat 100%.
+
+#### 1.4.3. JSON-blob в Sheets (single-cell) `[M / M / todo]`
+
+**⚠️ Breaking change в формате Sheets — нужна миграция.**
+
+Заменить `Key | Value` layout в Google Sheets `game_state` на одну ячейку с полным JSON-blob'ом всего state. Преимущества:
+- Round-trip элементарный: `json.dumps(state.to_dict())` / `json.loads(cell)`.
+- Никакого hybrid-парсинга, datetime через ISO-8601 нативно.
+- Новое поле = обновление `state.to_dict / from_dict`, ничего больше.
+
+**Скоуп (~80 строк):**
+1. `GameStateRepo.save` — пишет JSON в `A1`.
+2. `GameStateRepo.load` — читает JSON из `A1`, fallback на старый Key/Value layout (backwards-compat при первом запуске).
+3. Datetime → ISO-8601 (если ещё нет — расширить `to_dict`).
+4. Тесты Sheets-mock на новый layout.
+5. CLAUDE.md и docs/local_setup.md.
+
+**Зависимость:** не блокирующая, но **желательно после 1.4.2** (унифицированный parser упростит implement single-cell).
+
+**Что отвергнуто:** удаление CSV (вариант A) — CSV остаётся как offline backup mirror (генерируется автоматически из state.to_dict).
 
 ---
 
