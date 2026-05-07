@@ -32,7 +32,16 @@ class CharLevel:
 
     @property
     def total_used_steps(self) -> int:
+        """Сырое количество потраченных шагов (без bonus от Inspiration).
+        Используется для отображения «total used» в status_bar / меню."""
         return self._state.steps.total_used
+
+    def _effective_xp(self) -> int:
+        """4.27 — Inspiration: эффективный XP = total_used + накопленный
+        forward-only bonus от skill 'inspiration'. Используется для расчёта
+        `level` и `progress_to_next_level`. При skill=0 bonus=0 → identity
+        со старой логикой (нет регрессии для существующих сейвов)."""
+        return self._state.steps.total_used + int(self._state.steps.xp_bonus)
 
     @property
     def level(self) -> int:
@@ -57,8 +66,8 @@ class CharLevel:
         self._state.char_level.up_skills += level_up_difference
 
     def calculate_level_from_total_used_steps(self) -> int:
-        """Просчёт level персонажа на основе общего количества потраченных шагов."""
-        used_steps = self.total_used_steps
+        """Просчёт level персонажа на основе эффективного XP (см. `_effective_xp`)."""
+        used_steps = self._effective_xp()
         new_level = 0
         for level, threshold in sorted(self.LEVEL_THRESHOLDS.items()):
             if used_steps >= threshold:
@@ -77,11 +86,11 @@ class CharLevel:
             print(f"Персонаж повысил свой уровень до {self.level} уровня.")
 
     def progress_to_next_level(self) -> float:
-        """Отображение прогресса до следующего уровня в процентах."""
+        """Прогресс до следующего уровня в %, по эффективному XP (с учётом Inspiration)."""
         current_threshold = 0 if self.level == 0 else self.LEVEL_THRESHOLDS[self.level - 1]
         next_threshold = self.LEVEL_THRESHOLDS.get(self.level, float('inf'))
 
-        steps_into_level = self.total_used_steps - current_threshold
+        steps_into_level = self._effective_xp() - current_threshold
         steps_needed = next_threshold - current_threshold
 
         progress_percentage = (steps_into_level / steps_needed) * 100 if steps_needed > 0 else 100

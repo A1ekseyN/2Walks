@@ -206,3 +206,58 @@ def test_start_adventure_sets_all_fields():
     assert state.adventure.name == 'walk_15k'
     assert state.adventure.start_ts == 1234567890.0
     assert state.adventure.end_ts == end
+
+
+# ---------------------------------------------------------------------------
+# 4.27 — Inspiration ('Обучение'): forward-only XP multiplier на try_spend.
+# ---------------------------------------------------------------------------
+
+def test_try_spend_no_xp_bonus_when_inspiration_zero():
+    """При inspiration=0 (default) xp_bonus не растёт. Гарантия совместимости
+    со старыми сейвами и игрой без прокачанного навыка."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 1000
+    try_spend(state, steps=500)
+    assert state.steps.total_used == 500
+    assert state.steps.xp_bonus == 0.0
+
+
+def test_try_spend_xp_bonus_grows_with_inspiration():
+    """inspiration=10, потратили 1000 шагов → xp_bonus += 1000 * 10 / 100 = 100."""
+    state = GameState.default_new_game()
+    state.gym.inspiration = 10
+    state.steps.can_use = 1000
+    try_spend(state, steps=1000)
+    assert state.steps.total_used == 1000
+    assert state.steps.xp_bonus == 100.0
+
+
+def test_try_spend_xp_bonus_accumulates_across_calls():
+    """Многоразовые вызовы try_spend накапливают xp_bonus инкрементально."""
+    state = GameState.default_new_game()
+    state.gym.inspiration = 5
+    state.steps.can_use = 1000
+    try_spend(state, steps=200)  # +10 bonus
+    try_spend(state, steps=300)  # +15 bonus
+    assert state.steps.total_used == 500
+    assert state.steps.xp_bonus == 25.0  # 10 + 15
+
+
+def test_try_spend_xp_bonus_handles_fractional():
+    """Дробное значение bonus сохраняется через float."""
+    state = GameState.default_new_game()
+    state.gym.inspiration = 1
+    state.steps.can_use = 999
+    try_spend(state, steps=234)  # 234 * 1 / 100 = 2.34
+    assert state.steps.xp_bonus == 2.34
+
+
+def test_try_spend_xp_bonus_not_added_on_failure():
+    """Если ресурсов не хватило — total_used и xp_bonus не растут."""
+    state = GameState.default_new_game()
+    state.gym.inspiration = 10
+    state.steps.can_use = 100
+    success = try_spend(state, steps=500)  # > can_use
+    assert success is False
+    assert state.steps.total_used == 0
+    assert state.steps.xp_bonus == 0.0

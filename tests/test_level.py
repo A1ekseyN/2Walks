@@ -93,3 +93,46 @@ def test_progress_bar_lvl_up_message_when_no_points():
     assert cl.progress_bar_lvl_up_message() == ""
 
 
+# ---------------------------------------------------------------------------
+# 4.27 — Inspiration: effective XP = total_used + int(xp_bonus).
+# Без bonus поведение неизменно, с bonus уровень растёт быстрее.
+# ---------------------------------------------------------------------------
+
+def test_effective_xp_equals_total_used_when_no_bonus():
+    """Без накопленного xp_bonus effective XP = total_used (back-compat)."""
+    state = GameState.default_new_game()
+    state.steps.total_used = 12345
+    cl = CharLevel(state)
+    assert cl._effective_xp() == 12345
+
+
+def test_effective_xp_adds_int_of_xp_bonus():
+    state = GameState.default_new_game()
+    state.steps.total_used = 10000
+    state.steps.xp_bonus = 500.7  # int(500.7) = 500
+    cl = CharLevel(state)
+    assert cl._effective_xp() == 10500
+
+
+def test_calculate_level_uses_xp_bonus():
+    """С xp_bonus уровень считается выше при тех же total_used."""
+    state = GameState.default_new_game()
+    # Порог уровня 1 (LEVEL_THRESHOLDS[0] = 10000).
+    state.steps.total_used = 9000  # без bonus — уровень 0
+    cl = CharLevel(state)
+    assert cl.calculate_level_from_total_used_steps() == 0
+    state.steps.xp_bonus = 1100.0  # effective 10100 → уровень 1
+    assert cl.calculate_level_from_total_used_steps() == 1
+
+
+def test_progress_to_next_level_uses_xp_bonus():
+    """Прогресс-бар тоже учитывает xp_bonus."""
+    state = GameState.default_new_game()
+    state.steps.total_used = 10000
+    state.steps.xp_bonus = 5000.0  # effective 15000
+    state.char_level.level = 1     # пороги 1=10k, 2=20k → диапазон 10k
+    cl = CharLevel(state)
+    # (15000 - 10000) / (20000 - 10000) = 50%
+    assert cl.progress_to_next_level() == 50.0
+
+

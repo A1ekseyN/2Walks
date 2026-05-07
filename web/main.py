@@ -56,7 +56,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -258,6 +258,12 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "title": "Снижение ставки по кредиту", "icon": "📉",
         "field": "loan_interest_reduction",
         "effect": "−1 % к годовой ставке кредита",
+        "available": True,
+    },
+    "inspiration": {
+        "title": "Обучение", "icon": "📚",
+        "field": "inspiration",
+        "effect": "+1 % к опыту персонажа за потраченные шаги",
         "available": True,
     },
 }

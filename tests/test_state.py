@@ -314,6 +314,7 @@ def test_default_state_to_dict_has_all_legacy_keys():
         # Steps
         'steps_today', 'steps_can_use', 'steps_today_used',
         'steps_yesterday', 'steps_daily_bonus', 'steps_total_used',
+        'steps_xp_bonus',
         # Char level
         'char_level', 'char_level_up_skills',
         'lvl_up_skill_stamina', 'lvl_up_skill_energy_max',
@@ -327,6 +328,7 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'stamina', 'energy_max_skill', 'speed_skill', 'luck_skill',
         'neatness_in_using_things', 'mechanics', 'it_technologies',
         'banking_interest_rate', 'loan_capacity', 'loan_interest_reduction',
+        'inspiration',
         'move_optimization_adventure', 'move_optimization_gym',
         'move_optimization_work',
         # Work

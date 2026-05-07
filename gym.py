@@ -134,6 +134,11 @@ _SKILL_DESCRIPTIONS = {
         'loan_interest_reduction',
         'Каждый уровень снижает годовую ставку кредита на 1% (от базовых 100%).',
     ),
+    'inspiration': (
+        'Обучение',
+        'inspiration',
+        'Каждый уровень добавляет +1% к опыту персонажа за каждый потраченный шаг.',
+    ),
 }
 
 
@@ -191,6 +196,8 @@ def gym_menu(state: GameState) -> None:
                state.gym.loan_capacity + 1),
         '11': ('loan_interest_reduction', 'Снижение ставки по кредиту:       ',
                state.gym.loan_interest_reduction + 1),
+        '12': ('inspiration', 'Обучение:                         ',
+               state.gym.inspiration + 1),
     }
 
     # Цикл retry на невалиде / отказе от подтверждения (1.5.6 — 0.2.1h, было:

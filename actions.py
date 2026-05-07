@@ -44,6 +44,12 @@ def try_spend(state: GameState, steps: int = 0, energy: int = 0, money: int = 0)
         state.steps.can_use -= steps
         state.steps.used += steps
         state.steps.total_used += steps
+        # 4.27 — Inspiration ('Обучение'): forward-only XP multiplier. Каждый
+        # потраченный шаг даёт +1%/level в xp_bonus, который ускоряет рост
+        # char_level (см. level._effective_xp). Накапливается как float для
+        # сохранения точности при small spends.
+        if state.gym.inspiration > 0:
+            state.steps.xp_bonus += steps * state.gym.inspiration / 100.0
     if energy:
         # Lazy import — bonus.py зависит от equipment_bonus, чтобы не тянуть
         # его при каждом импорте actions (используется hot-path).

@@ -1040,3 +1040,26 @@ def test_bank_menu_repay_loan_full_message(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert 'Кредит закрыт' in out
     assert s.bank.loan_amount == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 4.27 — Inspiration ('Обучение'): регистрация в Gym + web display.
+# Бизнес-логика начисления тестируется в test_actions.py / test_level.py.
+# ---------------------------------------------------------------------------
+
+def test_inspiration_skill_in_descriptions_dict():
+    import gym as gym_module
+    assert 'inspiration' in gym_module._SKILL_DESCRIPTIONS
+    title, _, body = gym_module._SKILL_DESCRIPTIONS['inspiration']
+    assert title == 'Обучение'
+    assert '+1%' in body or '+ 1%' in body or 'опыт' in body.lower()
+
+
+def test_inspiration_skill_in_web_display_dict():
+    from web.main import _GYM_SKILL_DISPLAY
+    assert 'inspiration' in _GYM_SKILL_DISPLAY
+    meta = _GYM_SKILL_DISPLAY['inspiration']
+    assert meta['available'] is True
+    assert meta['icon'] == '📚'
+    assert meta['field'] == 'inspiration'
+    assert meta['title'] == 'Обучение'

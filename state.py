@@ -47,6 +47,7 @@ class StepsState:
     total_used: int = 0
     can_use: int = 0
     daily_bonus: int = 0    # was steps_daily_bonus
+    xp_bonus: float = 0.0   # 4.27 — bonus accumulator от skill 'inspiration' (forward-only)
 
 
 @dataclass
@@ -74,6 +75,7 @@ class GymSkills:
     banking_interest_rate: int = 0       # 4.49 — bonus к ставке депозита (+1%/level)
     loan_capacity: int = 0               # 4.49 — +100 $ к максимальной сумме кредита (default 0 → нельзя взять)
     loan_interest_reduction: int = 0     # 4.49 — снижение ставки кредита (-1%/level от базовых 100%)
+    inspiration: int = 0                 # 4.27 — +1%/level к XP за каждый потраченный шаг (forward-only multiplier)
 
 
 @dataclass
@@ -199,6 +201,7 @@ class GameState:
                 total_used=int(d.get('steps_total_used', 0)),
                 can_use=int(d.get('steps_can_use', 0)),
                 daily_bonus=int(d.get('steps_daily_bonus', 0)),
+                xp_bonus=float(d.get('steps_xp_bonus') or 0.0),
             ),
 
             char_level=CharLevel(
@@ -224,6 +227,7 @@ class GameState:
                 banking_interest_rate=int(d.get('banking_interest_rate', 0)),
                 loan_capacity=int(d.get('loan_capacity', 0)),
                 loan_interest_reduction=int(d.get('loan_interest_reduction', 0)),
+                inspiration=int(d.get('inspiration', 0)),
             ),
 
             training=TrainingSession(
@@ -334,6 +338,7 @@ class GameState:
             'steps_yesterday': self.steps.yesterday,
             'steps_daily_bonus': self.steps.daily_bonus,
             'steps_total_used': self.steps.total_used,
+            'steps_xp_bonus': self.steps.xp_bonus,
 
             # Char level
             'char_level': self.char_level.level,
@@ -367,6 +372,7 @@ class GameState:
             'banking_interest_rate': self.gym.banking_interest_rate,
             'loan_capacity': self.gym.loan_capacity,
             'loan_interest_reduction': self.gym.loan_interest_reduction,
+            'inspiration': self.gym.inspiration,
 
             # Move optimization
             'move_optimization_adventure': self.gym.move_optimization_adventure,

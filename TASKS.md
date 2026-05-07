@@ -735,7 +735,7 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 **Разблокирует:** 4.15 (max-merge стратегия), 4.48.2 (POST /api/steps).
 
-#### 4.14.1. Pruning steps_log `[L / S / todo]`
+#### 4.14.1. Pruning steps_log `[L / S / todo (отложено — реализовать при реальной потребности)]`
 
 Лог append-only — за год набирается ~16 000 строк (один игрок, ввод раз в час 16 ч/день). Лимит Sheets — 10M ячеек, поэтому не критично, но в перспективе пригодится стратегия:
 - Rolling window: оставить только последние N дней (e.g. 90).
@@ -744,9 +744,16 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 Реализуется при первой реальной потребности (e.g. лог стал тормозить на чтении или приближается к лимиту).
 
-#### 4.14.2. Удалить auto-check `_ensure_sheet()` после миграции `[L / XS / todo]`
+**Статус (07.05.2026):** отложено. Сейчас лог небольшой (несколько сотен строк), чтение мгновенное, max-merge работает быстро. Возобновить когда:
+- старт игры начнёт ощутимо тормозить из-за чтения `steps_log` (subjective: > 1 секунды на load), ИЛИ
+- лог приблизится к 10k строк, ИЛИ
+- появится multi-user support (4.53) — тогда лог раздуется быстрее × N игроков.
+
+#### 4.14.2. Удалить auto-check `_ensure_sheet()` после миграции `[L / XS / todo (отложено — выполнить после миграции на втором ноутбуке)]`
 
 Сейчас `StepsLogRepo._ensure_sheet()` создаёт лист если его нет — защитный fallback на случай, если кто-то клонирует код без запуска `migrate_sheets.py`. После того как миграция точно прошла на всех окружениях (laptop + VPS, когда появится), можно удалить эту ветку — `_worksheet()` будет просто бросать `WorksheetNotFound` и заставлять явно запустить миграцию.
+
+**Статус (07.05.2026):** отложено. Сейчас актуальное окружение только один лэптоп. Удалять auto-check имеет смысл когда `python migrate_sheets.py` будет запущен на **всех** окружениях, где может быть запущена игра — в первую очередь на втором ноутбуке (когда появится / будет настроен). До тех пор `_ensure_sheet()` остаётся как страховка для свежего клона.
 
 #### 4.14.3. Offline queue для steps_log `[M / S / todo]`
 
@@ -1060,24 +1067,34 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 ---
 
-### 4.27. Новый навык: Inspiration (+1% XP за уровень) `[M / S / todo]`
+### 4.27. Новый навык: Обучение / Inspiration (+1% XP) `[M / S / done (0.2.3, 07.05.2026)]`
 
-Ускоряет рост уровня персонажа (`char_level`), не затрагивая шаги, доступные для активностей. Каждый уровень навыка даёт +1% к "скорости получения XP" — то есть `steps_total_used`, который служит метрикой прогресса в `level.py`, считается с множителем.
+Ускоряет рост уровня персонажа (`char_level`), не затрагивая шаги, доступные для активностей. Каждый уровень навыка даёт +1% к получаемому XP за каждый потраченный шаг (forward-only multiplier — применяется только к будущим тратам, не пересчитывает накопленные).
 
-**Trade-off для игрока:** качать Inspiration = быстрее открываются `char_level_up_skills` для распределения, но без бонуса к шагам/энергии/удаче. Альтернативная стратегия для тех, кто хочет скорее разблокировать меню распределения очков.
+**Дизайн (07.05.2026, обсуждение перед реализацией):**
+- Title в UI — «Обучение» (русский, не «Inspiration»). Internal field name — `inspiration` (без `_skill` суффикса для краткости).
+- Без cap — линейный +1%/level бесконечно.
+- **Forward-only**, не retroactive: накопленные `total_used` не пересчитываются при апгрейде. Reasoning — даёт игроку чистый стратегический выбор (вкладывать сейчас в Inspiration или нет, без post-hoc эксплоитов).
+- Иконка 📚.
 
-**Где применять:** `level.py:update_level()` — место расчёта уровня по `steps_total_used`. Применить множитель: `effective_xp = steps_total_used * (1 + lvl / 100)`.
+**Реализация (07.05.2026):**
 
-**Реализация:**
-1. Ключ `inspiration_skill` в `char_characteristic`.
-2. Запись в skill table.
-3. Пункт в меню Gym.
-4. Helper `inspiration_bonus(steps) -> int` в `bonus.py` или прямо в `level.py`.
-5. Save в трёх форматах.
+1. `state.StepsState.xp_bonus: float = 0.0` — accumulator для накопленного бонуса. Round-trip flat-key `steps_xp_bonus`. Старые сейвы → 0.0 (back-compat, поведение неизменно при `inspiration=0`).
+2. `state.GymSkills.inspiration: int = 0` — новый skill. Round-trip + дефолты.
+3. `actions.py:try_spend()` — после `state.steps.total_used += steps`: `if state.gym.inspiration > 0: state.steps.xp_bonus += steps * inspiration / 100.0`. Хранится как float чтобы не терять копейки на маленьких тратах. Не добавляется при failed spend.
+4. `level.py:CharLevel`:
+   - Новый `_effective_xp() -> int` = `total_used + int(xp_bonus)`.
+   - `calculate_level_from_total_used_steps` и `progress_to_next_level` теперь используют `_effective_xp()`.
+   - `total_used_steps` (property) НЕ изменён — используется для отображения «total used» в status_bar (показывает реальные шаги, не виртуальный XP).
+5. `gym.py:_SKILL_DESCRIPTIONS['inspiration']` — title «Обучение», описание упоминает forward-only.
+6. `gym.py:gym_menu skill_options` — пункт `'12'`. Стоимость прокачки шарится из общей `skill_training_table`.
+7. `web/main.py:_GYM_SKILL_DISPLAY['inspiration']` — icon 📚, available=True.
 
-**Баланс:** линейный +1% за уровень даёт x2 на lvl=100. Возможно нужен cap (e.g. +50%), чтобы поздняя игра не была "вечный lvl-up".
+**Тесты:** 5 в `test_actions.py` (try_spend без bonus / с bonus / accumulate / fractional / not on failure), 4 в `test_level.py` (effective_xp без bonus / +int(bonus) / level использует bonus / progress использует bonus), 2 в `test_bank.py` (skill в _SKILL_DESCRIPTIONS / _GYM_SKILL_DISPLAY). `test_state.py` обновлён: expected_keys + 2 (`steps_xp_bonus`, `inspiration`). `test_web_main.py` обновлён: 12 навыков, 13 details. All 510 tests pass (499 + 11), mypy 0 issues.
 
-**Зависимость:** не блокирующая.
+**Версия:** `0.2.3` (новая mini-feature вне зонтичной 4.49).
+
+**Что НЕ делалось:** cap (если поздно станет имба — затюним), retroactive multiplier (намеренно forward-only), display xp_bonus в UI отдельно (кумулятивная цифра не показывается, только эффект через level).
 
 ---
 
