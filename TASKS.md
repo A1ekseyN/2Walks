@@ -56,20 +56,34 @@
 
 ---
 
-### 1.3. Разделить `functions.py` и `characteristics.py` по смыслу `[M / M / todo]`
+### 1.3. Разделить `functions.py` и `characteristics.py` по смыслу (зонтичная) `[M / M / todo]`
 
-Обе помойки. `functions.py` — 357 строк: API-клиент, UI-форматирование, геймплейная логика, timestamp-хелперы. `characteristics.py` — 509 строк: state + lookup-таблицы + save/load + **мёртвые переменные** стр. 483-508 (`flat_walking`, `mountain_walking`, `resistance_cold` — нигде не используются).
+Обе «помойки» — смешанная функциональность в одном файле. `functions.py` (~298 строк) содержит: timestamp helpers, energy regen, UI status_bar, day rollover, steps logic, formulas. `characteristics.py` (~438 строк после 1.3.1): state container + lookup-таблицы (skill_training_table) + save/load.
 
-**Целевая структура:**
-```
-game/           — геймплейные модули (как есть)
-persistence/    — csv, json, sheets (см. 1.4)
-api/            — google_fit_client.py
-ui/             — status_bar.py, menu.py
-tables/         — skill_training_table, adventure_data_table
-```
+**Декомпозиция (07.05.2026, обсуждение):**
+Разбито на 5 подзадач разного размера. Делать инкрементально, по необходимости — полный architectural reorganization откладываем.
 
-**Обязательно удалить** мёртвые переменные в `characteristics.py:483-508` и функцию `steps_today_update_manual_nocodeapi_old()` в `functions.py:221`.
+#### 1.3.1. Удалить мёртвый код `[L / XS / done (0.2.3d, 07.05.2026)]`
+
+**Что было удалено:** module-level переменные в `characteristics.py:441-468` — 20 unused `energy`, `energy_max`, `stamina`, `mechanics`, `it_technologies`, и 13 *_walking + 2 resistance_* переменных. Все = 0 / 50 на module level, дубликаты с реальными полями `state.gym.*` или `state.energy*`. **Grep подтвердил:** ни одна не импортируется в проекте. Удалены 29 строк (467 → 438). 530 tests pass без изменений, mypy 0 issues. Функция `steps_today_update_manual_nocodeapi_old()` уже была удалена ранее (упоминание в исходной 1.3 устарело).
+
+#### 1.3.2. Вынести `skill_training_table` в `skill_training_data.py` `[L / S / todo]`
+
+Lookup-таблица занимает 230 строк в characteristics.py:165-393 (~30 уровней + 2 helper'а `get_skill_training`, `get_energy_training_data`). Логически отдельная сущность от state. По аналогии с уже существующим `adventure_data.py` — вынести в `skill_training_data.py`. Импорты обновить в `gym.py`, `web/main.py`. Без риска, без breaking changes.
+
+#### 1.3.3. Вынести save/load в `persistence.py` `[M / M / todo (связано с 1.4.2/1.4.3)]`
+
+Move `save_characteristic`, `load_characteristic`, `load_data_from_google_sheet_or_csv` из characteristics.py в новый `persistence.py`. Связано с 1.4.x (унификация форматов) — лучше делать вместе либо после.
+
+#### 1.3.4. Вынести UI helpers (status_bar, char_info, format_steps) `[L / S / todo]`
+
+Move 5–7 UI/display функций из functions.py в `ui_helpers.py` или похожее. functions.py остаётся helper-файлом для game logic (energy_time_charge, save_game_date_last_enter, steps_today_set), но без UI слоя. Польза средняя — функционально не критично.
+
+#### 1.3.5. Полный package layout (game/persistence/ui/tables/api/) `[L / L / todo (отложено)]`
+
+Архитектурный рефакторинг с разделением на пакеты. **Не делаем сейчас** — overhead > польза при текущем размере проекта (~3500 LoC, ~30 файлов). Возвращаемся когда проект вырастет до ~10k+ LoC.
+
+**Статус (07.05.2026):** отложено. Возобновить при существенном росте проекта или если станет реально мешать навигации в коде.
 
 ---
 

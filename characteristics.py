@@ -436,32 +436,3 @@ def save_characteristic() -> None:
         time.sleep(30)
         save_characteristic()
     print('\n💾 Save Successfully.')
-
-
-# Основные характеристики
-energy = 50                 # Кол-во энергии
-energy_max = 50             # Max кол-во энергии
-
-stamina = 0                 # Выносливость
-mechanics = 0               # Механика
-it_technologies = 0          # ИТ Технологии
-
-# Навыки ходьбы по разному типу местности
-flat_walking = 0            # Ходьба по ровной местности
-up_walking = 0              # Ходьба вверх
-down_walking = 0            # Ходьба вниз
-mountain_walking = 0        # Ходьба по горной местности
-terrain_walking = 0         # Ходьба по земле местности
-grass_walking = 0           # Ходьба по траве
-grass_high_walking = 0      # Ходьба по высокой траве
-forest_walking = 0          # Ходьба по лесу
-marshland_walking = 0       # Ходьба по болотистой местности
-snow_walking = 0            # Ходьба по снегу
-ice_walking = 0             # Ходьба по льду
-sand_walking = 0            # Ходьба по песку
-stone_walking = 0           # Ходьба по камням
-# Навык лазить по горам и камням (Нужен для преодоления определеннйо местности)
-
-# Сопротивляемость природным явлениям
-resistance_cold = 0         # Сопротивляемость холоду
-resistance_heat = 0         # Сопротивляемость теплу
