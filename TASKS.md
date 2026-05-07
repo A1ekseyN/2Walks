@@ -56,12 +56,22 @@
 
 ---
 
-### 1.3. Разделить `functions.py` и `characteristics.py` по смыслу (зонтичная) `[M / M / todo]`
+### 1.3. Разделить `functions.py` и `characteristics.py` по смыслу (зонтичная) `[M / M / partial (3 из 6 подзадач сделано, 0.2.3f)]`
 
-Обе «помойки» — смешанная функциональность в одном файле. `functions.py` (~298 строк) содержит: timestamp helpers, energy regen, UI status_bar, day rollover, steps logic, formulas. `characteristics.py` (~438 строк после 1.3.1): state container + lookup-таблицы (skill_training_table) + save/load.
+Обе изначально «помойки» — смешанная функциональность в одном файле. `functions.py` (~298 строк) содержит: timestamp helpers, energy regen, UI status_bar, day rollover, steps logic, formulas. `characteristics.py` (был ~509 строк, после 1.3.1+1.3.2 — ~215 строк): state container + save/load.
 
 **Декомпозиция (07.05.2026, обсуждение):**
 Разбито на 5 подзадач разного размера. Делать инкрементально, по необходимости — полный architectural reorganization откладываем.
+
+**Текущий статус (07.05.2026, после 0.2.3f):**
+- ✅ 1.3.1 (мёртвый код удалён, 0.2.3d).
+- ✅ 1.3.2 (skill_training_table вынесена, 0.2.3e).
+- ✅ 1.3.2.1 (audit чист, 0.2.3f).
+- 🟡 1.3.3 — отложено до работы над 1.4.x (save/load переписывается в 1.4.3).
+- 🟡 1.3.4 — отложено (см. ниже).
+- 🟡 1.3.5 — отложено (overhead > польза при текущем размере проекта).
+
+Зонтичная задача считается **80%-выполненной**. Остаток — bonusный рефакторинг, делать по факту реальной потребности.
 
 #### 1.3.1. Удалить мёртвый код `[L / XS / done (0.2.3d, 07.05.2026)]`
 
@@ -83,25 +93,40 @@
 
 **Тесты:** All 540 pass (530 + 10), mypy 0 issues.
 
-#### 1.3.2.1. Audit follow-up: проверить отсутствие stale ссылок на skill_training_table из characteristics `[L / XS / todo]`
+#### 1.3.2.1. Audit follow-up: проверить отсутствие stale ссылок на skill_training_table из characteristics `[L / XS / done (0.2.3f, 07.05.2026)]`
 
-После hard break в 1.3.2 нужно периодически проверять, что в проекте не появляются новые импорты вида `from characteristics import skill_training_table` (например, копипастой из старого кода / branch'ей). Если найдутся — переключить на `from skill_training_data import skill_training_table`.
+**Реализация (07.05.2026):**
 
-**Скоуп:** один-shot grep:
-```bash
-grep -rn "from characteristics import.*skill_training\|from characteristics import.*get_energy_training\|from characteristics import.*get_skill_training" .
-```
-Должно вернуть пусто. Если что-то найдётся — fix import.
+Прогон 3 grep-запросов по проекту:
+1. `from characteristics import.*skill_training` — 0 результатов в коде (одна находка в `characteristics.py` — комментарий «больше не работает», намеренный).
+2. `characteristics\.skill_training_table` (attribute access) — 0 результатов.
+3. `skill_training_table.*characteristics` — 2 устаревших упоминания в `docs/game_console.md` (lines 137, 304). Оба исправлены: указание на `skill_training_data.py` вместо `characteristics.py`.
 
-**Зависимость:** не блокирующая. Делается при найденном случае или раз в N недель как routine cleanup.
+**Изменения:** только `docs/game_console.md` (2 fix'а). Код не трогался — он уже корректен после 1.3.2.
+
+**Можно ли повторно запускать аудит:** да — простой grep, тривиальная routine task. Если в будущем при copy-paste из старого кода всплывёт stale import — снова сделать audit за минуту.
 
 #### 1.3.3. Вынести save/load в `persistence.py` `[M / M / todo (связано с 1.4.2/1.4.3)]`
 
 Move `save_characteristic`, `load_characteristic`, `load_data_from_google_sheet_or_csv` из characteristics.py в новый `persistence.py`. Связано с 1.4.x (унификация форматов) — лучше делать вместе либо после.
 
-#### 1.3.4. Вынести UI helpers (status_bar, char_info, format_steps) `[L / S / todo]`
+#### 1.3.4. Вынести UI helpers (status_bar, char_info, format_steps) `[L / S / todo (отложено — польза маргинальная)]`
 
 Move 5–7 UI/display функций из functions.py в `ui_helpers.py` или похожее. functions.py остаётся helper-файлом для game logic (energy_time_charge, save_game_date_last_enter, steps_today_set), но без UI слоя. Польза средняя — функционально не критично.
+
+**Решение (07.05.2026, после обсуждения):** **отложено.** Аргументы против немедленной реализации:
+
+1. functions.py 298 строк — нормальный размер, не «мега-помойка». Все функции логически связаны (orchestrate state + display).
+2. Польза чисто организационная, функционально ничего не меняется.
+3. Тестируемость не улучшится — тесты уже есть и работают независимо от расположения функций.
+4. Риск циклических импортов — `status_bar` тянет `CharLevel` (level.py), `equipment_bonus`, `skill_bonus`, `format_timedelta`, `compute_energy_max`. Эти deps переедут в `ui_helpers.py`, может вылезти цикл при импорте из других модулей.
+5. **Реальной боли по навигации нет** — все функции легко находятся через grep / IDE Go to Definition.
+6. Single-developer проект — organizational layering приносит мало пользы.
+
+**Когда возвращаться:**
+- Если functions.py разрастётся до **500+ строк**.
+- Если появится реальная боль (новый dependency-loop, потерянная навигация).
+- Параллельно с 1.3.5 (полный package layout) — если когда-нибудь до него дойдём.
 
 #### 1.3.5. Полный package layout (game/persistence/ui/tables/api/) `[L / L / todo (отложено)]`
 

@@ -134,7 +134,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ### 3.1 Gym (Спортзал) — `gym.py`
 
-Меню `gym_menu(state)` позволяет запустить тренировку одного из навыков. На каждый навык рассчитана стоимость следующего уровня по общей таблице `skill_training_table` (`characteristics.py`): `steps`, `energy`, `money`, `time` (в секундах).
+Меню `gym_menu(state)` позволяет запустить тренировку одного из навыков. На каждый навык рассчитана стоимость следующего уровня по общей таблице `skill_training_table` (`skill_training_data.py`): `steps`, `energy`, `money`, `time` (в секундах).
 
 Пункты меню Gym:
 
@@ -301,7 +301,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 - Игровой цикл и меню глобальной карты: `game.py` (функция `location_selection()`).
 - Структура состояния: `state.py` (GameState + nested dataclasses), live instance — `characteristics.game.state` (через container `game = _GameContainer()`, заполняется `init_game_state()`).
 - Регенерация и статус-бар: `functions.py` (`energy_time_charge`, `status_bar`).
-- Навыки и тренировки: `gym.py` + таблицы `skill_training_table` / `get_energy_training_data` в `characteristics.py`.
+- Навыки и тренировки: `gym.py` + таблицы `skill_training_table` / `get_energy_training_data` в `skill_training_data.py` (с 0.2.3e — раньше жили в `characteristics.py`).
 - Работа: `work.py`.
 - Приключения и дроп: `adventure.py`, `drop.py`, `adventure_data.py`.
 - Инвентарь и экипировка: `inventory.py`, `equipment.py`, `equipment_bonus.py`.
