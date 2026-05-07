@@ -15,7 +15,7 @@ from typing import Optional
 from state import GameState
 
 
-def try_spend(state: GameState, steps: int = 0, energy: int = 0, money: int = 0) -> bool:
+def try_spend(state: GameState, steps: int = 0, energy: int = 0, money: float = 0.0) -> bool:
     """Атомарно проверяет ресурсы и списывает их.
 
     Возвращает True, если все ресурсы покрывают запрошенную стоимость,

@@ -1063,3 +1063,50 @@ def test_inspiration_skill_in_web_display_dict():
     assert meta['icon'] == '📚'
     assert meta['field'] == 'inspiration'
     assert meta['title'] == 'Обучение'
+
+
+# ---------------------------------------------------------------------------
+# 4.20 — money_saving skill registration in CLI + web. Бизнес-логика
+# покрыта в test_bonus.py (apply_money_saving) и интеграция — ниже.
+# ---------------------------------------------------------------------------
+
+def test_money_saving_skill_in_descriptions_dict():
+    import gym as gym_module
+    assert 'money_saving' in gym_module._SKILL_DESCRIPTIONS
+    title, _, body = gym_module._SKILL_DESCRIPTIONS['money_saving']
+    assert title == 'Экономия денег'
+    assert '1%' in body or 'денежных' in body.lower()
+
+
+def test_money_saving_skill_in_web_display_dict():
+    from web.main import _GYM_SKILL_DISPLAY
+    assert 'money_saving' in _GYM_SKILL_DISPLAY
+    meta = _GYM_SKILL_DISPLAY['money_saving']
+    assert meta['available'] is True
+    assert meta['icon'] == '🏷'
+    assert meta['field'] == 'money_saving'
+    assert meta['title'] == 'Экономия денег'
+
+
+def test_try_spend_accepts_float_money():
+    """try_spend(money=float) — после 4.20 сигнатура принимает float
+    (raised from int). Корректно сравнивается со state.money: float."""
+    from actions import try_spend
+    state = GameState.default_new_game()
+    state.money = 100.0
+    assert try_spend(state, money=49.50) is True
+    assert state.money == pytest.approx(50.50)
+
+
+def test_buy_item_with_money_saving_discount():
+    """Интеграционный: shop._buy_item принимает float-cost, вычитает дробную сумму."""
+    from shop import _buy_item
+    from bonus import apply_money_saving
+    state = GameState.default_new_game()
+    state.gym.money_saving = 7
+    state.money = 100.0
+    cost = apply_money_saving(50, state)  # 50 * 0.93 = 46.50
+    item = {'item_name': ['test']}
+    assert _buy_item(state, item, cost) is True
+    assert state.money == pytest.approx(53.50)
+    assert state.inventory == [item]

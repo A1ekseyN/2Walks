@@ -61,3 +61,20 @@ def apply_move_optimization_work(steps: int, state: GameState) -> int:
     """Уменьшает требуемые шаги для Work на % прокачки соответствующего навыка."""
     adjusted = steps * (1 - state.gym.move_optimization_work / 100)
     return int(adjusted)
+
+
+def apply_money_saving(cost: float, state: GameState) -> float:
+    """4.20 — Скидка на денежные траты (Gym / Shop). Линейная: -1% за уровень
+    `state.gym.money_saving`. Возвращает `round(..., 2)` чтобы цены имели
+    максимум 2 знака после запятой и не плодили float-погрешности.
+
+    Edge cases:
+    - skill=0 → cost без изменений (round до 2 знаков для единообразия).
+    - skill=100 → cost = 0 (бесплатно). Намеренный design choice — игрок выбрал
+      линейную формулу несмотря на «риск 0».
+    - skill > 100 → результат clamped до 0 (нет «отрицательной» цены).
+    - НЕ применяется к: Work salary (доход), Bank deposit/withdraw, Bank loan.
+    """
+    discount = state.gym.money_saving / 100.0
+    discounted = cost * (1.0 - discount)
+    return round(max(0.0, discounted), 2)

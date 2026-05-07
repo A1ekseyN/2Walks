@@ -2,6 +2,7 @@
 
 from state import GameState
 from bonus import (
+    apply_money_saving,
     equipment_bonus_stamina_steps,
     daily_steps_bonus,
     level_steps_bonus,
@@ -115,3 +116,67 @@ def test_compute_energy_max_ignores_state_field():
     state.gym.energy_max_skill = 5
     # compute считает только из источников.
     assert compute_energy_max(state) == 55
+
+
+# ---------------------------------------------------------------------------
+# 4.20 — apply_money_saving: -1%/level скидка, линейная, round до 2 знаков.
+# ---------------------------------------------------------------------------
+
+def test_apply_money_saving_no_skill_keeps_cost():
+    """skill=0 — цена не меняется, но возвращается как float (round до 2 знаков)."""
+    state = GameState.default_new_game()
+    assert apply_money_saving(100, state) == 100.00
+    assert apply_money_saving(0, state) == 0.00
+
+
+def test_apply_money_saving_linear_discount():
+    """skill=10 → 10% скидка от 100 = 90.00."""
+    state = GameState.default_new_game()
+    state.gym.money_saving = 10
+    assert apply_money_saving(100, state) == 90.00
+
+
+def test_apply_money_saving_fractional_result():
+    """750 × (1 - 7/100) = 697.50 — ровно 2 знака без флоат-погрешности."""
+    state = GameState.default_new_game()
+    state.gym.money_saving = 7
+    assert apply_money_saving(750, state) == 697.50
+
+
+def test_apply_money_saving_rounds_to_two_decimals():
+    """Дробные результаты округляются ровно до 2 знаков."""
+    state = GameState.default_new_game()
+    state.gym.money_saving = 33  # cost * 0.67
+    assert apply_money_saving(100, state) == 67.0
+    assert apply_money_saving(1000, state) == 670.0
+    # 17 * 0.67 = 11.39
+    assert apply_money_saving(17, state) == 11.39
+
+
+def test_apply_money_saving_at_skill_100_returns_zero():
+    """skill=100 — цена становится 0.00 (намеренный design choice — линейная
+    формула без cap, см. TASKS.md 4.20)."""
+    state = GameState.default_new_game()
+    state.gym.money_saving = 100
+    assert apply_money_saving(500, state) == 0.00
+
+
+def test_apply_money_saving_above_100_clamped_to_zero():
+    """skill > 100 — clamp до 0, нет «отрицательной цены»."""
+    state = GameState.default_new_game()
+    state.gym.money_saving = 150
+    assert apply_money_saving(500, state) == 0.00
+
+
+def test_apply_money_saving_zero_cost_stays_zero():
+    """cost=0 → результат 0.00 при любом skill."""
+    state = GameState.default_new_game()
+    state.gym.money_saving = 50
+    assert apply_money_saving(0, state) == 0.00
+
+
+def test_apply_money_saving_returns_float_type():
+    """Тип всегда float — обеспечивает корректную работу try_spend(money: float)."""
+    state = GameState.default_new_game()
+    result = apply_money_saving(100, state)
+    assert isinstance(result, float)

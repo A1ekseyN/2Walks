@@ -27,6 +27,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from bonus import (
+    apply_money_saving,
     apply_move_optimization_gym,
     daily_steps_bonus,
     equipment_bonus_stamina_steps,
@@ -56,7 +57,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.3"
+VERSION = "0.2.3a"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -242,6 +243,12 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "effect": "-1 % износ экипировки",
         "available": True,
     },
+    "money_saving": {
+        "title": "Экономия денег", "icon": "🏷",
+        "field": "money_saving",
+        "effect": "−1 % к стоимости трат (Спортзал, Магазин)",
+        "available": True,
+    },
     "banking_interest_rate": {
         "title": "Банковская ставка", "icon": "🏦",
         "field": "banking_interest_rate",
@@ -304,7 +311,7 @@ def _build_gym_skills(state) -> list:
 
         steps_needed = apply_move_optimization_gym(cost_raw["steps"], state)
         energy_needed = cost_raw["energy"]
-        money_needed = cost_raw["money"]
+        money_needed = apply_money_saving(cost_raw["money"], state)  # 4.20 — float после скидки
         real_minutes = round(_apply_speed_bonus(cost_raw["time"], state))
 
         missing = {}
@@ -360,12 +367,13 @@ def _validate_and_apply_training(state, skill_name: str) -> Optional[str]:
         return f"Навык '{skill_name}' достиг максимума по таблице (lvl {current})."
 
     steps_needed = apply_move_optimization_gym(cost_raw["steps"], state)
+    money_needed = apply_money_saving(cost_raw["money"], state)
     if state.steps.can_use < steps_needed:
         return f"Не хватает 🏃: нужно {steps_needed}, есть {state.steps.can_use}."
     if state.energy < cost_raw["energy"]:
         return f"Не хватает 🔋: нужно {cost_raw['energy']}, есть {state.energy}."
-    if state.money < cost_raw["money"]:
-        return f"Не хватает 💰: нужно {cost_raw['money']}, есть {state.money:,.0f}."
+    if state.money < money_needed:
+        return f"Не хватает 💰: нужно {money_needed:,.2f}, есть {state.money:,.2f}."
 
     # Старт через существующий CLI helper. Skill_Training.check_requirements
     # печатает в stdout (CLI noise — допустимо в uvicorn логе) и при недостаче

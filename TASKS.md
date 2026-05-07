@@ -867,30 +867,52 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 ---
 
-### 4.20. Новый навык: Money Saving (-1% к стоимости трат) `[M / S / todo]`
+### 4.20. Новый навык: Экономия денег / Money Saving (-1% к тратам) `[M / S / done (0.2.3a, 07.05.2026)]`
 
-Навык для экономии денег. Каждый уровень снижает стоимость денежных трат на 1%.
+Навык для экономии денег. Каждый уровень снижает стоимость денежных трат на 1%. Применяется к Gym training + Shop purchases. НЕ применяется к Work salary (доход), Bank deposit/withdraw, Bank loan repay.
 
-**Где применять:**
-- Тренировки в Gym (`skill_training_table[lvl]["money"]`).
-- Покупки в Shop (`shop.py`, цены товаров).
+**Дизайн (07.05.2026):**
+- Title: «Экономия денег», icon 🏷, internal field `money_saving: int = 0`.
+- Формула — **линейная** `cost * (1 - skill/100)` (выбрана пользователем, несмотря на «риск 0»). На skill=100 цена = 0$ (бесплатно). При skill > 100 — clamp до 0 (нет «отрицательной цены»). diminishing returns / cap альтернативы отвергнуты ради простоты.
+- Возвращаемый тип — `float`, всегда `round(..., 2)` (макс 2 знака после запятой).
+- `state.money: float` (с 0.2.2) — копейки сохраняются и текут корректно.
 
-**Где НЕ применять:** работа (Work) — там игрок получает деньги, не тратит. Если нужен симметричный навык — см. предложения ниже (Earnings Boost).
+**Реализация (07.05.2026):**
 
-**Реализация:**
-1. Добавить ключ `money_saving_skill` в дефолтное состояние `char_characteristic` (`characteristics.py:101+`).
-2. Добавить запись в `skill_training_table` (стоимость прокачки уровней) или сделать отдельную таблицу.
-3. Добавить пункт в меню Gym (`gym.py:gym_menu()`) — будет 9-м навыком.
-4. Helper-функция в `bonus.py` или `skill_bonus.py` типа `money_saving_bonus(base_cost) -> int`.
-5. Вызвать helper во всех местах списания денег.
-6. Save в трёх форматах (CSV, JSON, Sheets) — типичная ловушка.
+1. `state.GymSkills.money_saving: int = 0` — поле с round-trip.
+2. `bonus.py:apply_money_saving(cost: float, state) -> float` — `round(max(0.0, cost * (1 - skill/100)), 2)`. Pure helper.
+3. `actions.try_spend(...)` — сигнатура `money: float = 0.0` (поднята с int). state.money: float уже принимает.
+4. `gym.py` — все 4 точки `cost['money']` обёрнуты в `apply_money_saving`:
+   - `format_lvl_up_info` (display) — формат `:,.2f`.
+   - `get_lvl_up_info` (display) — формат `:,.2f`.
+   - `Skill_Training.check_requirements` — сравнение и сообщение о нехватке.
+   - `Skill_Training.start_skill_training` — передача в `try_spend`.
+5. `shop.py` — все 4 точки покупок (cheeseburger / coffee / 3 кед):
+   - `_buy_item` сигнатура `cost: float`.
+   - Display цен через `apply_money_saving(base, state)`, формат `:,.2f`.
+   - Сообщения «Не хватает» с float-разницей.
+6. `web/main.py:_build_gym_skills` и `_validate_and_apply_training` — передают через `apply_money_saving`. Сообщение о нехватке формат `:,.2f`.
+7. `gym.py:_SKILL_DESCRIPTIONS['money_saving']` — title «Экономия денег».
+8. `gym_menu skill_options` — пункт `'13'`.
+9. `web._GYM_SKILL_DISPLAY['money_saving']` — icon 🏷, available=True.
 
-**Баланс:**
-- Простая формула: `actual = base * (1 - lvl / 100)`. Проблема — при lvl=100 цена становится 0.
-- Безопаснее **diminishing returns**: `actual = base / (1 + lvl / 100)`. На lvl=10 даст −9%, на lvl=50 даст −33%, на lvl=100 даст −50%, никогда не уйдёт в 0.
-- Или явный cap: `min(0.5, lvl / 100)` — максимум 50% скидка.
+**Тесты:** 8 в test_bonus.py (no skill / linear / fractional / round to 2 / skill 100 → 0 / skill 150 clamp / cost 0 / тип float), 4 в test_bank.py (skill в _SKILL_DESCRIPTIONS / _GYM_SKILL_DISPLAY, try_spend принимает float, _buy_item с дисконтом). 2 теста в test_state.py (expected_keys + 1 ключ). 2 теста в test_web_main.py (13 skills, 14 details). All 522 tests pass (510 + 12), mypy 0 issues.
 
-Решение по формуле — обсудить при реализации. Сравнить с уже принятой `move_optimization_*` (там сейчас линейное `-1% за уровень` без cap — потенциально та же проблема при lvl >= 50).
+**Версия:** `0.2.3a` (мини-фича в рамках 0.2.3).
+
+**Что НЕ делалось:** применение к Bank operations (отвергнуто как exploit-prone), применение к Adventure money cost (там нет money cost).
+
+#### 4.20.1. Аудит округления цен / денег по всему коду `[M / S / todo]`
+
+После 4.20 (07.05.2026) появились дробные цены и операции с float-money (Bank уже использовал float с 0.2.2). Нужно пройтись по проекту и убедиться, что:
+1. Все display-точки для money / costs используют единый формат — `:,.2f` для цен в локациях с дробными суммами (Bank / Shop / Gym), `:,.0f` для wallet в общем status_bar.
+2. Все математические операции со state.money используют float-точное сравнение / списание. Особое внимание — try_spend, work salary, adventure rewards.
+3. Round до 2 знаков делается ровно один раз — в момент вычисления цены (`apply_money_saving`), не в дисплее. Дисплей — `f"{cost:,.2f}"` без вторичного round.
+4. Web `_status_fragment.html` отображает state.money через `:,.0f` — нужно решить, переходить ли на `:,.2f` после введения копеек (тогда видно точное значение, но цифры длиннее).
+
+**Скоуп:** grep по `state.money` / `cost` / `:,.0f` / `int(...)` для чисел денег. Проверка edge cases: что происходит если state.money=10.42 а Shop требует 11. Тесты на состыковку.
+
+**Зависимость:** не блокирующая, но желательно после 4.20.
 
 ---
 

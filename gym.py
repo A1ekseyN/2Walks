@@ -10,7 +10,7 @@ from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def
 from functions_02 import time
 from equipment_bonus import equipment_speed_skill_bonus
-from bonus import apply_move_optimization_gym
+from bonus import apply_money_saving, apply_move_optimization_gym
 from inventory import Wear_Equipped_Items
 from actions import try_spend, start_training as actions_start_training
 from state import GameState
@@ -57,10 +57,11 @@ def format_lvl_up_info(state: GameState, skill_name: str) -> str:
     момент отображения, видит актуальный state.
     """
     cost = _training_cost(state, skill_name)
+    money_cost = apply_money_saving(cost["money"], state)
     return (
         f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(cost["steps"], state):,.0f}{Style.RESET_ALL} / '
         f'🔋: {Fore.GREEN}{cost["energy"]}{Style.RESET_ALL} эн. / '
-        f'💰: {Fore.LIGHTYELLOW_EX}{cost["money"]}{Style.RESET_ALL} $ / '
+        f'💰: {Fore.LIGHTYELLOW_EX}{money_cost:,.2f}{Style.RESET_ALL} $ / '
         f'🕑: {time(round(_apply_speed_bonus(cost["time"], state)))}'
     )
 
@@ -68,10 +69,11 @@ def format_lvl_up_info(state: GameState, skill_name: str) -> str:
 def get_lvl_up_info(skill_name: str, level: int, state: GameState) -> str:
     """Описание стоимости конкретного уровня навыка (используется в меню)."""
     cost = skill_training_table[level]
+    money_cost = apply_money_saving(cost["money"], state)
     return (
         f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(cost["steps"], state):,.0f}{Style.RESET_ALL} / '
         f'🔋: {Fore.GREEN}{cost["energy"]}{Style.RESET_ALL} эн. / '
-        f'💰: {Fore.LIGHTYELLOW_EX}{cost["money"]}{Style.RESET_ALL} $ / '
+        f'💰: {Fore.LIGHTYELLOW_EX}{money_cost:,.2f}{Style.RESET_ALL} $ / '
         f'🕑: {time(round(_apply_speed_bonus(cost["time"], state)))}'
     )
 
@@ -139,6 +141,11 @@ _SKILL_DESCRIPTIONS = {
         'inspiration',
         'Каждый уровень добавляет +1% к опыту персонажа за каждый потраченный шаг.',
     ),
+    'money_saving': (
+        'Экономия денег',
+        'money_saving',
+        'Каждый уровень снижает стоимость денежных трат на 1% (Спортзал, Магазин). На банковские операции и зарплату не влияет.',
+    ),
 }
 
 
@@ -190,13 +197,15 @@ def gym_menu(state: GameState) -> None:
               state.gym.move_optimization_work + 1),
         '8': ('neatness_in_using_things', 'Аккуратность использования вещей: ',
               state.gym.neatness_in_using_things + 1),
-        '9': ('banking_interest_rate', 'Банковская ставка:                ',
-              state.gym.banking_interest_rate + 1),
-        '10': ('loan_capacity', 'Кредитный лимит:                  ',
+        '9': ('money_saving', 'Экономия денег:                   ',
+              state.gym.money_saving + 1),
+        '10': ('banking_interest_rate', 'Банковская ставка:                ',
+               state.gym.banking_interest_rate + 1),
+        '11': ('loan_capacity', 'Кредитный лимит:                  ',
                state.gym.loan_capacity + 1),
-        '11': ('loan_interest_reduction', 'Снижение ставки по кредиту:       ',
+        '12': ('loan_interest_reduction', 'Снижение ставки по кредиту:       ',
                state.gym.loan_interest_reduction + 1),
-        '12': ('inspiration', 'Обучение:                         ',
+        '13': ('inspiration', 'Обучение:                         ',
                state.gym.inspiration + 1),
     }
 
@@ -283,9 +292,10 @@ class Skill_Training:
         """
         cost = skill_training_table[getattr(self._state.gym, self.name) + 1]
         steps_needed = apply_move_optimization_gym(cost['steps'], self._state)
+        money_needed = apply_money_saving(cost['money'], self._state)
         if (self._state.steps.can_use >= steps_needed
                 and self._state.energy >= cost['energy']
-                and self._state.money >= cost['money']):
+                and self._state.money >= money_needed):
             print('\nПроверка кол-ва шагов, энергии и денег - успешна.')
             return True
 
@@ -294,8 +304,8 @@ class Skill_Training:
             print(f'\t- 🏃: Не хватает - {cost["steps"] - self._state.steps.can_use} шагов.')
         if self._state.energy <= cost['energy']:
             print(f'\t- 🔋: Не хватает - {cost["energy"] - self._state.energy} энергии.')
-        if self._state.money <= cost['money']:
-            print(f'\t- 💰: Не хватает - {cost["money"] - self._state.money:,.0f} money.')
+        if self._state.money <= money_needed:
+            print(f'\t- 💰: Не хватает - {money_needed - self._state.money:,.2f} money.')
         # Удалён рекурсивный вызов gym_menu(self._state) (1.5.6 — 0.2.1h):
         # с while-loop в gym_menu вызывающий код сам перерисует меню через
         # `continue` при возврате False.
@@ -305,9 +315,11 @@ class Skill_Training:
         state = self._state
         cost = skill_training_table[getattr(state.gym, self.name) + 1]
         steps_needed = apply_move_optimization_gym(cost['steps'], state)
+        money_needed = apply_money_saving(cost['money'], state)
 
         # Атомарное списание steps/energy/money через actions.try_spend.
-        try_spend(state, steps=steps_needed, energy=cost['energy'], money=cost['money'])
+        # money — float после money_saving discount; try_spend поддерживает float.
+        try_spend(state, steps=steps_needed, energy=cost['energy'], money=money_needed)
 
         # Установка таймера тренировки.
         # base_seconds — int (round * 60), adjusted_seconds — float после
