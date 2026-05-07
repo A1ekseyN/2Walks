@@ -8,7 +8,7 @@ from colorama import Fore, Style
 from characteristics import skill_training_table, save_characteristic, get_energy_training_data
 from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def
-from functions_02 import time
+from functions_02 import format_money, time
 from equipment_bonus import equipment_speed_skill_bonus
 from bonus import apply_money_saving, apply_move_optimization_gym
 from inventory import Wear_Equipped_Items
@@ -61,7 +61,7 @@ def format_lvl_up_info(state: GameState, skill_name: str) -> str:
     return (
         f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(cost["steps"], state):,.0f}{Style.RESET_ALL} / '
         f'🔋: {Fore.GREEN}{cost["energy"]}{Style.RESET_ALL} эн. / '
-        f'💰: {Fore.LIGHTYELLOW_EX}{money_cost:,.2f}{Style.RESET_ALL} $ / '
+        f'💰: {Fore.LIGHTYELLOW_EX}{format_money(money_cost)}{Style.RESET_ALL} $ / '
         f'🕑: {time(round(_apply_speed_bonus(cost["time"], state)))}'
     )
 
@@ -73,7 +73,7 @@ def get_lvl_up_info(skill_name: str, level: int, state: GameState) -> str:
     return (
         f'🏃: {Fore.LIGHTCYAN_EX}{apply_move_optimization_gym(cost["steps"], state):,.0f}{Style.RESET_ALL} / '
         f'🔋: {Fore.GREEN}{cost["energy"]}{Style.RESET_ALL} эн. / '
-        f'💰: {Fore.LIGHTYELLOW_EX}{money_cost:,.2f}{Style.RESET_ALL} $ / '
+        f'💰: {Fore.LIGHTYELLOW_EX}{format_money(money_cost)}{Style.RESET_ALL} $ / '
         f'🕑: {time(round(_apply_speed_bonus(cost["time"], state)))}'
     )
 
@@ -169,7 +169,7 @@ def display_skill_description(skill_name: str, state: GameState) -> None:
 def _render_gym_menu(state: GameState, skill_options: dict) -> None:
     """Печать меню Gym (1.5.6 — 0.2.1h, helper для loop'а в gym_menu)."""
     print('\n🏋 --- Вы находитесь в локации - Спортзал. --- 🏋')
-    print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {state.money:,.0f} $.")
+    print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {format_money(state.money)} $.")
     print('На данный момент вы можете улучшить: ')
     for key, (skill, name, level) in skill_options.items():
         print(f'\t{key}. {name}{Fore.LIGHTCYAN_EX}{level}{Style.RESET_ALL} lvl ({get_lvl_up_info(skill, level, state)})')
@@ -305,7 +305,7 @@ class Skill_Training:
         if self._state.energy <= cost['energy']:
             print(f'\t- 🔋: Не хватает - {cost["energy"] - self._state.energy} энергии.')
         if self._state.money <= money_needed:
-            print(f'\t- 💰: Не хватает - {money_needed - self._state.money:,.2f} money.')
+            print(f'\t- 💰: Не хватает - {format_money(money_needed - self._state.money)} money.')
         # Удалён рекурсивный вызов gym_menu(self._state) (1.5.6 — 0.2.1h):
         # с while-loop в gym_menu вызывающий код сам перерисует меню через
         # `continue` при возврате False.

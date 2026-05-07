@@ -26,6 +26,7 @@ from math import ceil, floor
 
 from colorama import Fore, Style
 
+from functions_02 import format_money
 from state import GameState
 
 
@@ -293,9 +294,8 @@ def _repay_loan_all(state: GameState) -> float:
 # UI — CLI меню Bank.
 # ----------------------------------------------------------------------------
 
-def _format_money(amount: float) -> str:
-    """2 знака после запятой + разделители тысяч. Используется только в Bank UI."""
-    return f"{amount:,.2f}"
+# 4.20.1: приватный _format_money объединён с общим helper'ом functions_02.format_money.
+_format_money = format_money
 
 
 def _print_bank_header(state: GameState) -> None:

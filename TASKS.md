@@ -902,17 +902,30 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 **Что НЕ делалось:** применение к Bank operations (отвергнуто как exploit-prone), применение к Adventure money cost (там нет money cost).
 
-#### 4.20.1. Аудит округления цен / денег по всему коду `[M / S / todo]`
+#### 4.20.1. Аудит округления цен / денег по всему коду `[M / S / done (0.2.3b, 07.05.2026)]`
 
-После 4.20 (07.05.2026) появились дробные цены и операции с float-money (Bank уже использовал float с 0.2.2). Нужно пройтись по проекту и убедиться, что:
-1. Все display-точки для money / costs используют единый формат — `:,.2f` для цен в локациях с дробными суммами (Bank / Shop / Gym), `:,.0f` для wallet в общем status_bar.
-2. Все математические операции со state.money используют float-точное сравнение / списание. Особое внимание — try_spend, work salary, adventure rewards.
-3. Round до 2 знаков делается ровно один раз — в момент вычисления цены (`apply_money_saving`), не в дисплее. Дисплей — `f"{cost:,.2f}"` без вторичного round.
-4. Web `_status_fragment.html` отображает state.money через `:,.0f` — нужно решить, переходить ли на `:,.2f` после введения копеек (тогда видно точное значение, но цифры длиннее).
+**Решение (07.05.2026):** Стратегия A — унифицировать **всё** на `:,.2f` через единый helper. Это гарантирует точность отображения копеек везде где они могут появиться.
 
-**Скоуп:** grep по `state.money` / `cost` / `:,.0f` / `int(...)` для чисел денег. Проверка edge cases: что происходит если state.money=10.42 а Shop требует 11. Тесты на состыковку.
+**Реализация:**
 
-**Зависимость:** не блокирующая, но желательно после 4.20.
+1. Новый helper `functions_02.format_money(amount: float, decimals: int = 2) -> str` — plain text без `$` / colorama, единая точка форматирования. Default `:,.2f`.
+2. `bank.py:_format_money` (раньше приватный) — заменён на alias `format_money` из `functions_02`. Семантика та же.
+3. **Все display-точки** money / wallet / cost обёрнуты через `format_money(...)`:
+   - `functions.py:status_bar` — Money line.
+   - `gym.py` — header Money + 4 точки cost (format_lvl_up_info, get_lvl_up_info, check_requirements not enough message).
+   - `shop.py` — `_money_line` (wallet) + 4 cost displays (cheeseburger / coffee / 3 кед) + покупка-success + «не хватает».
+   - `adventure.py` — header Money.
+   - `web/main.py` — сообщение о нехватке в `_validate_and_apply_training`.
+   - `web/templates/_status_fragment.html` — Stats Money через Jinja-global `format_money` (зарегистрирован как `format_hours` ранее).
+4. `bank.py` — продолжает использовать helper через alias (без regression).
+
+**Перешли с `:,.0f` на `:,.2f`** — везде. Wallet displays теперь показывают `2,038.00 $` вместо `2,038 $` (единообразие важнее компактности; копейки могут появиться в любой момент после Bank-операций).
+
+**Тесты:** 8 новых в `test_functions_02.py` (default 2 decimals / thousand separator / round / decimals=0 / negative / no-$ / int-input / typical game values). 1 существующий в `test_actions.py` обновлён под float-точность. All 530 tests pass (522 + 8), mypy 0 issues.
+
+**Версия:** `0.2.3b` (follow-up к 0.2.3a / 4.20).
+
+**Что НЕ делалось:** smart formatter с drop `.00` для целых (опция C из обсуждения) — отвергнуто ради консистентности; переход на разные locale separators (например `1 234,56` вместо `1,234.56`) — пока не нужно, делается через параметр в format_money если понадобится.
 
 ---
 

@@ -46,7 +46,7 @@ from equipment_bonus import (
     equipment_stamina_bonus,
 )
 from functions import bonus_percentage, energy_time_charge, save_game_date_last_enter, total_bonus_steps
-from functions_02 import format_hours
+from functions_02 import format_hours, format_money
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from google_sheets_db import StepsLogRepo
 from inventory import Wear_Equipped_Items
@@ -57,7 +57,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.3a"
+VERSION = "0.2.3b"
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -373,7 +373,7 @@ def _validate_and_apply_training(state, skill_name: str) -> Optional[str]:
     if state.energy < cost_raw["energy"]:
         return f"Не хватает 🔋: нужно {cost_raw['energy']}, есть {state.energy}."
     if state.money < money_needed:
-        return f"Не хватает 💰: нужно {money_needed:,.2f}, есть {state.money:,.2f}."
+        return f"Не хватает 💰: нужно {format_money(money_needed)}, есть {format_money(state.money)}."
 
     # Старт через существующий CLI helper. Skill_Training.check_requirements
     # печатает в stdout (CLI noise — допустимо в uvicorn логе) и при недостаче
@@ -405,6 +405,7 @@ def _build_skill_options(state) -> list:
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["format_hours"] = format_hours
+templates.env.globals["format_money"] = format_money
 
 
 @asynccontextmanager

@@ -8,7 +8,7 @@ from datetime import datetime
 
 from adventure import Adventure
 from bonus import equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
-from functions_02 import format_timedelta
+from functions_02 import format_money, format_timedelta
 from locations import icon_loc
 from settings import debug_mode
 from skill_bonus import stamina_skill_bonus_def, speed_skill_equipment_and_level_bonus
@@ -85,7 +85,7 @@ def status_bar(state: GameState) -> None:
           f'Level: + {Fore.GREEN}{state.char_level.skill_energy_max}{Style.RESET_ALL})', end='')
     if debug_mode:
         print(f'(+ 1 эн. через: {abs(speed_skill_equipment_and_level_bonus(60, state) - (timestamp_now() - state.energy_time_stamp)):,.0f} sec.)', end='')
-    print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{state.money:,.0f}{Style.RESET_ALL} $.')
+    print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{format_money(state.money)}{Style.RESET_ALL} $.')
 
     char_level_view.level_status_bar()
 

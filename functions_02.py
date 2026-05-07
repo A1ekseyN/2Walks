@@ -126,6 +126,23 @@ _HOURS_PER_MONTH = 30 * 24    # 720
 _HOURS_PER_YEAR = 365 * 24    # 8760
 
 
+def format_money(amount: float, decimals: int = 2) -> str:
+    """Единый форматтер денег для всех CLI / web дисплеев (4.20.1).
+
+    Возвращает строку вида `"1,234.56"` (или `"1,234"` при `decimals=0`).
+    Plain text без colorama / dollar sign — caller сам добавляет `$` и цвет.
+
+    После 0.2.3a / задачи 4.20 деньги в проекте = `float` (state.money +
+    цены через apply_money_saving после скидки + bank deposit/loan
+    capitalize-on-change). Этот helper стандартизирует формат — `:,.2f` по
+    умолчанию (две цифры после запятой + разделитель тысяч), чтобы:
+    1. Игрок видел копейки везде где они могут появиться (не только в Bank).
+    2. Не было разночтений между CLI status_bar / Gym header / Shop / web.
+    3. Было одно место для будущих правок (e.g. локаль с другим разделителем).
+    """
+    return f"{amount:,.{decimals}f}"
+
+
 def format_hours(hours: int) -> str:
     """Часы → "Y г. MO мес. D дн. H ч." с ведущими нулями. Plain text без colorama.
 

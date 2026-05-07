@@ -12,7 +12,7 @@ shift, training, adventure).
 import re
 from datetime import timedelta
 
-from functions_02 import format_hours, format_timedelta, time as time_fmt
+from functions_02 import format_hours, format_money, format_timedelta, time as time_fmt
 
 
 # ----- Edge cases -----
@@ -293,3 +293,64 @@ def test_format_hours_no_colorama():
     """Plain text — никаких ANSI-escape, идёт прямо в HTML."""
     out = format_hours(71)
     assert '\x1b[' not in out
+
+
+# ---------------------------------------------------------------------------
+# format_money(amount, decimals=2) — единый форматтер денег для CLI / web
+# (4.20.1). Возвращает plain text без $ / colorama. Caller добавляет.
+# ---------------------------------------------------------------------------
+
+def test_format_money_default_two_decimals():
+    """Default — 2 знака после запятой."""
+    assert format_money(100) == "100.00"
+    assert format_money(0) == "0.00"
+    assert format_money(1234.56) == "1,234.56"
+
+
+def test_format_money_thousands_separator():
+    """Тысячные разделяются запятой (en-US locale-style — единый стандарт проекта)."""
+    assert format_money(1000) == "1,000.00"
+    assert format_money(1234567.89) == "1,234,567.89"
+
+
+def test_format_money_rounds_to_two_decimals():
+    """Дробные значения округляются до 2 знаков (banker's rounding в Python)."""
+    assert format_money(99.999) == "100.00"
+    assert format_money(99.994) == "99.99"
+    # Banker's rounding: half-to-even.
+    assert format_money(0.005) == "0.01" or format_money(0.005) == "0.00"  # impl detail
+
+
+def test_format_money_zero_decimals_compact():
+    """decimals=0 — целое число без копеек (для случаев когда копейки не нужны)."""
+    assert format_money(100, decimals=0) == "100"
+    assert format_money(1234.56, decimals=0) == "1,235"  # round
+
+
+def test_format_money_negative_values():
+    """Отрицательные значения (e.g. долг или дельта) — формат сохраняется."""
+    assert format_money(-50.42) == "-50.42"
+    assert format_money(-1000) == "-1,000.00"
+
+
+def test_format_money_no_dollar_sign_or_color():
+    """Plain text без $ и без ANSI — caller добавляет сам."""
+    out = format_money(100)
+    assert '$' not in out
+    assert '\x1b[' not in out
+
+
+def test_format_money_int_input_works():
+    """Int-вход тоже работает (для случаев когда cost ещё не float)."""
+    assert format_money(100) == "100.00"
+    assert format_money(int(0)) == "0.00"
+
+
+def test_format_money_typical_game_values():
+    """Реалистичные значения из игры."""
+    # Wallet после Снять всё с дробью.
+    assert format_money(2038.42) == "2,038.42"
+    # Cost тренировки после money_saving.
+    assert format_money(697.50) == "697.50"
+    # Большая сумма.
+    assert format_money(1_000_000) == "1,000,000.00"

@@ -7,11 +7,12 @@ Shop.shop_menu* остаются с input/print.
 from colorama import Fore, Style
 
 from bonus import apply_money_saving
+from functions_02 import format_money
 from state import GameState
 
 
 def _money_line(state: GameState) -> str:
-    return f'Money 💰: {Fore.LIGHTYELLOW_EX}{state.money:,.0f}{Style.RESET_ALL} $.'
+    return f'Money 💰: {Fore.LIGHTYELLOW_EX}{format_money(state.money)}{Style.RESET_ALL} $.'
 
 
 def _empty_item() -> dict:
@@ -71,8 +72,8 @@ class Shop:
         while True:
             print('\nВы можете купить еду и другие расходные материалы.'
                   f'\n{money}'
-                  f'\n\t1. 🍔 Чизбургер (🔋: + 5) - {apply_money_saving(2, state):,.2f} $.'
-                  f'\n\t2. ☕ Кофе (🔋: + 25) - {apply_money_saving(10, state):,.2f} $.'
+                  f'\n\t1. 🍔 Чизбургер (🔋: + 5) - {format_money(apply_money_saving(2, state))} $.'
+                  f'\n\t2. ☕ Кофе (🔋: + 25) - {format_money(apply_money_saving(10, state))} $.'
                   '\n\t0. Назад')
             ask = input('\nВыберите вариант, который хотите приобрести: \n>>> ')
             if ask == '1':
@@ -84,7 +85,7 @@ class Shop:
                 cb['bonus'].append(5)
                 cb['price'].append(2)
                 if _buy_item(state, cb, cb_cost):
-                    print(f'\nВы приобрели 🍔 Чизбургер - за {cb_cost:,.2f} $.')
+                    print(f'\nВы приобрели 🍔 Чизбургер - за {format_money(cb_cost)} $.')
                     return
                 print('\nУ Вас не достаточно денег для покупки.')
                 continue
@@ -98,7 +99,7 @@ class Shop:
                 coffee['bonus'].append(25)
                 coffee['price'].append(10)
                 if _buy_item(state, coffee, coffee_cost):
-                    print(f'\nВы приобрели ☕ Coffee - за {coffee_cost:,.2f} $.')
+                    print(f'\nВы приобрели ☕ Coffee - за {format_money(coffee_cost)} $.')
                     return
                 print('\nУ Вас не достаточно денег для покупки.')
                 continue
@@ -133,9 +134,9 @@ class Shop:
             while True:
                 print('\nВ этом меню можно приобрести обувь: '
                       f'\n{money}'
-                      f'\n\t1. Кеды - C-Grade (+ 1 % шагов) (Цена: {apply_money_saving(25, state):,.2f} $)'
-                      f'\n\t2. Кеды - B-Grade (+ 2 % шагов) (Цена: {apply_money_saving(50, state):,.2f} $)'
-                      f'\n\t3. Кеды - A-Grade (+ 3 % шагов) (Цена: {apply_money_saving(100, state):,.2f} $)'
+                      f'\n\t1. Кеды - C-Grade (+ 1 % шагов) (Цена: {format_money(apply_money_saving(25, state))} $)'
+                      f'\n\t2. Кеды - B-Grade (+ 2 % шагов) (Цена: {format_money(apply_money_saving(50, state))} $)'
+                      f'\n\t3. Кеды - A-Grade (+ 3 % шагов) (Цена: {format_money(apply_money_saving(100, state))} $)'
                       f'\n\t0. Назад')
                 ask = input('\nЧто вы хотите приобрести? \n>>> ')
                 if ask in shoe_specs:
@@ -150,9 +151,9 @@ class Shop:
                     shoe['quality'].append(100)
                     shoe['price'].append(price)
                     if _buy_item(state, shoe, shoe_cost):
-                        print(f'\nВы приобрели: Кеды - {grade.upper()} (+ {bonus} % шагов) за - {shoe_cost:,.2f} $.')
+                        print(f'\nВы приобрели: Кеды - {grade.upper()} (+ {bonus} % шагов) за - {format_money(shoe_cost)} $.')
                         return
-                    print(f'\nУ вас не достаточно денег. Не хватает 💰: {shoe_cost - state.money:,.2f} $.')
+                    print(f'\nУ вас не достаточно денег. Не хватает 💰: {format_money(shoe_cost - state.money)} $.')
                     return
                 if ask == '0':
                     return
