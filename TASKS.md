@@ -586,6 +586,32 @@ Steps 🏃: 0 / 2,296 (Bonus: Stamina + 0 / Equipment + 0 / Daily 0 / Level: 0. 
 
 Корневая причина — module-level side effects + неявная зависимость функций от мутирующего глобального состояния. Полное решение придёт с задачами **1.1** (GameState) и **1.2** (убрать побочные эффекты импорта). Точечный фикс — defensive ordering.
 
+### 2.13. Sheets locale corruption на float-полях `[H / S / done (0.2.3g, 07.05.2026)]`
+
+**Найдено 2026-05-07.** Symptom: после прокачки Money_Saving (state.money стал дробным `2018.10`), web показывал `⚠️ Cloud sync failed at 14:03:13 — showing cached data` с ошибкой `float() argument must be a string or a real number, not 'tuple'`.
+
+**Цепочка бага:**
+1. С 0.2.2 `state.money: int → float` (для копеек после Bank operations).
+2. После 4.20 (Money Saving, 0.2.3a) появились дробные значения (например `2018.10`).
+3. `GameStateRepo.save` использовал `ws.update(rows)` без явного `value_input_option`. gspread default — `USER_ENTERED`, что заставляет Sheets интерпретировать значения по системной локали.
+4. На локали с `,` как десятичным разделителем (ru-RU и т.п.) Sheets сохранял `2018.10` как `'2018,1'`.
+5. На чтении `_rows_to_state_dict` пытался `json.loads('2018,1')` → fail → переходил к `ast.literal_eval('2018,1')` → возвращал **tuple `(2018, 1)`** (валидный Python literal!).
+6. `from_dict` делал `float(d.get('money'))` → `float((2018, 1))` → `TypeError`.
+7. Web падал на `try_reload_state`, показывал cached data + error message.
+
+**Затронутые поля:** все float в `to_dict` — `money`, `bank_deposit_amount`, `bank_deposit_last_interest_ts`, `bank_loan_amount`, `bank_loan_last_interest_ts`, `steps_xp_bonus`, `timestamp_last_enter`, `energy_time_stamp` + `ts: float` в `steps_log`.
+
+**Фикс (3 точки в `google_sheets_db.py`):**
+1. `_state_dict_to_rows` — float-значения теперь конвертируются в строку через `repr()` (`'2018.1'` с точкой) перед отправкой gspread. Sheets хранит как text, без интерпретации.
+2. `GameStateRepo.save` — добавлен `value_input_option=ValueInputOption.raw` (защита от парсинга по локали даже при будущих типах).
+3. `StepsLogRepo.append` — переключён с `USER_ENTERED` на `RAW` (защита для `ts: float` в steps_log).
+
+**Recovery текущей corrupted ячейки:** одна-shot скрипт прочитал `characteristic.csv` (где `money: 2018.1` сохранилось корректно, CSV не подвержен этой локали) и пересохранил state в Sheets с новым кодом. Sheets ячейка восстановлена.
+
+**Тесты:** 1 тест в `test_sheets_repo.py` обновлён (`USER_ENTERED` → `RAW`). All 540 tests pass, mypy 0 issues.
+
+**Урок:** при работе с external API (Sheets, любая БД с локалями) — НИКОГДА не полагаться на дефолтное поведение для числовых типов. Всегда сериализовать вручную в локалe-независимый формат (text с `.` или JSON) + явный input mode. Документация про это добавлена в CLAUDE.md (раздел Persistence layers).
+
 ---
 
 ## 3. Тесты

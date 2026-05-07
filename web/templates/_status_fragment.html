@@ -274,19 +274,19 @@
                         {% if skill.can_afford %}
                         <button type="submit" name="skill_name" value="{{ skill.key }}"
                                 class="outline" style="margin: 0.5rem 0 0 0; text-align: center; width: 100%;"
-                                hx-confirm="Прокачать {{ skill.title }} ({{ skill.current_level }} → {{ skill.next_level }})? Спишется: 🏃 {{ skill.cost.steps }} 🔋 {{ skill.cost.energy }} 💰 {{ skill.cost.money }}. Время: {{ skill.cost.real_time }}.">
-                            🏃 -{{ skill.cost.steps }} 🔋 -{{ skill.cost.energy }} 💰 -{{ skill.cost.money }} 🕑 {{ skill.cost.real_time }}
+                                hx-confirm="Прокачать {{ skill.title }} ({{ skill.current_level }} → {{ skill.next_level }})? Спишется: 🏃 {{ skill.cost.steps }} 🔋 {{ skill.cost.energy }} 💰 {{ format_money(skill.cost.money) }}. Время: {{ skill.cost.real_time }}.">
+                            🏃 -{{ skill.cost.steps }} 🔋 -{{ skill.cost.energy }} 💰 -{{ format_money(skill.cost.money) }} 🕑 {{ skill.cost.real_time }}
                         </button>
                         {% else %}
                         <button type="button" disabled
                                 class="outline secondary" style="margin: 0.5rem 0 0 0; text-align: center; width: 100%;">
-                            🏃 -{{ skill.cost.steps }} 🔋 -{{ skill.cost.energy }} 💰 -{{ skill.cost.money }} 🕑 {{ skill.cost.real_time }}
+                            🏃 -{{ skill.cost.steps }} 🔋 -{{ skill.cost.energy }} 💰 -{{ format_money(skill.cost.money) }} 🕑 {{ skill.cost.real_time }}
                         </button>
                         <small class="equipment-empty">
                             Не хватает:
                             {%- if skill.missing.steps %} 🏃 {{ skill.missing.steps }}{% endif -%}
                             {%- if skill.missing.energy %} 🔋 {{ skill.missing.energy }}{% endif -%}
-                            {%- if skill.missing.money %} 💰 {{ skill.missing.money }}{% endif -%}
+                            {%- if skill.missing.money %} 💰 {{ format_money(skill.missing.money) }}{% endif -%}
                         </small>
                         {% endif %}
                     {% else %}

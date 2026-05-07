@@ -70,13 +70,21 @@ def _state_dict_to_rows(data: dict) -> list:
     """flat-dict (`state.to_dict()`) → rows для записи на лист game_state.
 
     Первая строка — заголовок ['Key', 'Value']. Списки/словари сериализуются
-    как JSON-строки. Datetime — через strftime в legacy-формате."""
+    как JSON-строки. Datetime — через strftime в legacy-формате. Float —
+    явно через `repr()` (а не как Python-объект), чтобы Sheets не интерпретировал
+    его по системной локали (баг 07.05.2026: `state.money=2018.10` сохранялся
+    как `'2018,1'` при locale=ru, на чтении `ast.literal_eval('2018,1')` →
+    tuple `(2018, 1)` → crash в `from_dict`).
+    """
     rows = [["Key", "Value"]]
     for key, value in data.items():
         if isinstance(value, (list, dict)):
             rows.append([key, json.dumps(value)])
         elif isinstance(value, datetime):
             rows.append([key, value.strftime(_DATETIME_FMT)])
+        elif isinstance(value, float):
+            # repr(2018.1) = '2018.1' — точка как разделитель, не локаль-зависимо.
+            rows.append([key, repr(value)])
         else:
             rows.append([key, value])
     return rows
@@ -152,12 +160,19 @@ class GameStateRepo:
         return _get_client().open_by_key(self.spreadsheet_id).worksheet(self.sheet_name)
 
     def save(self, state_dict: dict) -> None:
-        """Записать flat-dict на лист game_state (полная перезапись)."""
+        """Записать flat-dict на лист game_state (полная перезапись).
+
+        Используем `ValueInputOption.raw` (вместо default `user_entered`) чтобы
+        Sheets НЕ парсил числовые значения по системной локали. С `user_entered`
+        float `2018.10` сохранялся как `'2018,1'` (локаль с запятой), на чтении
+        `ast.literal_eval('2018,1')` → tuple `(2018, 1)` → crash в `from_dict`
+        на `float(tuple)`. RAW сохраняет значение как есть, без интерпретации.
+        """
         ping = time.time()
         rows = _state_dict_to_rows(state_dict)
         ws = self._worksheet()
         ws.clear()
-        ws.update(rows)
+        ws.update(rows, value_input_option=ValueInputOption.raw)
         print(f"Save Data to Google Sheets. [{time.time() - ping:,.2f} sec]")
 
     def load(self) -> dict:
@@ -211,10 +226,15 @@ class StepsLogRepo:
 
     def append(self, ts: float, steps: int, source: str,
                user_id: str = DEFAULT_USER_ID) -> None:
-        """Добавляет одну запись в лог. Fail-fast при сетевой ошибке."""
+        """Добавляет одну запись в лог. Fail-fast при сетевой ошибке.
+
+        `ValueInputOption.raw` — чтобы Sheets не парсил `ts` (float) по локали.
+        Без этого `1714398000.123` мог бы сохраниться как `'1714398000,123'`
+        и потом падать `float(...)` в `for_day()`. См. fix в `GameStateRepo.save`.
+        """
         ws = self._ensure_sheet()
         entry = _format_steps_entry(ts, user_id, steps, source)
-        ws.append_row(entry, value_input_option=ValueInputOption.user_entered)
+        ws.append_row(entry, value_input_option=ValueInputOption.raw)
 
     def for_day(self, date_str: str, user_id: str = DEFAULT_USER_ID) -> list:
         """Возвращает все записи лога за указанный день для пользователя.

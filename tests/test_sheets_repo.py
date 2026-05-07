@@ -166,7 +166,9 @@ def test_steps_log_append_calls_append_row(monkeypatch):
     ws.append_row.assert_called_once()
     args, kwargs = ws.append_row.call_args
     assert args[0] == [1746124425.5, 'alex', 5000, 'manual']
-    assert kwargs.get('value_input_option') == 'USER_ENTERED'
+    # Изменено в 0.2.3g (07.05.2026): RAW вместо USER_ENTERED — иначе
+    # Sheets парсит float ts по локали, на чтении ломается float() / ast.literal_eval.
+    assert kwargs.get('value_input_option') == 'RAW'
 
 
 def test_steps_log_append_uses_default_user_id(monkeypatch):

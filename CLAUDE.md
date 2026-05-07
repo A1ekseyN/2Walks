@@ -75,6 +75,8 @@ Collapsed content stays in DOM (accessibility / search-friendly), only visually 
 
    Access via `google_sheets_db.GameStateRepo` (save/load) and `StepsLogRepo` (append/for_day) classes. A lazy singleton `_get_client()` keeps one authorized gspread client per process. New deployments need a one-time `python migrate_sheets.py` to rename `Sheet1` and create `steps_log`.
 
+   **Locale-safe float serialization (since 0.2.3g):** Sheets API без `value_input_option=RAW` интерпретирует числовые значения по системной локали. На локали с запятой как десятичным разделителем (ru-RU и т.п.) float `2018.10` сохраняется как `'2018,1'`, на чтении `ast.literal_eval('2018,1')` → tuple `(2018, 1)` → crash в `from_dict: float(tuple)`. Фикс: (1) `_state_dict_to_rows` конвертирует float в строку через `repr()` ('2018.1' с точкой); (2) `GameStateRepo.save` использует `value_input_option=ValueInputOption.raw`; (3) `StepsLogRepo.append` — то же `RAW` для `ts: float`. Без этого фикса все float-поля (money, bank_*, steps_xp_bonus, timestamps) ломаются на любой локали кроме en-US. При написании новых float-полей или новых call-sites в Sheets — **обязательно использовать RAW** (через `value_input_option=ValueInputOption.raw` в `update`/`append_row`).
+
    Steps_log writes happen only on explicit save (`s` or `q`) — not on every `+N` input — to keep offline-mode usable (player can enter wrong steps and exit without save).
 
 When adding new fields to `GameState`, update both `from_dict` and `to_dict` so the round-trip stays clean (the datetime special-case list in `_deser_datetime` / `json_serial` is the common trap).
