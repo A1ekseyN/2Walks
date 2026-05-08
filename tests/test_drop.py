@@ -128,3 +128,70 @@ def test_item_collect_no_drop_returns_none(monkeypatch, capsys):
     assert result is None
     assert state.inventory == []
     assert 'Ничего не выпало' in capsys.readouterr().out
+
+
+# ----- 4.50.1 — item_collect 3-branch: append / pending / forced sale -----
+
+def _force_successful_drop(monkeypatch):
+    """Заставляет item_collect вернуть валидный item — через подмену
+    helpers Drop_Item, чтобы обойти randint-дубликат-проблему."""
+    monkeypatch.setattr('drop.randint', lambda a, b: 1)
+    monkeypatch.setattr(Drop_Item, 'item_type', lambda self, state: 'ring')
+    monkeypatch.setattr(Drop_Item, 'characteristic_type', lambda self, state: 'luck')
+    monkeypatch.setattr(Drop_Item, 'item_quality', lambda self, state: 80)
+    monkeypatch.setattr(Drop_Item, 'one_item_random_grade',
+                        lambda self, hard, state: 'a-grade')
+
+
+def test_item_collect_branch_append_when_inventory_has_room(monkeypatch, capsys):
+    """Branch (1): inventory не full → item кладётся в инвентарь."""
+    state = GameState.default_new_game()
+    state.inventory = []
+    _force_successful_drop(monkeypatch)
+
+    result = Drop_Item().item_collect('walk_easy', state)
+
+    assert result is not None
+    assert len(state.inventory) == 1
+    assert state.pending_drop is None
+    assert state.inventory[0] is result
+
+
+def test_item_collect_branch_pending_when_full_no_pending(monkeypatch, capsys):
+    """Branch (2): inventory full + pending=None → item уходит в pending,
+    инвентарь не меняется, печатается info-сообщение."""
+    state = GameState.default_new_game()
+    state.inventory = [{} for _ in range(10)]  # full при cap=10
+    state.pending_drop = None
+    _force_successful_drop(monkeypatch)
+
+    result = Drop_Item().item_collect('walk_easy', state)
+
+    assert result is not None
+    assert state.pending_drop is result
+    assert len(state.inventory) == 10  # без мутации
+    assert 'Инвентарь полон' in capsys.readouterr().out
+
+
+def test_item_collect_branch_forced_sale_when_full_and_pending(monkeypatch, capsys):
+    """Branch (3): inventory full + pending уже занят → новый item авто-продан
+    за base price (money += price). Старый pending не трогается."""
+    state = GameState.default_new_game()
+    state.inventory = [{} for _ in range(10)]
+    state.money = 50.0
+    existing_pending = {
+        'item_name': ['x'], 'item_type': ['ring'], 'grade': ['c-grade'],
+        'characteristic': ['luck'], 'bonus': [1], 'quality': [50.0], 'price': [25],
+    }
+    state.pending_drop = existing_pending
+    _force_successful_drop(monkeypatch)
+    # новый item с price=80*1.5=120 (a-grade)
+
+    result = Drop_Item().item_collect('walk_hard', state)
+
+    assert result is not None
+    new_price = result['price'][0]  # 120 для quality=80, a-grade
+    assert state.money == 50.0 + new_price
+    assert state.pending_drop is existing_pending  # не тронут
+    assert len(state.inventory) == 10
+    assert 'автоматически продана' in capsys.readouterr().out

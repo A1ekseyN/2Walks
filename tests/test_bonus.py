@@ -286,3 +286,78 @@ def test_inventory_full_above_capacity_legacy():
     state = GameState.default_new_game()
     state.inventory = [{} for _ in range(20)]  # был сейв с 20 предметами
     assert inventory_full(state) is True
+
+
+# ----- 4.50.1 — auto_collect_pending_drop -----
+
+from bonus import auto_collect_pending_drop
+
+
+def _make_pending_item(grade='a-grade', price=120):
+    return {
+        'item_name': ['ring'], 'item_type': ['ring'], 'grade': [grade],
+        'characteristic': ['luck'], 'bonus': [3], 'quality': [80.0],
+        'price': [price],
+    }
+
+
+def test_auto_collect_no_pending_returns_none():
+    """Helper no-op'ит когда pending=None."""
+    state = GameState.default_new_game()
+    assert auto_collect_pending_drop(state) is None
+    assert state.pending_drop is None
+    assert state.inventory == []
+
+
+def test_auto_collect_with_full_inventory_returns_none():
+    """pending есть, но места всё равно нет — no-op."""
+    state = GameState.default_new_game()
+    state.pending_drop = _make_pending_item()
+    state.inventory = [{} for _ in range(10)]  # cap=10, full
+
+    assert auto_collect_pending_drop(state) is None
+    assert state.pending_drop is not None  # без мутации
+    assert len(state.inventory) == 10
+
+
+def test_auto_collect_with_free_slot_appends_and_clears():
+    """pending есть, место освободилось — append, clear, return item."""
+    item = _make_pending_item()
+    state = GameState.default_new_game()
+    state.pending_drop = item
+    state.inventory = [{} for _ in range(5)]  # 5 < 10
+
+    result = auto_collect_pending_drop(state)
+
+    assert result is item
+    assert state.pending_drop is None
+    assert state.inventory[-1] is item
+    assert len(state.inventory) == 6
+
+
+def test_auto_collect_after_skill_upgrade_makes_room():
+    """Симуляция B): cap был 10 (full), прокачали backpack_skill=1 — cap=11,
+    auto-collect должен сработать."""
+    item = _make_pending_item()
+    state = GameState.default_new_game()
+    state.pending_drop = item
+    state.inventory = [{} for _ in range(10)]  # full при cap=10
+    assert auto_collect_pending_drop(state) is None  # ещё full
+
+    state.gym.backpack_skill = 1  # cap → 11
+
+    result = auto_collect_pending_drop(state)
+    assert result is item
+    assert state.pending_drop is None
+    assert len(state.inventory) == 11
+
+
+def test_auto_collect_idempotent_after_success():
+    """Второй вызов после успеха — no-op (pending=None)."""
+    state = GameState.default_new_game()
+    state.pending_drop = _make_pending_item()
+    state.inventory = []
+
+    auto_collect_pending_drop(state)
+    assert auto_collect_pending_drop(state) is None
+    assert state.pending_drop is None

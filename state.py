@@ -175,6 +175,14 @@ class GameState:
     # полях — legacy decision). Полная типизация TypedDict откладывается до
     # задачи 1.6 (Items as dataclass) — сейчас только `list[dict]`.
     inventory: list[dict] = field(default_factory=list)
+    # 4.50.1 — Если рюкзак был полон в момент Adventure drop'а, новая находка
+    # перемещается сюда вместо потери. Игрок resolve'ит через `inventory_menu`:
+    # продать существующий → положить новый, или продать новый, или skip
+    # (pending остаётся). Auto-collect'ится при освобождении слота.
+    # Всегда `Optional[dict]`, не list — одновременно может быть только ОДИН
+    # pending; новые drop'ы при active pending уходят в forced-sale (money +=
+    # base price). Round-trip через flat-key 'pending_drop' (None для legacy).
+    pending_drop: Optional[dict] = None
 
     @classmethod
     def default_new_game(cls) -> "GameState":
@@ -299,6 +307,8 @@ class GameState:
             ),
 
             inventory=list(d.get('inventory') or []),
+            # 4.50.1 — Pending drop. None для сейвов до 0.2.4c, dict иначе.
+            pending_drop=d.get('pending_drop') or None,
         )
 
     def update_from_dict(self, d: dict) -> "GameState":
@@ -325,6 +335,7 @@ class GameState:
         self.equipment = new.equipment
         self.bank = new.bank
         self.inventory = new.inventory
+        self.pending_drop = new.pending_drop
         return self
 
     def to_dict(self) -> dict:
@@ -398,6 +409,10 @@ class GameState:
 
             # Inventory
             'inventory': self.inventory,
+            # 4.50.1 — Pending drop (full inventory at drop time). None если нет
+            # активной находки на resolve. Сериализуется как dict (item-формат)
+            # или None — round-trip-симметрично с from_dict.
+            'pending_drop': self.pending_drop,
 
             # Equipment
             'equipment_head': self.equipment.head,

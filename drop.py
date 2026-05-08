@@ -7,6 +7,7 @@
 
 from random import randint
 
+from bonus import inventory_full
 from equipment_bonus import equipment_luck_bonus
 from state import GameState
 
@@ -202,17 +203,54 @@ class Drop_Item:
             print(f'\nВыпал предмет: '
                   f'\n- {item["grade"][0]}: {item["item_type"][0].title()} + {item["bonus"][0]} {item["characteristic"][0].title()} '
                   f'(Качество: {item["quality"][0]}) (Цена: {item["price"][0]} $). \n')
-            state.inventory.append(item)
-            # 4.6 — log_event дропа.
             from history import log_event
-            log_event('drop',
-                      adventure=hard,
-                      item_type=item['item_type'][0],
-                      grade=item['grade'][0],
-                      characteristic=item['characteristic'][0],
-                      bonus=item['bonus'][0],
-                      quality=item['quality'][0],
-                      price=item['price'][0])
+
+            # 4.50.1 — три ветки в зависимости от заполненности инвентаря и
+            # наличия pending. Базовая логика appendа осталась только в (1).
+            # Лог-события: 'drop' / 'drop_pending' / 'drop_force_sold' —
+            # позволяют отличать на дашборде истории сценарий (4.6.2).
+            if not inventory_full(state):
+                # (1) Обычный drop — есть место, кладём в инвентарь.
+                state.inventory.append(item)
+                log_event('drop',
+                          adventure=hard,
+                          item_type=item['item_type'][0],
+                          grade=item['grade'][0],
+                          characteristic=item['characteristic'][0],
+                          bonus=item['bonus'][0],
+                          quality=item['quality'][0],
+                          price=item['price'][0])
+            elif state.pending_drop is None:
+                # (2) Рюкзак полон, pending свободен — копим находку в pending.
+                # Игрок resolve'ит при следующем заходе в Inventory (A3 flow):
+                # одноразовое info-уведомление здесь + persistent badge в menu.
+                state.pending_drop = item
+                print('🎒 Инвентарь полон. Находка ждёт решения — '
+                      'открой Инвентарь чтобы продать что-то старое или эту находку.')
+                log_event('drop_pending',
+                          adventure=hard,
+                          item_type=item['item_type'][0],
+                          grade=item['grade'][0],
+                          characteristic=item['characteristic'][0],
+                          bonus=item['bonus'][0],
+                          quality=item['quality'][0],
+                          price=item['price'][0])
+            else:
+                # (3) Рюкзак полон + pending уже занят — forced sale (вариант D-iii):
+                # новая находка авто-продаётся за base price, money += price.
+                # Pending остаётся прежним; не теряем уже найденное.
+                price = item['price'][0]
+                state.money += price
+                print(f'🎒 Инвентарь и слот находок заняты. '
+                      f'Находка автоматически продана за {price} $.')
+                log_event('drop_force_sold',
+                          adventure=hard,
+                          item_type=item['item_type'][0],
+                          grade=item['grade'][0],
+                          characteristic=item['characteristic'][0],
+                          bonus=item['bonus'][0],
+                          quality=item['quality'][0],
+                          price=price)
             return item
         print('--- Ничего не выпало ---\n')
         return None

@@ -2459,7 +2459,7 @@ Phase 6 (loan skill)   → 4.49.3
 - Web display: `_status_fragment.html` — `🎒 Инвентарь (N/cap)`.
 - Тесты — 8-10 новых.
 
-**4.50.1. Drop interactive sell-and-keep flow (CLI)** `[M / M / todo (blocked by 4.50.0)]`
+**4.50.1. Drop interactive sell-and-keep flow (CLI)** `[M / M / done in 0.2.4c (08.05.2026)]`
 
 При выпадении предмета в полный рюкзак — interactive prompt с **3 опциями**:
 1. **Продать один из существующих предметов** (выбор по индексу) → existing item продаётся за price, освобождается слот, новый drop кладётся в этот слот.

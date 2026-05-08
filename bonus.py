@@ -111,6 +111,36 @@ def inventory_full(state: GameState) -> bool:
     return len(state.inventory) >= backpack_capacity(state)
 
 
+def auto_collect_pending_drop(state: GameState):
+    """4.50.1 — Авто-перемещает `state.pending_drop` в инвентарь, если место
+    освободилось (продал предмет / прокачал backpack_skill / снял экипировку
+    куда-то ещё). Pure helper: возвращает item на момент перемещения (для
+    логирования / печати), либо None — если нет pending или ещё нет места.
+
+    Идемпотентен: повторный вызов после успешного auto-collect — no-op.
+
+    Логирование `drop_auto_collected` event'а делается ВНУТРИ helper'а,
+    чтобы все callsite (CLI tick / web render / unit-tests) единообразно
+    оставляли след в history.
+    """
+    if state.pending_drop is None:
+        return None
+    if inventory_full(state):
+        return None
+    item = state.pending_drop
+    state.inventory.append(item)
+    state.pending_drop = None
+    from history import log_event
+    log_event('drop_auto_collected',
+              item_type=(item.get('item_type') or [None])[0],
+              grade=(item.get('grade') or [None])[0],
+              characteristic=(item.get('characteristic') or [None])[0],
+              bonus=(item.get('bonus') or [None])[0],
+              quality=(item.get('quality') or [None])[0],
+              price=(item.get('price') or [None])[0])
+    return item
+
+
 def apply_earnings_boost(salary: float, state: GameState) -> float:
     """4.23 — Бонус к зарплате (только Work). Линейная: +1% за уровень
     `state.gym.earnings_boost`. Возвращает `round(..., 2)`. Симметричен

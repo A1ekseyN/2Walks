@@ -22,6 +22,58 @@ def _sort_inventory(inventory: list[dict]) -> list[dict]:
     )
 
 
+def _resolve_pending_drop_sell_existing(state: GameState, inventory_index: int) -> tuple[dict, dict, int]:
+    """4.50.1 — Resolve pending drop: продать предмет инвентаря по индексу,
+    положить pending на освободившийся слот.
+
+    Возвращает (sold_item, kept_item, refund). Mutates: inventory[index] removed,
+    money += refund, pending appended to inventory, pending=None.
+    """
+    sold_item = state.inventory[inventory_index]
+    try:
+        refund = round(sold_item['price'][0])
+    except (KeyError, IndexError, TypeError):
+        refund = 0
+    state.money += refund
+    del state.inventory[inventory_index]
+
+    kept_item = state.pending_drop
+    state.pending_drop = None
+    state.inventory.append(kept_item)
+
+    from history import log_event
+    log_event('drop_resolved_sell_existing',
+              sold_type=_first(sold_item.get('item_type')),
+              sold_grade=_first(sold_item.get('grade')),
+              sold_refund=refund,
+              kept_type=_first(kept_item.get('item_type')),
+              kept_grade=_first(kept_item.get('grade')),
+              kept_characteristic=_first(kept_item.get('characteristic')),
+              kept_bonus=_first(kept_item.get('bonus')),
+              kept_quality=_first(kept_item.get('quality')),
+              kept_price=_first(kept_item.get('price')))
+    return sold_item, kept_item, refund
+
+
+def _resolve_pending_drop_sell_new(state: GameState) -> tuple[dict, int]:
+    """4.50.1 — Resolve pending drop: продать саму находку за base price.
+    Инвентарь не трогается. Возвращает (sold_pending, refund)."""
+    pending = state.pending_drop
+    try:
+        refund = round(pending['price'][0])
+    except (KeyError, IndexError, TypeError):
+        refund = 0
+    state.money += refund
+    state.pending_drop = None
+
+    from history import log_event
+    log_event('drop_resolved_sell_new',
+              item_type=_first(pending.get('item_type')),
+              grade=_first(pending.get('grade')),
+              refund=refund)
+    return pending, refund
+
+
 def _sell_item_at_index(state: GameState, index: int) -> tuple[dict, int]:
     """Продажа предмета по индексу — мутирует state.inventory и state.money.
 
@@ -59,6 +111,14 @@ def _first(values):
 def inventory_menu(state: GameState) -> None:
     # Цикл retry на невалиде (1.5.3 — 0.2.1h, было: рекурсивный self-call).
     while True:
+        # 4.50.1 — Pending drop resolve (если есть). Показываем prompt в начале
+        # каждого захода в Inventory; игрок может skip — pending остаётся, prompt
+        # повторится в следующий заход. Persist делает caller (game.py main loop).
+        if state.pending_drop is not None:
+            _pending_drop_prompt(state)
+            # После prompt'а — продолжить обычное меню инвентаря (resolve мог
+            # очистить pending или нет; в любом случае показываем меню).
+
         cap = backpack_capacity(state)
         print('\n--- 🎒 Меню инвентаря 🎒 ---'
               f'\nВсего в инвентаре - {len(state.inventory)}/{cap} предметов: ')
@@ -73,6 +133,67 @@ def inventory_menu(state: GameState) -> None:
             return
         if ask == '0':
             return
+
+
+def _pending_drop_prompt(state: GameState) -> None:
+    """4.50.1 — Interactive resolve для `state.pending_drop`. 3 опции:
+
+    - 1..N — продать предмет №N из инвентаря, положить pending на его слот.
+    - s — продать саму находку (pending) за base price.
+    - 0 — skip (pending остаётся, prompt появится при следующем заходе).
+
+    Цикл retry на невалидном вводе.
+    """
+    pending = state.pending_drop
+    while True:
+        print('\n--- 🎁 Pending drop ---'
+              f'\nПока тебя ждала находка: '
+              f'\n- {pending["grade"][0]}: {pending["item_type"][0].title()} '
+              f'+ {pending["bonus"][0]} {pending["characteristic"][0].title()} '
+              f'(Качество: {pending["quality"][0]}) (Цена: {pending["price"][0]} $).'
+              '\n\nЧто делаем:'
+              '\n  1..N — продать предмет №N из инвентаря, положить находку на освободившийся слот'
+              '\n  s    — продать находку за её base price'
+              '\n  0    — отложить (находка останется, prompt появится при следующем заходе)')
+
+        # Текущее содержимое инвентаря — игрок выбирает что продать.
+        sorted_inv = _sort_inventory(state.inventory)
+        if sorted_inv:
+            print('\nИнвентарь:')
+            for ind, item in enumerate(sorted_inv, start=1):
+                space = "" if ind >= 10 else " "
+                print(f"\t{space}{ind}. {item['item_type'][0].title()} {item['grade'][0]}, "
+                      f"+ {item['bonus'][0]} {item['characteristic'][0].title()}, "
+                      f"(Quality: {item['quality'][0]}), "
+                      f"(Price: {item['price'][0]} $) ")
+        else:
+            print('\nИнвентарь пуст.')
+
+        ask = input('\n>>> ').strip()
+        if ask == '0':
+            return  # skip — pending остаётся
+        if ask in ('s', 'ы'):
+            sold, refund = _resolve_pending_drop_sell_new(state)
+            print(f'\nНаходка продана за {refund} $.')
+            return
+        try:
+            idx_one_based = int(ask)
+        except ValueError:
+            continue
+        if not (1 <= idx_one_based <= len(state.inventory)):
+            continue
+        # Sorted view — но удаляем по индексу из исходного state.inventory.
+        # Поскольку sorted_inv = _sort_inventory(state.inventory) возвращает
+        # ту же ссылку на dict, используем identity-поиск для надёжности.
+        chosen = sorted_inv[idx_one_based - 1]
+        try:
+            real_index = state.inventory.index(chosen)
+        except ValueError:
+            continue
+        sold, kept, refund = _resolve_pending_drop_sell_existing(state, real_index)
+        print(f'\nПродан предмет: {sold["item_type"][0].title()} {sold["grade"][0]} '
+              f'(+{refund} $). Находка положена в инвентарь.')
+        return
 
 
 def inventory_view(state: GameState) -> list[dict]:

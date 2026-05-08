@@ -181,6 +181,64 @@ def test_wear_recalc_prices_by_grade():
     assert state.equipment.torso['price'][0] == int(60 * 0.5)  # c-grade
 
 
+# ----- 4.50.1 — _resolve_pending_drop_sell_existing / _sell_new -----
+
+from inventory import (
+    _resolve_pending_drop_sell_existing,
+    _resolve_pending_drop_sell_new,
+)
+
+
+def test_resolve_sell_existing_swaps_pending_into_inventory():
+    """Продали existing[N], pending переехал в инвентарь, money += refund."""
+    state = GameState.default_new_game()
+    state.money = 100.0
+    state.inventory = [_make_item(bonus=2, price=50)]
+    pending = _make_item(bonus=5, grade='s-grade', price=200)
+    state.pending_drop = pending
+
+    sold, kept, refund = _resolve_pending_drop_sell_existing(state, 0)
+
+    assert refund == 50
+    assert state.money == 150.0
+    assert state.pending_drop is None
+    assert kept is pending
+    assert state.inventory[-1] is pending
+    assert sold not in state.inventory
+
+
+def test_resolve_sell_new_keeps_inventory_intact():
+    """Продали pending за base price; инвентарь не тронут."""
+    state = GameState.default_new_game()
+    state.money = 100.0
+    state.inventory = [_make_item(price=50)]
+    pending = _make_item(price=200, grade='s-grade')
+    state.pending_drop = pending
+
+    sold, refund = _resolve_pending_drop_sell_new(state)
+
+    assert refund == 200
+    assert state.money == 300.0
+    assert sold is pending
+    assert state.pending_drop is None
+    assert len(state.inventory) == 1  # без изменений
+
+
+def test_resolve_sell_new_handles_missing_price_field():
+    """Edge: price=[] → refund=0, money не меняется, pending очищается."""
+    state = GameState.default_new_game()
+    state.money = 100.0
+    pending = _make_item()
+    pending['price'] = []  # corrupt
+    state.pending_drop = pending
+
+    sold, refund = _resolve_pending_drop_sell_new(state)
+
+    assert refund == 0
+    assert state.money == 100.0
+    assert state.pending_drop is None
+
+
 def test_wear_reduce_wear_alias():
     """reduce_wear(steps) == decrease_durability(steps * (1 - neatness/100))."""
     state = GameState.default_new_game()

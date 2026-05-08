@@ -13,6 +13,7 @@ from characteristics import (
 )
 from adventure import Adventure
 from adventure_data import adventure_data_table
+from bonus import auto_collect_pending_drop
 from equipment import Equipment
 from functions import (
     char_info,
@@ -134,6 +135,17 @@ def play():
                 energy_time_charge(state)
                 work_check_done(state)
                 skill_training_check_done(state)
+
+                # 4.50.1 — Auto-collect pending drop если место освободилось
+                # (например, прокачали backpack_skill в Gym или продали предмет).
+                # На каждом тике дешёво: helper no-op'ит когда pending=None.
+                # Печатаем уведомление только в момент перехода (helper вернул item).
+                auto_collected = auto_collect_pending_drop(state)
+                if auto_collected is not None:
+                    print(f'\n🎁 Освободилось место в рюкзаке. Находка '
+                          f'{auto_collected["grade"][0]} {auto_collected["item_type"][0].title()} '
+                          f'+ {auto_collected["bonus"][0]} {auto_collected["characteristic"][0].title()} '
+                          f'добавлена в инвентарь.')
 
                 status_bar(state)
 

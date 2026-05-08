@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 59 ключей legacy save format."""
+    """to_dict() возвращает все 60 ключей legacy save format."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -335,7 +335,7 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'work', 'work_salary', 'working', 'working_hours',
         'working_start', 'working_end',
         # Inventory
-        'inventory',
+        'inventory', 'pending_drop',
         # Equipment
         'equipment_head', 'equipment_neck', 'equipment_torso',
         'equipment_finger_01', 'equipment_finger_02',
@@ -375,3 +375,37 @@ def test_legacy_save_without_backpack_skill_defaults_to_zero():
     del d['backpack_skill']  # имитируем legacy save до 0.2.4b
     s2 = GameState.from_dict(d)
     assert s2.gym.backpack_skill == 0
+
+
+def test_pending_drop_round_trip_none():
+    """4.50.1 — default state: pending_drop=None survives round-trip."""
+    s1 = GameState.default_new_game()
+    d = s1.to_dict()
+    assert d['pending_drop'] is None
+    s2 = GameState.from_dict(d)
+    assert s2.pending_drop is None
+
+
+def test_pending_drop_round_trip_with_item():
+    """4.50.1 — pending_drop с реальным item-dict переживает round-trip."""
+    item = {
+        'item_name': ['ring'], 'item_type': ['ring'], 'grade': ['a-grade'],
+        'characteristic': ['luck'], 'bonus': [3], 'quality': [80.0], 'price': [120],
+    }
+    s1 = GameState.default_new_game()
+    s1.pending_drop = item
+
+    d = s1.to_dict()
+    assert d['pending_drop'] == item
+
+    s2 = GameState.from_dict(d)
+    assert s2.pending_drop == item
+
+
+def test_legacy_save_without_pending_drop_defaults_to_none():
+    """4.50.1 — старый сейв без поля pending_drop — поле получает default None."""
+    s1 = GameState.default_new_game()
+    d = s1.to_dict()
+    del d['pending_drop']  # имитируем legacy save до 0.2.4c
+    s2 = GameState.from_dict(d)
+    assert s2.pending_drop is None
