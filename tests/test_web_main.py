@@ -805,7 +805,11 @@ def test_inventory_uses_details_element():
     # Внутри #inventory есть <details> и <summary>.
     inv_start = body.find('id="inventory"')
     inv_section = body[inv_start:inv_start + 2000]
-    assert "<details>" in inv_section
+    # После 0.2.4d (4.50.2) details может рендериться с пустым `open` атрибутом
+    # ({% if pending_drop_view.active %}open{% endif %} → "<details >") когда
+    # pending=None — поэтому regex на тег без open.
+    import re
+    assert re.search(r'<details\s*>', inv_section) is not None
     assert "<summary>" in inv_section
     # Свернут по умолчанию (нет open атрибута).
     assert "<details open" not in inv_section
@@ -2666,3 +2670,232 @@ def test_dashboard_context_provides_work_add_hour_options_when_active():
     assert btns == ["1", "2", "3", "4", "5", "6", "7", "8"]
     # Последняя кнопка — 8h, формула *8.
     assert "+8h 🕑 8h · 🏃 -1600 · 🔋 -32 · 💰 +16" in body
+
+
+# ===== 4.50.2 — Pending drop UI + endpoints =====
+
+def _make_pending_item(item_type='ring', grade='a-grade', characteristic='luck',
+                       bonus=3, quality=80.0, price=120):
+    return {
+        'item_name': [item_type], 'item_type': [item_type], 'grade': [grade],
+        'characteristic': [characteristic], 'bonus': [bonus],
+        'quality': [quality], 'price': [price],
+    }
+
+
+def _state_with_pending_and_full_inventory():
+    """State с full inventory (10 предметов) + pending=ring."""
+    state = GameState.default_new_game()
+    state.money = 100.0
+    state.inventory = [_make_pending_item(grade='c-grade', bonus=1, price=25)
+                       for _ in range(10)]
+    state.pending_drop = _make_pending_item(price=120)
+    return state
+
+
+def test_pending_drop_view_inactive_when_no_pending():
+    """_build_pending_drop_view: pending=None → active=False."""
+    from web.main import _build_pending_drop_view
+    state = GameState.default_new_game()
+    view = _build_pending_drop_view(state)
+    assert view == {"active": False, "item": None}
+
+
+def test_pending_drop_view_parses_item_fields():
+    """_build_pending_drop_view: pending=item → flat parsed dict."""
+    from web.main import _build_pending_drop_view
+    state = GameState.default_new_game()
+    state.pending_drop = _make_pending_item()
+    view = _build_pending_drop_view(state)
+    assert view["active"] is True
+    assert view["item"] == {
+        "type": "ring", "grade": "a-grade", "characteristic": "luck",
+        "bonus": 3, "quality": 80.0, "price": 120,
+    }
+
+
+def test_dashboard_renders_pending_banner_when_active():
+    """GET /status с активным pending → баннер «Найдена находка» в HTML."""
+    _setup_state(_state_with_pending_and_full_inventory())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'id="pending-drop"' in body
+    assert "Найдена находка" in body
+    # Кнопка sell-new с ценой
+    assert "💰 Продать находку (120 $)" in body
+    assert 'hx-post="/web/drop/sell_new"' in body
+    assert 'hx-post="/web/drop/skip"' in body
+
+
+def test_dashboard_no_banner_when_pending_none():
+    """Без pending — баннер отсутствует."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'id="pending-drop"' not in body
+
+
+def test_inventory_section_auto_opens_when_pending_active():
+    """При active pending инвентарь раскрывается автоматически (open атрибут)."""
+    _setup_state(_state_with_pending_and_full_inventory())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    inv_start = body.find('id="inventory"')
+    inv_section = body[inv_start:inv_start + 3000]
+    assert "<details open" in inv_section
+
+
+def test_inventory_renders_sell_keep_buttons_when_pending():
+    """Каждый предмет инвентаря рядом получает кнопку «Продать + взять находку»."""
+    _setup_state(_state_with_pending_and_full_inventory())
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # 10 кнопок sell-existing.
+    import re
+    forms = re.findall(r'hx-post="/web/drop/sell_existing"', body)
+    assert len(forms) == 10
+    # Hidden index input от 0 до 9.
+    indices = re.findall(r'name="index" value="(\d+)"', body)
+    assert indices == [str(i) for i in range(10)]
+
+
+def test_inventory_no_sell_keep_buttons_without_pending():
+    """Без pending sell-existing кнопок нет."""
+    state = GameState.default_new_game()
+    state.inventory = [_make_pending_item()]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'hx-post="/web/drop/sell_existing"' not in body
+
+
+# ----- POST /web/drop/* endpoints -----
+
+def test_post_web_drop_sell_new_resolves_and_returns_fragment():
+    """sell_new: pending продан за price, money += price, баннер исчезает."""
+    state = _state_with_pending_and_full_inventory()
+    initial_money = state.money
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/drop/sell_new")
+    assert response.status_code == 200
+    assert state.pending_drop is None
+    assert state.money == initial_money + 120
+    # Pending banner ушёл из обновлённого fragment.
+    assert 'id="pending-drop"' not in response.text
+
+
+def test_post_web_drop_sell_existing_swaps_item():
+    """sell_existing: index=0 → item[0] продан, pending в инвентаре."""
+    state = _state_with_pending_and_full_inventory()
+    initial_money = state.money
+    pending = state.pending_drop
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/drop/sell_existing", data={"index": 0})
+    assert response.status_code == 200
+    assert state.pending_drop is None
+    assert state.money == initial_money + 25  # price проданного c-grade
+    assert state.inventory[-1] is pending     # pending в конце инвентаря
+    assert len(state.inventory) == 10
+    assert 'id="pending-drop"' not in response.text
+
+
+def test_post_web_drop_sell_existing_invalid_index_returns_error():
+    """Out-of-range индекс → drop_error в баннере, pending не тронут."""
+    state = _state_with_pending_and_full_inventory()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/drop/sell_existing", data={"index": 999})
+    assert response.status_code == 200
+    assert state.pending_drop is not None  # без мутации
+    assert "Неверный индекс" in response.text
+
+
+def test_post_web_drop_skip_keeps_pending():
+    """skip: pending остаётся, fragment просто перерисовался."""
+    state = _state_with_pending_and_full_inventory()
+    pending = state.pending_drop
+    initial_inv_len = len(state.inventory)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/drop/skip")
+    assert response.status_code == 200
+    assert state.pending_drop is pending
+    assert len(state.inventory) == initial_inv_len
+    # Banner всё ещё показан.
+    assert 'id="pending-drop"' in response.text
+
+
+# ----- POST /api/drop/* endpoints -----
+
+def test_post_api_drop_sell_new_returns_json():
+    """JSON sell_new: ok=True, money обновлён, pending=None."""
+    state = _state_with_pending_and_full_inventory()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/drop/sell_new")
+    data = response.json()
+    assert data == {
+        "ok": True,
+        "money": 220.0,             # 100 + 120
+        "inventory_size": 10,
+        "pending_drop": None,
+    }
+
+
+def test_post_api_drop_sell_existing_returns_json():
+    """JSON sell_existing: ok=True, inventory_size=10, money обновлён."""
+    state = _state_with_pending_and_full_inventory()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/drop/sell_existing", json={"index": 0})
+    data = response.json()
+    assert data["ok"] is True
+    assert data["money"] == 125.0  # 100 + 25 c-grade
+    assert data["inventory_size"] == 10
+    assert data["pending_drop"] is None
+
+
+def test_post_api_drop_sell_existing_invalid_index():
+    """JSON sell_existing с out-of-range index → 422 + error."""
+    state = _state_with_pending_and_full_inventory()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/drop/sell_existing", json={"index": 999})
+    assert response.status_code == 422
+    assert "Неверный индекс" in response.json()["error"]
+
+
+def test_post_api_drop_sell_new_no_pending():
+    """JSON sell_new при pending=None → 422 + error."""
+    _setup_state()  # default state — pending=None
+    with TestClient(app) as client:
+        response = client.post("/api/drop/sell_new")
+    assert response.status_code == 422
+    assert "Нет активной находки" in response.json()["error"]
+
+
+# ----- Auto-collect on render (4.50.2 hook in _dashboard_context) -----
+
+def test_auto_collect_fires_in_dashboard_when_room_freed():
+    """Pending существует но cap расширилась через backpack_skill (например игрок
+    прокачал в gym): _dashboard_context вызывает auto_collect_pending_drop и
+    pending переезжает в инвентарь без UI prompt'а."""
+    state = GameState.default_new_game()
+    state.inventory = [_make_pending_item(grade='c-grade') for _ in range(10)]
+    state.pending_drop = _make_pending_item(grade='a-grade')
+    state.gym.backpack_skill = 1  # cap=11 → есть место
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/status")
+    # auto_collect должен сработать в _dashboard_context.
+    assert state.pending_drop is None
+    assert len(state.inventory) == 11
+    assert 'id="pending-drop"' not in response.text

@@ -413,6 +413,34 @@ def _validate_and_apply_training(state, skill_name: str) -> Optional[str]:
     return None
 
 
+def _build_pending_drop_view(state) -> dict:
+    """4.50.2 — Pre-computed данные для pending-drop баннера (web).
+
+    Распаковывает list-обёртки legacy item-формата (item['grade'][0] и т.д.)
+    в плоский dict для удобного рендера в Jinja. Если pending=None — возвращает
+    `{active: False, item: None}`. Bench: вызывается из `_dashboard_context`
+    на каждом рендере, выполнение копеечное.
+    """
+    if state.pending_drop is None:
+        return {"active": False, "item": None}
+    p = state.pending_drop
+
+    def _first(values):
+        if not values:
+            return None
+        return values[0]
+
+    item = {
+        "type": _first(p.get("item_type")),
+        "grade": _first(p.get("grade")),
+        "characteristic": _first(p.get("characteristic")),
+        "bonus": _first(p.get("bonus")),
+        "quality": _first(p.get("quality")),
+        "price": _first(p.get("price")) or 0,
+    }
+    return {"active": True, "item": item}
+
+
 def _build_skill_options(state) -> list:
     """Pre-computed данные для UI распределения навыков. Каждая запись — dict
     `{key, title, icon, effect, current}` где current = state.char_level.skill_<key>."""
@@ -537,7 +565,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        steps_form_open: bool = False,
                        work_error: Optional[str] = None,
                        skill_error: Optional[str] = None,
-                       gym_error: Optional[str] = None) -> dict:
+                       gym_error: Optional[str] = None,
+                       drop_error: Optional[str] = None) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -596,6 +625,17 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # (CLI делает то же самое в main loop'е). Аналогично появятся вызовы
     # adventure_finalize в задаче 4.48.3.
     work_check_done(state)
+
+    # 4.50.2 — Auto-collect pending drop если место освободилось (продажа
+    # предмета / прокачка backpack_skill / снятие экипировки) с момента
+    # последнего рендера. Симметрично CLI main loop'у в game.py.
+    # Persist обязателен: иначе после перезагрузки CLI вытащит stale snapshot
+    # и pending воскреснет. Помещаем ПОСЛЕ всех auto-finalize'ов чтобы любое
+    # освобождение слота из них (work / training не освобождают, но для
+    # будущих расширений) тоже попало под этот хук.
+    from bonus import auto_collect_pending_drop
+    if auto_collect_pending_drop(state) is not None:
+        persist_state_to_cloud()
 
     # Параметры для JS-таймера энергии в _status_fragment.html (data-attrs).
     # JS раз в 60 сек обновляет цифру, считая `min(energy + floor((now-stamp)/interval), max)`.
@@ -736,6 +776,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "work_max_add_hours": work_max_add_hours,
         "work_add_hour_options": work_add_hour_options,
         "work_error": work_error,
+        # 4.50.2 — Pending drop UI: баннер + inline кнопки в инвентаре.
+        # `active` = True если есть невыпавшая находка, `item` = parsed dict.
+        "pending_drop_view": _build_pending_drop_view(state),
+        "drop_error": drop_error,
     }
 
 
@@ -1077,3 +1121,134 @@ async def api_gym_start(payload: GymStartRequest):
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "training": _training_snapshot(state)})
+
+
+# ===== 4.50.2 — Pending drop resolve (web) =====
+
+class DropSellExistingRequest(BaseModel):
+    """Body для POST /api/drop/sell_existing — индекс предмета в state.inventory.
+
+    Индекс **0-based по списку state.inventory** (не по отсортированной view).
+    Web-форма передаёт реальный индекс из исходного списка через `value=`
+    атрибут кнопки — sort применяется только в template на отображение.
+    """
+    index: int = Field(..., ge=0, description="0-based индекс предмета в state.inventory")
+
+
+def _validate_and_apply_drop_sell_existing(state, index: int) -> Optional[str]:
+    """Resolve pending: продать предмет инвентаря по индексу + положить pending.
+
+    Возвращает None при успехе, текст ошибки иначе. На успех — persist.
+    """
+    if state.pending_drop is None:
+        return "Нет активной находки для resolve."
+    if not (0 <= index < len(state.inventory)):
+        return f"Неверный индекс предмета: {index} (инвентарь: {len(state.inventory)} предметов)."
+    from inventory import _resolve_pending_drop_sell_existing
+    _resolve_pending_drop_sell_existing(state, index)
+    persist_state_to_cloud()
+    return None
+
+
+def _validate_and_apply_drop_sell_new(state) -> Optional[str]:
+    """Resolve pending: продать саму находку за base price.
+
+    Возвращает None при успехе, текст ошибки иначе. На успех — persist.
+    """
+    if state.pending_drop is None:
+        return "Нет активной находки для resolve."
+    from inventory import _resolve_pending_drop_sell_new
+    _resolve_pending_drop_sell_new(state)
+    persist_state_to_cloud()
+    return None
+
+
+@app.post("/web/drop/sell_existing", response_class=HTMLResponse)
+async def web_drop_sell_existing(request: Request, index: int = Form(...)):
+    """Form-data resolve: продать предмет №index, положить pending."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+
+    err = _validate_and_apply_drop_sell_existing(state, index)
+    context = _dashboard_context(request, drop_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/drop/sell_new", response_class=HTMLResponse)
+async def web_drop_sell_new(request: Request):
+    """Form-data resolve: продать находку за base price."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+
+    err = _validate_and_apply_drop_sell_new(state)
+    context = _dashboard_context(request, drop_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/drop/skip", response_class=HTMLResponse)
+async def web_drop_skip(request: Request):
+    """Form-data skip: pending остаётся, баннер появится снова на следующем
+    рендере. По сути — просто re-render, но симметрично CLI flow и явный
+    «отложить» для UI. Никаких мутаций / persist."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    context = _dashboard_context(request)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+def _pending_drop_snapshot(state) -> Optional[dict]:
+    """Минимальный JSON-snapshot pending_drop для API ответа."""
+    if state.pending_drop is None:
+        return None
+    p = state.pending_drop
+
+    def _first(values):
+        return values[0] if values else None
+
+    return {
+        "type": _first(p.get("item_type")),
+        "grade": _first(p.get("grade")),
+        "characteristic": _first(p.get("characteristic")),
+        "bonus": _first(p.get("bonus")),
+        "quality": _first(p.get("quality")),
+        "price": _first(p.get("price")),
+    }
+
+
+@app.post("/api/drop/sell_existing")
+async def api_drop_sell_existing(payload: DropSellExistingRequest):
+    """JSON resolve: продать предмет №index, положить pending."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+
+    err = _validate_and_apply_drop_sell_existing(state, payload.index)
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({
+        "ok": True,
+        "money": state.money,
+        "inventory_size": len(state.inventory),
+        "pending_drop": _pending_drop_snapshot(state),
+    })
+
+
+@app.post("/api/drop/sell_new")
+async def api_drop_sell_new():
+    """JSON resolve: продать находку за base price."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+
+    err = _validate_and_apply_drop_sell_new(state)
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({
+        "ok": True,
+        "money": state.money,
+        "inventory_size": len(state.inventory),
+        "pending_drop": _pending_drop_snapshot(state),
+    })

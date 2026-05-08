@@ -2393,7 +2393,7 @@ Phase 6 (loan skill)   → 4.49.3
 
 ---
 
-### 4.50. Новый навык: Размер инвентаря / Backpack Skill (зонтичная) `[M / S / todo]`
+### 4.50. Новый навык: Размер инвентаря / Backpack Skill (зонтичная) `[M / S / done in 0.2.4d (08.05.2026, all 3 phases)]`
 
 Сейчас `state.inventory: list[dict]` без ограничений — эксплоит, игрок копит сотни предметов. Добавляем capacity + новый навык, расширяющий его.
 
@@ -2483,7 +2483,7 @@ Logика «при full inventory не append, а сохранить в `state.p
 
 Это потребует **новое поле `state.pending_drop: Optional[dict] = None`** + round-trip + UI в обоих интерфейсах.
 
-**4.50.2. Drop при full inventory в Web** `[M / M / todo (blocked by 4.50.1)]`
+**4.50.2. Drop при full inventory в Web** `[M / M / done in 0.2.4d (08.05.2026)]`
 
 Тот же flow что в CLI (4.50.1) — UI в web для resolve pending drop:
 - Dashboard показывает баннер «🎁 Pending drop: [grade item]. Выберите что продать.»

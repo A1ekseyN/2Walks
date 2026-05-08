@@ -2,6 +2,55 @@
    при первом GET /, при submit POST /web/steps (HTMX swap), и через GET /status
    (endpoint оставлен для будущих action endpoints / кнопки Refresh). #}
 
+{# 4.50.2 — Pending drop banner. Показывается над всем остальным когда
+   state.pending_drop != None (drop при полном инвентаре). 3 опции:
+   sell-existing (кнопки в инвентаре ниже), sell-new, skip. #}
+{% if pending_drop_view.active %}
+<section id="pending-drop" style="margin-bottom: 1rem;">
+    <article style="border-left: 4px solid var(--pico-color-orange-500, #f97316);">
+        <header style="margin-bottom: 0.5rem;">
+            <strong>🎁 Найдена находка</strong>
+            <small style="display: block; color: var(--pico-muted-color);">
+                Инвентарь полон — реши, что делать.
+            </small>
+        </header>
+
+        <div class="stat-row">
+            <span>{{ pending_drop_view.item.type|title }}
+                  <em>{{ pending_drop_view.item.grade }}</em></span>
+            <span>+{{ pending_drop_view.item.bonus }} {{ pending_drop_view.item.characteristic|title }}</span>
+        </div>
+        <small style="color: var(--pico-muted-color);">
+            Quality: {{ "%.1f"|format(pending_drop_view.item.quality) if pending_drop_view.item.quality is number else pending_drop_view.item.quality }}
+            · Цена: {{ pending_drop_view.item.price }} $
+        </small>
+
+        {% if drop_error %}
+        <p style="color: var(--pico-color-pumpkin-600, #b45309); margin: 0.5rem 0 0;">❌ {{ drop_error }}</p>
+        {% endif %}
+
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap;">
+            <form hx-post="/web/drop/sell_new" hx-target="#status-bar" hx-swap="innerHTML"
+                  hx-confirm="Продать находку за {{ pending_drop_view.item.price }} $?"
+                  style="margin: 0;">
+                <button type="submit" style="margin: 0;">
+                    💰 Продать находку ({{ pending_drop_view.item.price }} $)
+                </button>
+            </form>
+            <form hx-post="/web/drop/skip" hx-target="#status-bar" hx-swap="innerHTML"
+                  style="margin: 0;">
+                <button type="submit" class="secondary outline" style="margin: 0;">
+                    ⏭ Отложить
+                </button>
+            </form>
+        </div>
+        <small style="display: block; margin-top: 0.5rem; color: var(--pico-muted-color);">
+            Или продай существующий предмет в разделе 🎒 Инвентарь — находка займёт его слот.
+        </small>
+    </article>
+</section>
+{% endif %}
+
 <section id="stats">
     <article>
         <header><strong>📊 Stats</strong></header>
@@ -361,15 +410,32 @@
 </section>
 
 <section id="inventory">
-    <details>
+    {# 4.50.2 — auto-expand details при active pending, чтобы игрок видел список
+       со sell-buttons без лишнего клика. Без pending — сворачиваем по умолчанию. #}
+    <details {% if pending_drop_view.active %}open{% endif %}>
         <summary>🎒 <strong>Инвентарь</strong> ({{ state.inventory|length }}/{{ inventory_capacity }})</summary>
         {% if state.inventory %}
             {% for item in state.inventory %}
-                <div class="item-row">
-                    {{ loop.index }}. {{ item['item_type'][0].title() }} <em>{{ item['grade'][0] }}</em>
-                    +{{ item['bonus'][0] }} {{ item['characteristic'][0].title() }}
-                    {% if item['quality']|length %}(Q: {{ "%.1f"|format(item['quality'][0]) if item['quality'][0] is number else item['quality'][0] }}){% endif %}
-                    {% if item['price']|length %}— {{ item['price'][0] }} ${% endif %}
+                <div class="item-row" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span style="flex: 1;">
+                        {{ loop.index }}. {{ item['item_type'][0].title() }} <em>{{ item['grade'][0] }}</em>
+                        +{{ item['bonus'][0] }} {{ item['characteristic'][0].title() }}
+                        {% if item['quality']|length %}(Q: {{ "%.1f"|format(item['quality'][0]) if item['quality'][0] is number else item['quality'][0] }}){% endif %}
+                        {% if item['price']|length %}— {{ item['price'][0] }} ${% endif %}
+                    </span>
+                    {% if pending_drop_view.active %}
+                    {# 4.50.2 — sell-existing-and-keep-new кнопка на каждой строке.
+                       index = loop.index0 (0-based в state.inventory — порядок не sorted,
+                       template итерирует исходный список). #}
+                    <form hx-post="/web/drop/sell_existing" hx-target="#status-bar" hx-swap="innerHTML"
+                          hx-confirm="Продать «{{ item['item_type'][0]|title }} {{ item['grade'][0] }}» за {% if item['price']|length %}{{ item['price'][0] }}{% else %}0{% endif %} $ и положить находку в инвентарь?"
+                          style="margin: 0;">
+                        <input type="hidden" name="index" value="{{ loop.index0 }}">
+                        <button type="submit" class="secondary outline" style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                            Продать + взять находку
+                        </button>
+                    </form>
+                    {% endif %}
                 </div>
             {% endfor %}
         {% else %}
