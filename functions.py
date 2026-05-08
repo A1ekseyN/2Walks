@@ -154,6 +154,9 @@ def save_game_date_last_enter(state: GameState) -> int:
         state.steps.today = 0
         state.steps.used = 0
         state.date_last_enter = str(now_date)
+        # 4.6 — log_event смены игрового дня.
+        from history import log_event
+        log_event('new_day', new_date=str(now_date), prev_date=str(last_enter_date_char))
 
     # Пересчёт steps_can_use в обеих ветках — иначе статус-бар покажет stale значение
     # из сейва после смены даты (см. 2.12).
@@ -182,6 +185,9 @@ def steps_today_set(entered: int, state: GameState) -> None:
         print(f'Текущее значение ({old:,}) больше или равно введённому ({entered:,}). Оставлено как было.')
     else:
         print(f'Обновлено: {old:,} -> {new:,}.')
+        # 4.6 — log_event ввода шагов из CLI (только если значение реально обновилось).
+        from history import log_event
+        log_event('steps_set', source='manual', value=new, previous=old)
 
 
 def steps_today_manual_entry(state: GameState) -> None:

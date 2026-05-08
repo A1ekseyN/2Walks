@@ -34,7 +34,23 @@ def _sell_item_at_index(state: GameState, index: int) -> tuple[dict, int]:
         refund = 0
     state.money += refund
     del state.inventory[index]
+    # 4.6 — log_event продажи предмета. _first() безопасно достаёт значение
+    # из list-обёртки legacy item-формата (рефакторинг в 1.6).
+    from history import log_event
+    log_event('item_sold',
+              item_type=_first(item.get('item_type')),
+              grade=_first(item.get('grade')),
+              characteristic=_first(item.get('characteristic')),
+              bonus=_first(item.get('bonus')),
+              refund=refund)
     return item, refund
+
+
+def _first(values):
+    """Безопасно достать первый элемент list-обёртки item-поля. None если пусто."""
+    if not values:
+        return None
+    return values[0]
 
 
 # ----- UI-обёртки -----

@@ -143,6 +143,7 @@ class Work:
 
         # state.work уже могла быть активна — сохраняем накопленные hours.
         prev_hours = state.work.hours if state.work.active else 0
+        is_resume = state.work.active
         start_work(
             state,
             work_type=work,
@@ -150,6 +151,17 @@ class Work:
             hours=prev_hours + working_hours,
             start=state.work.start if state.work.active else now,
             end=new_end,
+        )
+        # 4.6 — log_event старт смены / добавление часов.
+        from history import log_event
+        log_event(
+            'work_extend' if is_resume else 'work_start',
+            vacancy=work,
+            added_hours=working_hours,
+            total_hours=prev_hours + working_hours,
+            salary_per_hour=self.work_requirements[work]['salary'],
+            cost_steps=steps_cost,
+            cost_energy=energy_cost,
         )
 
         print(f'\nИспользовано 🏃: {Fore.LIGHTCYAN_EX}{steps_cost}{Style.RESET_ALL} + '
@@ -172,6 +184,8 @@ def work_check_done(state: GameState) -> GameState:
 
     if state.work.end <= now:
         earned = state.work.salary * state.work.hours
+        finished_vacancy = state.work.work_type
+        finished_hours = state.work.hours
         state.money += earned
         print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{earned}{Style.RESET_ALL} $.')
         state.work.work_type = None
@@ -180,5 +194,8 @@ def work_check_done(state: GameState) -> GameState:
         state.work.hours = 0
         state.work.start = None
         state.work.end = None
+        # 4.6 — log_event завершения смены.
+        from history import log_event
+        log_event('work_done', vacancy=finished_vacancy, hours=finished_hours, salary=earned)
         save_characteristic()
     return state

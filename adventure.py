@@ -74,6 +74,11 @@ class Adventure:
                 counter_key = _ADV_COUNTER_KEYS[adv_name]
                 state.adventure.counters[counter_key] = state.adventure.counters.get(counter_key, 0) + 1
 
+            # 4.6 — log_event завершения приключения. Drop фиксируется отдельно
+            # внутри Drop_Item.item_collect (если был).
+            from history import log_event
+            log_event('adventure_done', name=adv_name)
+
             state.adventure.active = False
             state.adventure.name = None
             state.adventure.end_ts = None
@@ -202,6 +207,10 @@ class Adventure:
             start_ts=now_ts,
             end_ts=now_ts + (adv_time * 60),
         )
+        # 4.6 — log_event старта приключения.
+        from history import log_event
+        log_event('adventure_start', name=adv_name, cost_steps=adv_steps,
+                  cost_energy=adv_energy, duration_minutes=adv_time)
 
         print(f'Steps_used_today 🏃: {state.steps.used}')
         print(f'Energy used 🔋: {adv_energy}')

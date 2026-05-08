@@ -212,4 +212,7 @@ def save_characteristic() -> None:
               "\nЗакройте файл и повторите попытку. Задержка 30 сек и повторный запуск.")
         time.sleep(30)
         save_characteristic()
+    # 4.6 — log_event факта успешного локального save (CSV).
+    from history import log_event
+    log_event('save')
     print('\n💾 Save Successfully.')

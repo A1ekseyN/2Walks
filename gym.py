@@ -267,9 +267,13 @@ def skill_training_check_done(state: GameState) -> None:
     elif skill_name == 'loan_interest_reduction':
         from bank import accrue_loan
         accrue_loan(state)
-    new_level = getattr(state.gym, skill_name) + 1
+    old_level = getattr(state.gym, skill_name)
+    new_level = old_level + 1
     setattr(state.gym, skill_name, new_level)
     print(f'\n🏋 Навык {skill_name.title()} улучшен до {new_level}')
+    # 4.6 — log_event значимого события прокачки навыка.
+    from history import log_event
+    log_event('skill_upgraded', skill=skill_name, from_level=old_level, to_level=new_level)
 
     state.training.active = False
     state.training.skill_name = None
@@ -314,7 +318,8 @@ class Skill_Training:
 
     def start_skill_training(self) -> GameState:
         state = self._state
-        cost = skill_training_table[getattr(state.gym, self.name) + 1]
+        next_level = getattr(state.gym, self.name) + 1
+        cost = skill_training_table[next_level]
         steps_needed = apply_move_optimization_gym(cost['steps'], state)
         money_needed = apply_money_saving(cost['money'], state)
 
@@ -330,6 +335,11 @@ class Skill_Training:
         time_end = datetime.fromtimestamp(datetime.now().timestamp() + adjusted_seconds)
         actions_start_training(state, skill_name=self.name, time_end=time_end,
                                timestamp=datetime.now().timestamp())
+        # 4.6 — log_event старта тренировки.
+        from history import log_event
+        log_event('skill_train_start', skill=self.name, next_level=next_level,
+                  cost_steps=steps_needed, cost_energy=cost['energy'],
+                  cost_money=money_needed, duration_seconds=int(adjusted_seconds))
 
         print(f'\n🏋️ {self.name.title()} - Начато улучшение навыка. 🏋')
         print(f'На улучшение навыка {self.name} потрачено:'

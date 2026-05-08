@@ -186,7 +186,8 @@ def play():
 
 
 if __name__ == "__main__":
-    print(f"Version: 0.2.3g")
+    from version import VERSION
+    print(f"Version: {VERSION}")
     os.system("chcp 65001")
     init()
 

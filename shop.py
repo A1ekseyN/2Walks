@@ -4,6 +4,8 @@
 Shop.shop_menu* остаются с input/print.
 """
 
+from typing import Any, Optional
+
 from colorama import Fore, Style
 
 from bonus import apply_money_saving
@@ -36,7 +38,22 @@ def _buy_item(state: GameState, item: dict, cost: float) -> bool:
         return False
     state.money -= cost
     state.inventory.append(item)
+    # 4.6 — log_event покупки в магазине. Items хранят значения в list-обёртках
+    # (legacy формат, рефакторинг в 1.6), извлекаем безопасно через _first().
+    from history import log_event
+    log_event('item_bought',
+              item_name=_first(item.get('item_name')),
+              item_type=_first(item.get('item_type')),
+              grade=_first(item.get('grade')),
+              cost=round(cost, 2))
     return True
+
+
+def _first(values: Optional[list]) -> Any:
+    """Безопасно достать первый элемент list-обёртки item-поля. None если пусто."""
+    if not values:
+        return None
+    return values[0]
 
 
 # ----- UI -----

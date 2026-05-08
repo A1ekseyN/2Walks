@@ -103,24 +103,6 @@
     <article>
         <header><strong>⏱ Активные сессии</strong></header>
 
-        {% if state.training.active %}
-        <p>
-            🏋 Тренировка: <strong>{{ state.training.skill_name.title() if state.training.skill_name else "?" }}</strong>
-            {% if training_skill_target is not none %} → уровень {{ training_skill_target }}{% endif %}
-            <br>
-            🕑 До завершения:
-            {% if training_end_ts %}
-                <span data-end-ts="{{ training_end_ts }}" class="timer-active">…</span>
-            {% else %}
-                —
-            {% endif %}
-            {% if training_start_ts and training_end_ts %}
-                <progress data-progress-start-ts="{{ training_start_ts }}" data-progress-end-ts="{{ training_end_ts }}" value="{{ '%.2f' % training_progress }}" max="100"></progress>
-                <small><span data-progress-start-ts="{{ training_start_ts }}" data-progress-end-ts="{{ training_end_ts }}">{{ '%.2f' % training_progress }}</span> %{% if training_progress >= 100 %} ✓ Завершено{% endif %}</small>
-            {% endif %}
-        </p>
-        {% endif %}
-
         {% if state.work.active %}
         <p>
             🏭 Работа: <strong>{{ state.work.work_type.title() if state.work.work_type else "?" }}</strong>
@@ -134,6 +116,23 @@
             {% endif %}
             {% if work_start_ts and work_end_ts %}
                 <progress data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}" value="{{ '%.2f' % work_progress }}" max="100"></progress>
+            {% endif %}
+        </p>
+        {% endif %}
+
+        {% if state.training.active %}
+        <p>
+            🏋 Тренировка: <strong>{{ state.training.skill_name.title() if state.training.skill_name else "?" }}</strong>
+            {% if training_skill_target is not none %} → уровень {{ training_skill_target }}{% endif %}
+            <br>
+            🕑 До завершения:
+            {% if training_end_ts %}
+                <span data-end-ts="{{ training_end_ts }}" class="timer-active">…</span>
+            {% else %}
+                —
+            {% endif %}
+            {% if training_start_ts and training_end_ts %}
+                <progress data-progress-start-ts="{{ training_start_ts }}" data-progress-end-ts="{{ training_end_ts }}" value="{{ '%.2f' % training_progress }}" max="100"></progress>
             {% endif %}
         </p>
         {% endif %}

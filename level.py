@@ -81,9 +81,14 @@ class CharLevel:
         new_level = self.calculate_level_from_total_used_steps()
         if new_level != self.level:
             level_up_difference = new_level - self.level
+            old_level = self.level
             self.level = new_level
             self.update_level_up_skills_char_characteristic(level_up_difference)
             print(f"Персонаж повысил свой уровень до {self.level} уровня.")
+            # 4.6 — log_event повышения уровня.
+            from history import log_event
+            log_event('level_up', from_level=old_level, to_level=new_level,
+                      points_gained=level_up_difference)
 
     def progress_to_next_level(self) -> float:
         """Прогресс до следующего уровня в %, по эффективному XP (с учётом Inspiration)."""
@@ -120,22 +125,27 @@ class CharLevel:
                   f"\n\t0. Назад")
             try:
                 ask = int(input(f"\nВведите навык, который хотите улучшить: \n>>> "))
+                from history import log_event  # 4.6 — lazy import
                 if ask == 1:
                     cl.skill_stamina += 1
                     cl.up_skills -= 1
                     print(f"\nНавык Stamina повышен до {cl.skill_stamina}.")
+                    log_event('skill_alloc', skill='stamina', new_level=cl.skill_stamina)
                 elif ask == 2:
                     cl.skill_energy_max += 1
                     cl.up_skills -= 1
                     print(f"\nНавык Energy повышен до {cl.skill_energy_max}.")
+                    log_event('skill_alloc', skill='energy_max', new_level=cl.skill_energy_max)
                 elif ask == 3:
                     cl.skill_speed += 1
                     cl.up_skills -= 1
                     print(f"\nНавык Speed Skill повышен до {cl.skill_speed}.")
+                    log_event('skill_alloc', skill='speed', new_level=cl.skill_speed)
                 elif ask == 4:
                     cl.skill_luck += 1
                     cl.up_skills -= 1
                     print(f"\nНавык Luck повышен до {cl.skill_luck}.")
+                    log_event('skill_alloc', skill='luck', new_level=cl.skill_luck)
                 elif ask == 0:
                     return
                 else:

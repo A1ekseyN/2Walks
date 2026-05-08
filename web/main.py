@@ -58,7 +58,7 @@ from web.sync import get_last_reload, persist_state_to_cloud, try_reload_state
 from work import Work, _speed_bonus_pct, work_check_done
 
 
-VERSION = "0.2.3g"
+from version import VERSION
 
 # UI-метаданные для вакансий (key — атрибут в Work.work_requirements).
 _WORK_DISPLAY = {
@@ -185,8 +185,12 @@ def _validate_and_apply_skill_allocation(state, skill: str) -> Optional[str]:
 
     # Атрибут в state.char_level именуется `skill_<key>` для всех 4.
     attr = f"skill_{skill}"
-    setattr(state.char_level, attr, getattr(state.char_level, attr) + 1)
+    new_level = getattr(state.char_level, attr) + 1
+    setattr(state.char_level, attr, new_level)
     state.char_level.up_skills -= 1
+    # 4.6 — log_event распределения очка навыка через web.
+    from history import log_event
+    log_event('skill_alloc', skill=skill, new_level=new_level)
     persist_state_to_cloud()
     return None
 
@@ -493,8 +497,12 @@ def _apply_new_steps(steps_value: int, source: str = "web",
         )
 
     # Применяем к state в памяти (max-merge).
+    previous = state.steps.today
     state.steps.today = steps_value
     state.steps.can_use = state.steps.today - state.steps.used + total_bonus_steps(state)
+    # 4.6 — log_event ввода шагов через web / api.
+    from history import log_event
+    log_event('steps_set', source=source, value=steps_value, previous=previous)
 
     return StepsAppliedResult(
         applied=True,

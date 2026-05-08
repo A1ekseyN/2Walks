@@ -115,6 +115,8 @@ def _deposit(state: GameState, amount: int) -> bool:
     state.bank.deposit_amount += amount
     if state.bank.deposit_last_interest_ts is None:
         state.bank.deposit_last_interest_ts = time.time()
+    from history import log_event  # 4.6 — lazy import чтобы не плодить циклы
+    log_event('deposit', amount=amount, balance_after=round(state.bank.deposit_amount, 2))
     return True
 
 
@@ -133,6 +135,8 @@ def _deposit_all(state: GameState) -> float:
     state.money = 0.0
     if state.bank.deposit_last_interest_ts is None:
         state.bank.deposit_last_interest_ts = time.time()
+    from history import log_event
+    log_event('deposit', amount=round(moved, 2), balance_after=round(state.bank.deposit_amount, 2), all=True)
     return moved
 
 
@@ -151,6 +155,8 @@ def _withdraw(state: GameState, amount: int) -> bool:
         return False
     state.bank.deposit_amount -= amount
     state.money += amount
+    from history import log_event
+    log_event('withdraw', amount=amount, balance_after=round(state.bank.deposit_amount, 2))
     return True
 
 
@@ -168,6 +174,8 @@ def _withdraw_all(state: GameState) -> float:
     state.money += paid
     state.bank.deposit_amount = 0.0
     state.bank.deposit_last_interest_ts = None
+    from history import log_event
+    log_event('withdraw', amount=round(paid, 2), balance_after=0.0, all=True)
     return paid
 
 
@@ -241,6 +249,9 @@ def _take_loan(state: GameState, amount: int) -> bool:
     state.bank.loan_amount += amount
     if state.bank.loan_last_interest_ts is None:
         state.bank.loan_last_interest_ts = time.time()
+    from history import log_event
+    log_event('take_loan', amount=amount, debt_after=round(state.bank.loan_amount, 2),
+              rate_pct=current_loan_rate_pct(state))
     return True
 
 
@@ -268,9 +279,13 @@ def _repay_loan(state: GameState, amount: int) -> bool:
         state.money -= loan
         state.bank.loan_amount = 0.0
         state.bank.loan_last_interest_ts = None
+        from history import log_event
+        log_event('repay_loan', amount=round(loan, 2), debt_after=0.0, closed=True)
     else:
         state.money -= amount
         state.bank.loan_amount -= amount
+        from history import log_event
+        log_event('repay_loan', amount=amount, debt_after=round(state.bank.loan_amount, 2))
     return True
 
 
@@ -287,6 +302,8 @@ def _repay_loan_all(state: GameState) -> float:
     state.money -= cost
     state.bank.loan_amount = 0.0
     state.bank.loan_last_interest_ts = None
+    from history import log_event
+    log_event('repay_loan', amount=round(cost, 2), debt_after=0.0, closed=True, all=True)
     return cost
 
 

@@ -36,6 +36,16 @@ def _equip_from_inventory(state: GameState, slot_attr: str, inventory_index: int
     del state.inventory[inventory_index]
     if prev_item is not None:
         state.inventory.append(prev_item)
+    # 4.6 — log_event надевания экипировки. _first() безопасно достаёт из
+    # list-обёртки legacy item-формата (рефакторинг в 1.6).
+    from history import log_event
+    log_event('item_equipped',
+              slot=slot_attr,
+              item_type=_first(new_item.get('item_type')),
+              grade=_first(new_item.get('grade')),
+              characteristic=_first(new_item.get('characteristic')),
+              bonus=_first(new_item.get('bonus')),
+              replaced=prev_item is not None)
     return new_item, prev_item
 
 
@@ -49,7 +59,20 @@ def _unequip(state: GameState, slot_attr: str) -> Optional[dict]:
         return None
     setattr(state.equipment, slot_attr, None)
     state.inventory.append(item)
+    # 4.6 — log_event снятия экипировки.
+    from history import log_event
+    log_event('item_unequipped',
+              slot=slot_attr,
+              item_type=_first(item.get('item_type')),
+              grade=_first(item.get('grade')))
     return item
+
+
+def _first(values):
+    """Безопасно достать первый элемент list-обёртки item-поля. None если пусто."""
+    if not values:
+        return None
+    return values[0]
 
 
 # ----- UI-обёртки -----

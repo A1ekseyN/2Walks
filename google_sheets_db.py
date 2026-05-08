@@ -25,6 +25,7 @@ from config import (
     CREDENTIALS_PATH,
     DEFAULT_USER_ID,
     GAME_STATE_SHEET_NAME,
+    HISTORY_SHEET_NAME,
     SPREADSHEET_ID,
     STEPS_LOG_SHEET_NAME,
 )
@@ -35,6 +36,9 @@ _DATETIME_FMT = '%Y-%m-%d %H:%M:%S.%f'
 
 # Заголовок steps_log листа.
 _STEPS_LOG_HEADER = ["ts", "user_id", "steps", "source"]
+
+# Заголовок history листа (4.6).
+_HISTORY_HEADER = ["ts", "datetime", "user_id", "game_version", "event_type", "payload_json"]
 
 # Ключи, для которых `to_dict()` отдаёт datetime — нужно специально парсить при load.
 _DATETIME_KEYS = ('skill_training_time_end', 'working_end', 'adventure_end_timestamp')
@@ -268,6 +272,61 @@ class StepsLogRepo:
                 'source': row[3],
             })
         return result
+
+
+# ----------------------------------------------------------------------------
+# HistoryLogRepo — append-only лог значимых игровых событий (4.6)
+# ----------------------------------------------------------------------------
+
+class HistoryLogRepo:
+    """Лог значимых событий игры: ts | datetime | user_id | game_version | event_type | payload_json.
+
+    Используется как Sheets-копия параллельно с локальным `history.jsonl` —
+    local primary, Sheets best-effort (см. `history.log_event`). Pruning /
+    rotation — задача 4.6.1. Re-sync missed events — 4.6.3.
+
+    `_ensure_sheet()` — auto-create листа с заголовком при отсутствии. Защитный
+    код: если миграция `migrate_sheets.py` не была обновлена для нового листа,
+    лист создаётся автоматически на первой записи.
+    """
+
+    def __init__(self,
+                 spreadsheet_id: str = SPREADSHEET_ID,
+                 sheet_name: str = HISTORY_SHEET_NAME):
+        self.spreadsheet_id = spreadsheet_id
+        self.sheet_name = sheet_name
+
+    def _spreadsheet(self) -> gspread.Spreadsheet:
+        return _get_client().open_by_key(self.spreadsheet_id)
+
+    def _ensure_sheet(self) -> gspread.Worksheet:
+        spreadsheet = self._spreadsheet()
+        try:
+            return spreadsheet.worksheet(self.sheet_name)
+        except gspread.WorksheetNotFound:
+            ws = spreadsheet.add_worksheet(title=self.sheet_name, rows=1000, cols=len(_HISTORY_HEADER))
+            ws.update([_HISTORY_HEADER])
+            return ws
+
+    def append(self, event: dict) -> None:
+        """Append event-dict (см. `history._build_event`) в Sheets `history` лист.
+
+        `value_input_option=RAW` — критично, чтобы float `ts` и числовые
+        payload-поля не парсились по локали (баг 2.13 / 0.2.3g). payload
+        сериализуется в JSON-строку.
+        """
+        ws = self._ensure_sheet()
+        dt_str = f"{event['date']} {event['time']}"
+        payload_json = json.dumps(event.get('payload', {}), ensure_ascii=False)
+        row = [
+            event['ts'],
+            dt_str,
+            event['user_id'],
+            event['game_version'],
+            event['type'],
+            payload_json,
+        ]
+        ws.append_row(row, value_input_option=ValueInputOption.raw)
 
 
 # ----------------------------------------------------------------------------

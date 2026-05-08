@@ -203,6 +203,16 @@ class Drop_Item:
                   f'\n- {item["grade"][0]}: {item["item_type"][0].title()} + {item["bonus"][0]} {item["characteristic"][0].title()} '
                   f'(Качество: {item["quality"][0]}) (Цена: {item["price"][0]} $). \n')
             state.inventory.append(item)
+            # 4.6 — log_event дропа.
+            from history import log_event
+            log_event('drop',
+                      adventure=hard,
+                      item_type=item['item_type'][0],
+                      grade=item['grade'][0],
+                      characteristic=item['characteristic'][0],
+                      bonus=item['bonus'][0],
+                      quality=item['quality'][0],
+                      price=item['price'][0])
             return item
         print('--- Ничего не выпало ---\n')
         return None
