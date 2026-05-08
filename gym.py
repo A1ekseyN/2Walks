@@ -152,6 +152,11 @@ _SKILL_DESCRIPTIONS = {
         'earnings_boost',
         'Каждый уровень добавляет +1% к зарплате на работе. На другие источники денег (продажа предметов) не влияет.',
     ),
+    'backpack_skill': (
+        'Размер инвентаря',
+        'backpack_skill',
+        'Каждый уровень добавляет +1 слот к рюкзаку. Базовая ёмкость: 10 слотов.',
+    ),
 }
 
 
@@ -215,6 +220,8 @@ def gym_menu(state: GameState) -> None:
                state.gym.loan_interest_reduction + 1),
         '14': ('inspiration', 'Обучение:                         ',
                state.gym.inspiration + 1),
+        '15': ('backpack_skill', 'Размер инвентаря:                 ',
+               state.gym.backpack_skill + 1),
     }
 
     # Цикл retry на невалиде / отказе от подтверждения (1.5.6 — 0.2.1h, было:

@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 58 ключей legacy save format."""
+    """to_dict() возвращает все 59 ключей legacy save format."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -328,7 +328,7 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'stamina', 'energy_max_skill', 'speed_skill', 'luck_skill',
         'neatness_in_using_things', 'mechanics', 'it_technologies',
         'banking_interest_rate', 'loan_capacity', 'loan_interest_reduction',
-        'inspiration', 'money_saving', 'earnings_boost',
+        'inspiration', 'money_saving', 'earnings_boost', 'backpack_skill',
         'move_optimization_adventure', 'move_optimization_gym',
         'move_optimization_work',
         # Work
@@ -353,3 +353,25 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'bank_loan_amount', 'bank_loan_last_interest_ts',
     }
     assert set(d.keys()) == expected_keys
+
+
+def test_backpack_skill_round_trip():
+    """4.50.0 — backpack_skill сериализуется в to_dict() и читается обратно
+    в from_dict()."""
+    s1 = GameState.default_new_game()
+    s1.gym.backpack_skill = 7
+
+    d = s1.to_dict()
+    assert d['backpack_skill'] == 7
+
+    s2 = GameState.from_dict(d)
+    assert s2.gym.backpack_skill == 7
+
+
+def test_legacy_save_without_backpack_skill_defaults_to_zero():
+    """4.50.0 — старый сейв без поля backpack_skill — поле получает default 0."""
+    s1 = GameState.default_new_game()
+    d = s1.to_dict()
+    del d['backpack_skill']  # имитируем legacy save до 0.2.4b
+    s2 = GameState.from_dict(d)
+    assert s2.gym.backpack_skill == 0

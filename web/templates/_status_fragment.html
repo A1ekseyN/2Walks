@@ -362,7 +362,7 @@
 
 <section id="inventory">
     <details>
-        <summary>🎒 <strong>Инвентарь</strong> ({{ state.inventory|length }})</summary>
+        <summary>🎒 <strong>Инвентарь</strong> ({{ state.inventory|length }}/{{ inventory_capacity }})</summary>
         {% if state.inventory %}
             {% for item in state.inventory %}
                 <div class="item-row">

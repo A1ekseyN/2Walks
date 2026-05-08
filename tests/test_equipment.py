@@ -87,6 +87,41 @@ def test_unequip_empty_slot_returns_none_no_op():
     assert state.inventory == []
 
 
+def test_unequip_blocked_when_inventory_full():
+    """4.50 — снять предмет нельзя если рюкзак полон (некуда положить)."""
+    item = _make_item(item_type='helmet')
+    state = GameState.default_new_game()
+    state.equipment.head = item
+    # Заполняем рюкзак до базовой ёмкости (cap=10).
+    state.inventory = [_make_item() for _ in range(10)]
+
+    removed = _unequip(state, 'head')
+
+    assert removed is None
+    assert state.equipment.head is item  # без мутации
+    assert len(state.inventory) == 10
+
+
+def test_equip_swap_works_when_inventory_full():
+    """4.50 — swap (надеть с заменой) работает даже при full inventory:
+    net-zero — один предмет уходит, другой выходит."""
+    new_item = _make_item(item_type='helmet', bonus=5)
+    old_item = _make_item(item_type='helmet', bonus=2)
+    state = GameState.default_new_game()
+    state.equipment.head = old_item
+    # Все 10 слотов заняты. new_item в индексе 0.
+    state.inventory = [new_item] + [_make_item(item_type='necklace') for _ in range(9)]
+
+    returned_new, returned_prev = _equip_from_inventory(state, 'head', 0)
+
+    assert returned_new is new_item
+    assert returned_prev is old_item
+    assert state.equipment.head is new_item
+    # Размер инвентаря тот же (10): new ушёл, old пришёл.
+    assert len(state.inventory) == 10
+    assert old_item in state.inventory
+
+
 # ----- Equipment.equipment_view (UI smoke) -----
 
 def test_equipment_view_empty_prints_no_items(capsys, monkeypatch):

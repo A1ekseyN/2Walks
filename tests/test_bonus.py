@@ -244,3 +244,45 @@ def test_apply_earnings_boost_typical_watchman():
     state = GameState.default_new_game()
     state.gym.earnings_boost = 15
     assert apply_earnings_boost(2, state) == 2.30
+
+
+# ----- 4.50.0 — backpack_capacity / inventory_full -----
+
+from bonus import BASE_BACKPACK_CAPACITY, backpack_capacity, inventory_full
+
+
+def test_backpack_capacity_default_is_base():
+    """skill=0 → base = 10."""
+    state = GameState.default_new_game()
+    assert backpack_capacity(state) == BASE_BACKPACK_CAPACITY == 10
+
+
+def test_backpack_capacity_grows_linearly_with_skill():
+    """+1 слот за уровень skill, без cap."""
+    state = GameState.default_new_game()
+    state.gym.backpack_skill = 5
+    assert backpack_capacity(state) == 15
+    state.gym.backpack_skill = 50
+    assert backpack_capacity(state) == 60
+
+
+def test_inventory_full_at_capacity():
+    """len(inventory) == cap — full = True."""
+    state = GameState.default_new_game()
+    state.inventory = [{} for _ in range(10)]
+    assert inventory_full(state) is True
+
+
+def test_inventory_full_below_capacity():
+    """len(inventory) < cap — full = False."""
+    state = GameState.default_new_game()
+    state.inventory = [{} for _ in range(9)]
+    assert inventory_full(state) is False
+
+
+def test_inventory_full_above_capacity_legacy():
+    """Legacy save с inventory > cap — full остаётся True (нельзя добавить
+    новые предметы пока не освободится слот). Backwards-compat вариант A."""
+    state = GameState.default_new_game()
+    state.inventory = [{} for _ in range(20)]  # был сейв с 20 предметами
+    assert inventory_full(state) is True

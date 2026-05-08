@@ -2393,34 +2393,126 @@ Phase 6 (loan skill)   → 4.49.3
 
 ---
 
-### 4.50. Новый навык: Inventory Capacity (+1 слот за уровень) `[M / S / todo]`
+### 4.50. Новый навык: Размер инвентаря / Backpack Skill (зонтичная) `[M / S / todo]`
 
-Сейчас в игре нет ограничения на размер инвентаря (`state.inventory: list` неограниченный). Это эксплоит — игрок копит сотни предметов без необходимости продавать. Добавляем явное ограничение + навык, который его расширяет.
+Сейчас `state.inventory: list[dict]` без ограничений — эксплоит, игрок копит сотни предметов. Добавляем capacity + новый навык, расширяющий его.
 
-**Концепция:**
-- Базовый размер инвентаря: например, **10 слотов** (точное число — design-вопрос при реализации, после симуляции экономики).
-- Каждый уровень навыка `inventory_capacity` (или `backpack_skill`) добавляет **+1 слот**.
-- Прокачка через стандартный Gym-flow по `skill_training_table` (как другие навыки).
+**Дизайн (08.05.2026, обсуждение):**
 
-**Поведение при полном инвентаре** (важно для дроп-механики и Shop):
-- **Adventure drop:** если инвентарь полон → дроп **не записывается**, игрок видит сообщение "Inventory full — drop lost". Альтернатива: показать предмет + предложить выбросить что-то из инвентаря. Решается при реализации.
-- **Shop purchase:** покупка блокируется ("Inventory full, sell something first"). Альтернатива: автоматически нельзя купить.
-- **Equipment unwear:** если снимаешь предмет в полный инвентарь → блокировка ("Free a slot first").
+#### Базовая концепция (зафиксировано)
 
-**Реализация:**
-1. Добавить `inventory_capacity_skill` в `state.gym` (или отдельное поле `state.inventory_extra_slots`).
-2. Helper `inventory_capacity(state) -> int` = `BASE_CAPACITY + state.gym.inventory_capacity_skill`.
-3. Везде где `state.inventory.append(...)` — проверка `len(state.inventory) < inventory_capacity(state)`. Места: `drop.py:item_collect`, `shop.py:_buy_item`, `equipment.py:_unequip`.
-4. Запись в `skill_training_table` для прокачки.
-5. Пункт в меню Gym (`gym.py:gym_menu` — будет N-м навыком).
-6. UI в CLI / Web: `🎒 Инвентарь (12/15)` — показать занято/всего.
-7. Round-trip через `from_dict` / `to_dict` + Sheets.
+- **Базовый размер:** 10 слотов для нового персонажа (`BASE_BACKPACK_CAPACITY = 10`).
+- **Skill:** `backpack_skill` в `state.gym` (тематическое имя — про рюкзак). +1 слот за уровень.
+- **Title в UI:** «Размер инвентаря».
+- **Иконка:** 🎒 (рюкзак — symmetric с 🎒 Инвентарь в UI; путаница допустима — игрок ассоциирует skill с инвентарём).
+- **Helper:** `bonus.backpack_capacity(state) -> int = BASE_BACKPACK_CAPACITY + state.gym.backpack_skill`. Pure, в `bonus.py` (рядом с другими helpers).
+- **Прокачка:** общая `skill_training_table` (как все остальные навыки).
+- **CLI пункт меню Gym:** `'15'` (после Обучения = 14).
+- **Backwards-compat:** **Вариант A (хрустящая трактовка)** — если у игрока на момент введения capacity > base+skill → существующие items остаются, но новые НЕ добавляются. Игрок должен прокачать `backpack_skill` или продать что-то перед Adventure.
 
-**Связан с:** **4.51** (Backpack item — может стакаться с навыком).
+#### Поведение при полном рюкзаке — 3 точки
 
-**Effort:** S — типичный новый навык, плюс одна сквозная проверка `len(inventory)`.
+**(1) Adventure drop — interactive sell-and-keep flow** (выбор пользователя 08.05.2026)
 
-**Зависимость:** не блокирующая. Логически делать **после доработки Shop (4.7)** чтобы capacity-check работал и при покупке.
+При выпадении предмета, если рюкзак полон:
+1. Печатается описание выпавшего предмета (как сейчас): grade / type / characteristic / bonus / quality / price.
+2. Печатается **полный инвентарь** игрока с нумерацией и текущими ценами продажи.
+3. Prompt: «Ваш рюкзак полон. Хотите сохранить новый предмет?» Пункты:
+   - `1..N` — продать item с этим индексом за его price (refund в state.money), новый item занимает освободившийся слот.
+   - `0` — отказаться от нового предмета (drop потерян).
+
+При продаже старого предмета — money credit + log_event('item_sold', source='auto_make_room', refund=...) для трассировки.
+
+**Edge case (web):** auto-finalize adventure через `_dashboard_context` → drop happens без интерактива. Возможные стратегии:
+- **(A) Web: drop потерян автоматом** при full inventory + сообщение в last_reload / toast.
+- (B) Web: defer auto-finalize если drop pending → adventure остаётся active, игрок должен зайти через CLI / явно нажать "Claim" в web.
+- (C) Сохранить drop в `state.pending_drop` поле, CLI / web показывает на следующем заходе, игрок решает.
+
+→ Решается при реализации web-части (sub-task 4.50.2). MVP CLI без web (см. подзадачи ниже).
+
+**(2) Shop purchase — блокировка**
+
+Если рюкзак полон → блокировка покупки с сообщением: «Рюкзак полон. Продайте что-то перед покупкой.» В web — кнопка disabled.
+
+**(3) Equipment unwear — блокировка**
+
+При снятии предмета: если рюкзак полон → блокировка: «Освободите слот в рюкзаке перед снятием экипировки.» Это **дополнительное правило**, обсужденное 08.05.2026 — игрок не может снять всё, если рюкзак полон.
+
+**Edge case `_equip_from_inventory` (swap):** при замене экипировки `del inventory[index]` ОСВОБОЖДАЕТ слот, потом `append(prev_item)` ЗАНИМАЕТ его. **Net effect: 0**. Capacity-check НЕ должен блокировать swap — иначе игрок не сможет менять экипировку при full inventory. Реализовать через временный inventory-decrement перед проверкой, ИЛИ вообще пропускать capacity-check в swap (он уже balanced).
+
+#### Sheets / Save round-trip
+
+- Поле `backpack_skill: int = 0` в `GymSkills` dataclass.
+- `from_dict` / `to_dict` flat-key `backpack_skill`. Старые сейвы → 0 (ничего не теряется).
+
+#### Декомпозиция на подзадачи
+
+**4.50.0. Base capacity + skill registration + Shop/Unequip blocking** `[M / S / done in 0.2.4b (08.05.2026)]`
+- `state.GymSkills.backpack_skill` + round-trip.
+- `bonus.backpack_capacity(state)` helper.
+- `gym.py:_SKILL_DESCRIPTIONS` + меню '15'.
+- `web/main.py:_GYM_SKILL_DISPLAY` + icon 🎒.
+- Capacity-check в `shop.py:_buy_item` (блокировка, return False).
+- Capacity-check в `equipment.py:_unequip` (блокировка, return None + сообщение).
+- Capacity-check в `equipment.py:_equip_from_inventory` (NET-zero swap — пропускаем check).
+- CLI display: `inventory_view` header «Инвентарь (12/15)».
+- Web display: `_status_fragment.html` — `🎒 Инвентарь (N/cap)`.
+- Тесты — 8-10 новых.
+
+**4.50.1. Drop interactive sell-and-keep flow (CLI)** `[M / M / todo (blocked by 4.50.0)]`
+
+При выпадении предмета в полный рюкзак — interactive prompt с **3 опциями**:
+1. **Продать один из существующих предметов** (выбор по индексу) → existing item продаётся за price, освобождается слот, новый drop кладётся в этот слот.
+2. **Продать сам найденный предмет** → новый item продаётся за свою price, существующий инвентарь не меняется.
+3. **(Опционально skip)** — отказаться от обеих сделок (drop потерян). Edge case на случай если оба варианта неинтересны.
+
+**Скоуп:**
+- В `drop.py:item_collect` / `Adventure.adventure_check_done` — при `len(inventory) >= cap` НЕ append, а запустить interactive prompt.
+- Helper `_handle_drop_full_inventory(state, new_item)` в drop.py: печать описания нового предмета + полный inventory с ценами + prompt с 2-3 опциями.
+- Sell-existing → log_event с `source='auto_make_room'`. Sell-new → log_event с `source='auto_drop_sold'`.
+- 5-7 тестов (full + sell existing / sell new / skip / pick worst item / pick best item).
+
+**Архитектура для повторного использования в web (4.50.2):**
+
+Logика «при full inventory не append, а сохранить в `state.pending_drop`» — общая. Adventure auto-finalize в `_dashboard_context` (web) и в CLI при следующем тике делают одно и то же:
+- Если `len(inventory) < cap` → нормальный append (текущее поведение).
+- Если `len(inventory) >= cap` → set `state.pending_drop = new_item` (вместо append), НЕ append.
+- При следующем рендере (CLI status_bar / web dashboard) — показать «У вас есть pending drop, выберите что продать».
+- CLI: prompt в Adventure menu / при заходе в инвентарь.
+- Web: spec в 4.50.2.
+
+Это потребует **новое поле `state.pending_drop: Optional[dict] = None`** + round-trip + UI в обоих интерфейсах.
+
+**4.50.2. Drop при full inventory в Web** `[M / M / todo (blocked by 4.50.1)]`
+
+Тот же flow что в CLI (4.50.1) — UI в web для resolve pending drop:
+- Dashboard показывает баннер «🎁 Pending drop: [grade item]. Выберите что продать.»
+- При клике — раскрывается секция с тремя возможными действиями:
+  1. Список inventory items с кнопкой «Продать за {price}» — выбор освобождает слот и добавляет drop.
+  2. Кнопка «Продать новый предмет за {price}» — credit + clear pending_drop.
+  3. (Опционально skip — выбросить новый предмет без денег.)
+- POST endpoints: `/web/drop/sell_existing` (с inventory index), `/web/drop/sell_new`, `/web/drop/skip`.
+- При успехе: state.pending_drop=None, persist_state_to_cloud, HTMX swap.
+- 5-7 тестов на web flow + integration с auto-finalize.
+
+**`state.pending_drop`** — общее поле для CLI и web, добавляется в 4.50.1.
+
+#### Связь с другими
+
+- **4.51** (Backpack item) — может стакаться с `backpack_skill`. Сейчас отложено.
+- **4.7** (Дописать Shop) — capacity-check в Shop работает уже сейчас, но если Shop будет добавлять новые типы предметов — capacity-check уже на месте.
+
+#### Версия
+
+`0.2.4b` — мини-фича в рамках 0.2.4 (после earnings_boost / 4.23).
+
+#### Effort
+
+- 4.50.0 — **S** (базовая инфра + блокировки).
+- 4.50.1 — **M** (interactive prompt + UX, нужно тестировать).
+- 4.50.2 — **M** (web auto-finalize стратегия, может потребовать pending_drop поле).
+
+**Зонтичная M/S — оставляем, основная нагрузка на 4.50.0 (S).**
 
 ---
 

@@ -78,6 +78,7 @@ class GymSkills:
     inspiration: int = 0                 # 4.27 — +1%/level к XP за каждый потраченный шаг (forward-only multiplier)
     money_saving: int = 0                # 4.20 — -1%/level к денежным тратам (Gym training + Shop). Линейный, на lvl=100 цена становится 0
     earnings_boost: int = 0              # 4.23 — +1%/level к зарплате (только Work). Линейный без cap, на lvl=100 удвоение дохода
+    backpack_skill: int = 0              # 4.50 — +1 слот к инвентарю за уровень. Base = 10, cap = 10 + skill
 
 
 @dataclass
@@ -232,6 +233,7 @@ class GameState:
                 inspiration=int(d.get('inspiration', 0)),
                 money_saving=int(d.get('money_saving', 0)),
                 earnings_boost=int(d.get('earnings_boost', 0)),
+                backpack_skill=int(d.get('backpack_skill', 0)),
             ),
 
             training=TrainingSession(
@@ -379,6 +381,7 @@ class GameState:
             'inspiration': self.gym.inspiration,
             'money_saving': self.gym.money_saving,
             'earnings_boost': self.gym.earnings_boost,
+            'backpack_skill': self.gym.backpack_skill,
 
             # Move optimization
             'move_optimization_adventure': self.gym.move_optimization_adventure,

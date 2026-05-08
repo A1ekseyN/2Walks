@@ -30,6 +30,7 @@ from bonus import (
     apply_earnings_boost,
     apply_money_saving,
     apply_move_optimization_gym,
+    backpack_capacity,
     daily_steps_bonus,
     equipment_bonus_stamina_steps,
     level_steps_bonus,
@@ -290,6 +291,12 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "title": "Обучение", "icon": "📚",
         "field": "inspiration",
         "effect": "+1 % к опыту персонажа за потраченные шаги",
+        "available": True,
+    },
+    "backpack_skill": {
+        "title": "Размер инвентаря", "icon": "🎒",
+        "field": "backpack_skill",
+        "effect": "+1 слот к рюкзаку (база 10)",
         "available": True,
     },
 }
@@ -674,6 +681,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # Equipment counters (для свёрнутого summary блока).
         "equipment_worn": equipment_worn,
         "equipment_total_slots": 7,
+        # 4.50 — Capacity inventory (N/cap). cap = 10 + state.gym.backpack_skill.
+        "inventory_capacity": backpack_capacity(state),
         # Steps + bonuses
         "stamina_bonus_steps": stamina_skill_bonus_def(state),
         "equipment_stamina_steps": equipment_bonus_stamina_steps(state),

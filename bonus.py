@@ -80,6 +80,37 @@ def apply_money_saving(cost: float, state: GameState) -> float:
     return round(max(0.0, discounted), 2)
 
 
+# 4.50 — Базовая ёмкость инвентаря для нового персонажа.
+# Прокачка: state.gym.backpack_skill (+1 слот за уровень).
+BASE_BACKPACK_CAPACITY = 10
+
+
+def backpack_capacity(state: GameState) -> int:
+    """Текущая максимальная ёмкость инвентаря (4.50).
+
+    `BASE_BACKPACK_CAPACITY + state.gym.backpack_skill`. Pure helper, без
+    мутаций. Используется в:
+    - `shop.py:_buy_item` — блокировка покупки при full.
+    - `equipment.py:_unequip` — блокировка снятия при full.
+    - `drop.py:item_collect` — будет в 4.50.1 (interactive sell-and-keep flow).
+    - UI display: `inventory_view` (CLI), `_status_fragment.html` (web).
+
+    Backwards-compat: если у игрока на момент введения capacity > base+skill —
+    существующие предметы остаются (см. `inventory_full`), но новые не добавятся
+    пока не освободится слот через продажу или Adventure-flow (4.50.1).
+    """
+    return BASE_BACKPACK_CAPACITY + state.gym.backpack_skill
+
+
+def inventory_full(state: GameState) -> bool:
+    """True если инвентарь заполнен (или переполнен — для legacy сейвов).
+
+    `>=` а не `==` — чтобы игроки с большим существующим inventory не могли
+    добавлять новые предметы (хрустящая backwards-compat, вариант A из 4.50).
+    """
+    return len(state.inventory) >= backpack_capacity(state)
+
+
 def apply_earnings_boost(salary: float, state: GameState) -> float:
     """4.23 — Бонус к зарплате (только Work). Линейная: +1% за уровень
     `state.gym.earnings_boost`. Возвращает `round(..., 2)`. Симметричен

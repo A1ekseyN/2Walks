@@ -44,6 +44,33 @@ def test_buy_item_exact_balance_succeeds():
     assert state.money == 0
 
 
+def test_buy_item_blocked_when_inventory_full():
+    """4.50 — purchase blocked when inventory >= capacity, no mutation."""
+    state = GameState.default_new_game()
+    state.money = 100
+    # Заполняем рюкзак до базовой ёмкости (10) — backpack_skill=0 by default.
+    state.inventory = [_empty_item() for _ in range(10)]
+    item = _empty_item()
+    item['item_name'].append('cheeseburger')
+
+    assert _buy_item(state, item, cost=2) is False
+    assert state.money == 100
+    assert len(state.inventory) == 10  # без мутации
+
+
+def test_buy_item_succeeds_with_backpack_skill_extra_slot():
+    """4.50 — backpack_skill +1 расширяет ёмкость, покупка проходит на 11-м слоте."""
+    state = GameState.default_new_game()
+    state.money = 100
+    state.gym.backpack_skill = 1  # cap = 11
+    state.inventory = [_empty_item() for _ in range(10)]  # 10 < 11
+    item = _empty_item()
+
+    assert _buy_item(state, item, cost=5) is True
+    assert state.money == 95
+    assert len(state.inventory) == 11
+
+
 # ----- Shop.shop_menu (UI smoke) -----
 
 def test_shop_menu_back_command(monkeypatch, capsys):

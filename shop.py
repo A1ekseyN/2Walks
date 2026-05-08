@@ -8,13 +8,19 @@ from typing import Any, Optional
 
 from colorama import Fore, Style
 
-from bonus import apply_money_saving
+from bonus import apply_money_saving, backpack_capacity, inventory_full
 from functions_02 import format_money
 from state import GameState
 
 
 def _money_line(state: GameState) -> str:
     return f'Money 💰: {Fore.LIGHTYELLOW_EX}{format_money(state.money)}{Style.RESET_ALL} $.'
+
+
+def _backpack_full_msg(state: GameState) -> str:
+    """Сообщение при попытке купить с полным рюкзаком (4.50)."""
+    return (f'\nРюкзак полон ({len(state.inventory)}/{backpack_capacity(state)}). '
+            f'Освободи слот: продай предмет или прокачай навык «Размер инвентаря».')
 
 
 def _empty_item() -> dict:
@@ -32,9 +38,13 @@ def _buy_item(state: GameState, item: dict, cost: float) -> bool:
     `cost` — float (после применения скидки `apply_money_saving`). Сравнение
     и списание работают со state.money (тоже float с 0.2.2).
 
-    Возвращает True при успехе, False — если денег не хватает (state не меняется).
+    Возвращает True при успехе, False — если денег не хватает или рюкзак полон
+    (state не меняется). UI должен пред-проверять `inventory_full(state)` чтобы
+    показать корректное сообщение, поскольку обе причины здесь дают один False.
     """
     if state.money < cost:
+        return False
+    if inventory_full(state):
         return False
     state.money -= cost
     state.inventory.append(item)
@@ -95,6 +105,9 @@ class Shop:
             ask = input('\nВыберите вариант, который хотите приобрести: \n>>> ')
             if ask == '1':
                 cb_cost = apply_money_saving(2, state)
+                if inventory_full(state):
+                    print(_backpack_full_msg(state))
+                    continue
                 cb = _empty_item()
                 cb['item_name'].append('cheeseburger')
                 cb['item_type'].append('food')
@@ -109,6 +122,9 @@ class Shop:
 
             if ask == '2':
                 coffee_cost = apply_money_saving(10, state)
+                if inventory_full(state):
+                    print(_backpack_full_msg(state))
+                    continue
                 coffee = _empty_item()
                 coffee['item_name'].append('coffee')
                 coffee['item_type'].append('drink')
@@ -159,6 +175,9 @@ class Shop:
                 if ask in shoe_specs:
                     grade, bonus, price = shoe_specs[ask]
                     shoe_cost = apply_money_saving(price, state)
+                    if inventory_full(state):
+                        print(_backpack_full_msg(state))
+                        return
                     shoe = _empty_item()
                     shoe['item_name'].append('Кеды')
                     shoe['item_type'].append('shoes')

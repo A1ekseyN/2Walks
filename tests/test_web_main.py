@@ -825,7 +825,7 @@ def test_equipment_uses_details_element():
 
 
 def test_inventory_summary_shows_count():
-    """Summary инвентаря показывает счётчик (N)."""
+    """Summary инвентаря показывает счётчик (N/cap). cap = 10 (base) после 0.2.4b."""
     state = GameState.default_new_game()
     state.inventory = [
         {"item_name": ["x"], "item_type": ["ring"], "grade": ["a-grade"],
@@ -837,8 +837,8 @@ def test_inventory_summary_shows_count():
     with TestClient(app) as client:
         response = client.get("/status")
     body = response.text
-    # Summary содержит "(2)" сразу после "Инвентарь</strong>".
-    assert "Инвентарь</strong> (2)" in body
+    # Summary содержит "(2/10)" сразу после "Инвентарь</strong>".
+    assert "Инвентарь</strong> (2/10)" in body
 
 
 def test_equipment_summary_shows_worn_count():
@@ -2319,11 +2319,11 @@ def test_gym_skills_use_nested_details():
     next_section_pos = body.find('id="bonuses"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
-    # (после 0.2.4a / 4.23 — 14 навыков: + earnings_boost).
+    # (после 0.2.4b / 4.50.0 — 15 навыков: + backpack_skill).
     import re
     details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
-    # 1 внешний + 14 nested = 15.
-    assert len(details_tags) == 15
+    # 1 внешний + 15 nested = 16.
+    assert len(details_tags) == 16
     # Ни один не должен быть `open`.
     for tag in details_tags:
         assert "open" not in tag, f"details unexpectedly open: {tag}"
@@ -2572,7 +2572,8 @@ def test_build_gym_skills_returns_all_entries():
     # После 0.2.3 (4.27) — добавлен inspiration. После 0.2.3a (4.20) — добавлен
     # money_saving; reorder: money_saving поднят на позицию 9. После 0.2.4a (4.23)
     # — добавлен earnings_boost рядом с money_saving (позиция 10), остальные
-    # money/loan/inspiration сдвинуты на одну вниз.
+    # money/loan/inspiration сдвинуты на одну вниз. После 0.2.4b (4.50.0) —
+    # добавлен backpack_skill в самый низ (позиция 15).
     assert keys == [
         "stamina", "energy_max_skill", "speed_skill", "luck_skill",
         "move_optimization_adventure", "move_optimization_gym",
@@ -2580,6 +2581,7 @@ def test_build_gym_skills_returns_all_entries():
         "money_saving", "earnings_boost",
         "banking_interest_rate", "loan_capacity", "loan_interest_reduction",
         "inspiration",
+        "backpack_skill",
     ]
 
 

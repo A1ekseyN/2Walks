@@ -4,6 +4,7 @@
 тестируемости — UI-обёртки `inventory_menu` / `sold_item` остаются с input/print.
 """
 
+from bonus import backpack_capacity
 from state import GameState
 
 
@@ -58,8 +59,9 @@ def _first(values):
 def inventory_menu(state: GameState) -> None:
     # Цикл retry на невалиде (1.5.3 — 0.2.1h, было: рекурсивный self-call).
     while True:
+        cap = backpack_capacity(state)
         print('\n--- 🎒 Меню инвентаря 🎒 ---'
-              f'\nВсего в инвентаре - {len(state.inventory)} предметов: ')
+              f'\nВсего в инвентаре - {len(state.inventory)}/{cap} предметов: ')
         inventory_view(state)
 
         ask = input('\nВыберите раздел Инвентаря: '
@@ -96,8 +98,9 @@ def inventory_view(state: GameState) -> list[dict]:
 def sold_item(state: GameState) -> None:
     # Цикл retry на невалиде / ValueError / неподтверждении (1.5.3 — 0.2.1h).
     while True:
+        cap = backpack_capacity(state)
         print('\n--- Продажа предметов из инвентаря: ---')
-        print(f'Всего в инвентаре: {len(state.inventory)} предметов.')
+        print(f'Всего в инвентаре: {len(state.inventory)}/{cap} предметов.')
         state.inventory = inventory_view(state)
 
         try:

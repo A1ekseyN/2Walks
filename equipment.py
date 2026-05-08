@@ -6,6 +6,7 @@ UI-обёртки в Equipment.* остаются с input/print.
 
 from typing import Optional
 
+from bonus import backpack_capacity, inventory_full
 from inventory import inventory_view
 from state import GameState
 
@@ -52,10 +53,18 @@ def _equip_from_inventory(state: GameState, slot_attr: str, inventory_index: int
 def _unequip(state: GameState, slot_attr: str) -> Optional[dict]:
     """Снять предмет со слота — возвращается в inventory.
 
-    Возвращает снятый предмет или None, если слот был пуст.
+    Возвращает снятый предмет или None, если слот был пуст ИЛИ если рюкзак
+    полон (4.50). Унеquip — это +1 предмет в инвентарь, поэтому требует
+    свободный слот; UI должен пред-проверять `inventory_full(state)` чтобы
+    различить «слот пуст» и «рюкзак полон».
+
+    `_equip_from_inventory` (swap) — net-zero (один уходит в инвентарь, другой
+    выходит) и в check'е не нуждается.
     """
     item: Optional[dict] = getattr(state.equipment, slot_attr)
     if item is None:
+        return None
+    if inventory_full(state):
         return None
     setattr(state.equipment, slot_attr, None)
     state.inventory.append(item)
@@ -206,6 +215,12 @@ class Equipment:
                 Equipment.equipment_view(self=None, state=state)
                 return
             if index == 99:
+                # 4.50 — пред-проверка inventory_full чтобы UI показал корректное
+                # сообщение (без unequip — `_unequip` ловит full и возвращает None).
+                if inventory_full(state):
+                    print(f'\nРюкзак полон ({len(state.inventory)}/{backpack_capacity(state)}). '
+                          f'Сначала продай предмет — снять экипировку некуда.')
+                    return
                 removed = _unequip(state, slot_attr)
                 if removed is not None:
                     print(f'\nВы сняли предмет экипировки: '
@@ -214,5 +229,6 @@ class Equipment:
             print('\nПопробуйте еще раз ввести число: ')
 
     def inventory_view(self, state: GameState) -> None:
-        print(f'\nВ инвентаре находится {len(state.inventory)} предметов: ')
+        cap = backpack_capacity(state)
+        print(f'\nВ инвентаре находится {len(state.inventory)}/{cap} предметов: ')
         inventory_view(state)
