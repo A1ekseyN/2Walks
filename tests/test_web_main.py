@@ -255,7 +255,9 @@ def test_active_work_renders_with_data_end_ts():
     body = response.text
     assert "Работа" in body
     assert "Factory" in body
-    assert "20 $" in body  # 5 * 4
+    # После 0.2.4a (4.23) — earnings_boost обёртка + format_money: "20.00 $".
+    # earnings_boost=0 (default) → effective_salary = base = 5, total = 5*4 = 20.00.
+    assert "20.00 $" in body
     assert "data-end-ts=" in body
 
 
@@ -2317,11 +2319,11 @@ def test_gym_skills_use_nested_details():
     next_section_pos = body.find('id="bonuses"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
-    # (после 0.2.3a / 4.20 — 13 навыков: + money_saving).
+    # (после 0.2.4a / 4.23 — 14 навыков: + earnings_boost).
     import re
     details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
-    # 1 внешний + 13 nested = 14.
-    assert len(details_tags) == 14
+    # 1 внешний + 14 nested = 15.
+    assert len(details_tags) == 15
     # Ни один не должен быть `open`.
     for tag in details_tags:
         assert "open" not in tag, f"details unexpectedly open: {tag}"
@@ -2568,13 +2570,14 @@ def test_build_gym_skills_returns_all_entries():
     # После 0.2.2 (4.49.1.0) — добавлен banking_interest_rate (9-й навык).
     # После 0.2.2 (4.49.2.0) — добавлены loan_capacity + loan_interest_reduction.
     # После 0.2.3 (4.27) — добавлен inspiration. После 0.2.3a (4.20) — добавлен
-    # money_saving; затем reorder: money_saving поднят на позицию 9 (рядом с
-    # money-related skills), банк-навыки и Обучение сдвинуты на одну позицию вниз.
+    # money_saving; reorder: money_saving поднят на позицию 9. После 0.2.4a (4.23)
+    # — добавлен earnings_boost рядом с money_saving (позиция 10), остальные
+    # money/loan/inspiration сдвинуты на одну вниз.
     assert keys == [
         "stamina", "energy_max_skill", "speed_skill", "luck_skill",
         "move_optimization_adventure", "move_optimization_gym",
         "move_optimization_work", "neatness_in_using_things",
-        "money_saving",
+        "money_saving", "earnings_boost",
         "banking_interest_rate", "loan_capacity", "loan_interest_reduction",
         "inspiration",
     ]

@@ -147,6 +147,11 @@ _SKILL_DESCRIPTIONS = {
         'money_saving',
         'Каждый уровень снижает стоимость денежных трат на 1% (Спортзал, Магазин). На банковские операции и зарплату не влияет.',
     ),
+    'earnings_boost': (
+        'Бонус к зарплате',
+        'earnings_boost',
+        'Каждый уровень добавляет +1% к зарплате на работе. На другие источники денег (продажа предметов) не влияет.',
+    ),
 }
 
 
@@ -200,13 +205,15 @@ def gym_menu(state: GameState) -> None:
               state.gym.neatness_in_using_things + 1),
         '9': ('money_saving', 'Экономия денег:                   ',
               state.gym.money_saving + 1),
-        '10': ('banking_interest_rate', 'Банковская ставка:                ',
+        '10': ('earnings_boost', 'Бонус к зарплате:                 ',
+               state.gym.earnings_boost + 1),
+        '11': ('banking_interest_rate', 'Банковская ставка:                ',
                state.gym.banking_interest_rate + 1),
-        '11': ('loan_capacity', 'Кредитный лимит:                  ',
+        '12': ('loan_capacity', 'Кредитный лимит:                  ',
                state.gym.loan_capacity + 1),
-        '12': ('loan_interest_reduction', 'Снижение ставки по кредиту:       ',
+        '13': ('loan_interest_reduction', 'Снижение ставки по кредиту:       ',
                state.gym.loan_interest_reduction + 1),
-        '13': ('inspiration', 'Обучение:                         ',
+        '14': ('inspiration', 'Обучение:                         ',
                state.gym.inspiration + 1),
     }
 
@@ -345,6 +352,6 @@ class Skill_Training:
         print(f'На улучшение навыка {self.name} потрачено:'
               f'\n- 🏃: {steps_needed:,.0f} steps'
               f'\n- 🔋: {cost["energy"]} эн.'
-              f'\n- 💰: {cost["money"]} $'
+              f'\n- 💰: {format_money(money_needed)} $'
               f'\n- 🕑 Окончание тренировки навыка через: {Fore.LIGHTBLUE_EX}{time(round(_apply_speed_bonus(cost["time"], state)))}{Style.RESET_ALL}')
         return state

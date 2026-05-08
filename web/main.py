@@ -27,6 +27,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from bonus import (
+    apply_earnings_boost,
     apply_money_saving,
     apply_move_optimization_gym,
     daily_steps_bonus,
@@ -96,17 +97,21 @@ def _build_hour_options(state, req: dict, max_hours: int) -> list:
     время смены с учётом speed-бонуса (как в work.py:check_requirements:
     `raw_duration - raw_duration * speed_bonus_pct / 100`).
 
+    Salary — после `apply_earnings_boost` (4.23): игрок видит итоговую
+    сумму с бонусом в кнопках web Gym, а не базовую цифру.
+
     Шаблон рендерит формат
     `{h}h 🕑 {real_time} · 🏃 -{steps} · 🔋 -{energy} · 💰 +{salary}` без
     арифметики в Jinja (4.48.5 follow-up — pre-compute в Python).
     """
     speed_bonus_pct = _speed_bonus_pct(state)
+    effective_salary = apply_earnings_boost(req['salary'], state)
     return [
         {
             "h": h,
             "steps": h * req['steps'],
             "energy": h * req['energy'],
-            "salary": h * req['salary'],
+            "salary": round(h * effective_salary, 2),
             "real_time": _format_real_time(round(h * 60 * (1 - speed_bonus_pct / 100))),
         }
         for h in range(1, max_hours + 1)
@@ -114,7 +119,10 @@ def _build_hour_options(state, req: dict, max_hours: int) -> list:
 
 
 def _build_work_vacancies(state) -> list:
-    """Собирает данные для меню выбора вакансии (не работаешь)."""
+    """Собирает данные для меню выбора вакансии (не работаешь).
+
+    salary_per_hour — итоговая ставка с учётом earnings_boost (4.23).
+    """
     work_helper = Work(state)
     vacancies = []
     for key, req in work_helper.work_requirements.items():
@@ -126,7 +134,7 @@ def _build_work_vacancies(state) -> list:
             "icon": meta["icon"],
             "steps_per_hour": req['steps'],
             "energy_per_hour": req['energy'],
-            "salary_per_hour": req['salary'],
+            "salary_per_hour": apply_earnings_boost(req['salary'], state),
             "max_hours": max_hours,
             "hour_options": _build_hour_options(state, req, max_hours),
         })
@@ -252,6 +260,12 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "title": "Экономия денег", "icon": "🏷",
         "field": "money_saving",
         "effect": "−1 % к стоимости трат (Спортзал, Магазин)",
+        "available": True,
+    },
+    "earnings_boost": {
+        "title": "Бонус к зарплате", "icon": "💵",
+        "field": "earnings_boost",
+        "effect": "+1 % к зарплате на работе",
         "available": True,
     },
     "banking_interest_rate": {
@@ -592,6 +606,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     training_end_ts = state.training.time_end.timestamp() if state.training.active and state.training.time_end else None
     work_start_ts = state.work.start.timestamp() if state.work.active and state.work.start else None
     work_end_ts = state.work.end.timestamp() if state.work.active and state.work.end else None
+    # 4.23 — earnings_boost preview для активной смены. salary в state базовая,
+    # эффективная вычисляется на лету (recompute — реагирует на прокачку skill).
+    work_effective_salary = apply_earnings_boost(state.work.salary, state) if state.work.active else 0.0
+    work_effective_total = round(work_effective_salary * state.work.hours, 2) if state.work.active else 0.0
     # Adventure start_ts/end_ts уже хранятся как float timestamps.
     adv_start_ts = state.adventure.start_ts if state.adventure.active and state.adventure.start_ts else None
     adv_end_ts = state.adventure.end_ts if state.adventure.active and state.adventure.end_ts else None
@@ -680,6 +698,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "training_skill_target": training_skill_target,
         "work_start_ts": work_start_ts,
         "work_end_ts": work_end_ts,
+        "work_effective_salary": work_effective_salary,
+        "work_effective_total": work_effective_total,
         "work_progress": work_progress,
         "adv_start_ts": adv_start_ts,
         "adv_end_ts": adv_end_ts,

@@ -180,3 +180,67 @@ def test_apply_money_saving_returns_float_type():
     state = GameState.default_new_game()
     result = apply_money_saving(100, state)
     assert isinstance(result, float)
+
+
+# ---------------------------------------------------------------------------
+# 4.23 — apply_earnings_boost: +1%/level бонус к зарплате (только Work).
+# Линейный без cap (симметрично money_saving).
+# ---------------------------------------------------------------------------
+
+from bonus import apply_earnings_boost
+
+
+def test_apply_earnings_boost_no_skill_keeps_salary():
+    """skill=0 — зарплата не меняется (round до 2 знаков для единообразия)."""
+    state = GameState.default_new_game()
+    assert apply_earnings_boost(50, state) == 50.00
+    assert apply_earnings_boost(0, state) == 0.00
+
+
+def test_apply_earnings_boost_linear():
+    """skill=10 → 50 * 1.10 = 55.00."""
+    state = GameState.default_new_game()
+    state.gym.earnings_boost = 10
+    assert apply_earnings_boost(50, state) == 55.00
+
+
+def test_apply_earnings_boost_fractional_result():
+    """Дробный результат — round до 2 знаков. 17 * 1.07 = 18.19."""
+    state = GameState.default_new_game()
+    state.gym.earnings_boost = 7
+    assert apply_earnings_boost(17, state) == 18.19
+
+
+def test_apply_earnings_boost_doubles_at_skill_100():
+    """skill=100 — удвоение. Без cap (намеренный design choice — симметрия с money_saving)."""
+    state = GameState.default_new_game()
+    state.gym.earnings_boost = 100
+    assert apply_earnings_boost(50, state) == 100.00
+
+
+def test_apply_earnings_boost_grows_above_100():
+    """skill=200 — утроение. Линейно без cap."""
+    state = GameState.default_new_game()
+    state.gym.earnings_boost = 200
+    assert apply_earnings_boost(50, state) == 150.00
+
+
+def test_apply_earnings_boost_zero_salary_stays_zero():
+    """salary=0 → 0.00 при любом skill."""
+    state = GameState.default_new_game()
+    state.gym.earnings_boost = 50
+    assert apply_earnings_boost(0, state) == 0.00
+
+
+def test_apply_earnings_boost_returns_float_type():
+    """Тип всегда float — для round-trip с state.money: float."""
+    state = GameState.default_new_game()
+    result = apply_earnings_boost(50, state)
+    assert isinstance(result, float)
+
+
+def test_apply_earnings_boost_typical_watchman():
+    """Реалистичный пример: watchman base salary=2, skill=15 → 2.30 $/ч."""
+    state = GameState.default_new_game()
+    state.gym.earnings_boost = 15
+    assert apply_earnings_boost(2, state) == 2.30

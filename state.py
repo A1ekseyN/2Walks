@@ -77,6 +77,7 @@ class GymSkills:
     loan_interest_reduction: int = 0     # 4.49 — снижение ставки кредита (-1%/level от базовых 100%)
     inspiration: int = 0                 # 4.27 — +1%/level к XP за каждый потраченный шаг (forward-only multiplier)
     money_saving: int = 0                # 4.20 — -1%/level к денежным тратам (Gym training + Shop). Линейный, на lvl=100 цена становится 0
+    earnings_boost: int = 0              # 4.23 — +1%/level к зарплате (только Work). Линейный без cap, на lvl=100 удвоение дохода
 
 
 @dataclass
@@ -230,6 +231,7 @@ class GameState:
                 loan_interest_reduction=int(d.get('loan_interest_reduction', 0)),
                 inspiration=int(d.get('inspiration', 0)),
                 money_saving=int(d.get('money_saving', 0)),
+                earnings_boost=int(d.get('earnings_boost', 0)),
             ),
 
             training=TrainingSession(
@@ -376,6 +378,7 @@ class GameState:
             'loan_interest_reduction': self.gym.loan_interest_reduction,
             'inspiration': self.gym.inspiration,
             'money_saving': self.gym.money_saving,
+            'earnings_boost': self.gym.earnings_boost,
 
             # Move optimization
             'move_optimization_adventure': self.gym.move_optimization_adventure,

@@ -7,9 +7,9 @@ from colorama import Fore, Style
 
 from characteristics import save_characteristic
 from settings import debug_mode
-from functions_02 import time
+from functions_02 import format_money, time
 from equipment_bonus import equipment_speed_skill_bonus
-from bonus import apply_move_optimization_work
+from bonus import apply_earnings_boost, apply_move_optimization_work
 from inventory import Wear_Equipped_Items
 from actions import try_spend, start_work
 from state import GameState
@@ -64,7 +64,10 @@ class Work:
         # Цикл retry на невалиде / ValueError (1.5.1 — 0.2.1h).
         while True:
             print(f'\nSteps 🏃: {state.steps.can_use}; Energy 🔋: {state.energy}')
-            print(f'Вы выбрали вакансию: {Fore.GREEN}{work.title()}{Style.RESET_ALL} c зарплатой: {Fore.LIGHTYELLOW_EX}{self.work_requirements[work]["salary"]}{Style.RESET_ALL} $ в час.')
+            # 4.23 — apply_earnings_boost для display (state.work.salary остаётся базовой).
+            base_salary = self.work_requirements[work]["salary"]
+            effective_salary = apply_earnings_boost(base_salary, state)
+            print(f'Вы выбрали вакансию: {Fore.GREEN}{work.title()}{Style.RESET_ALL} c зарплатой: {Fore.LIGHTYELLOW_EX}{format_money(effective_salary)}{Style.RESET_ALL} $ в час.')
 
             work_time_per_hour = round(60 - ((60 / 100) * state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed))
             print(f'Оплата почасовая 🕑: 1 час = {time(work_time_per_hour)}')
@@ -76,7 +79,7 @@ class Work:
             print(f'Max work hours: {Fore.LIGHTBLUE_EX}{max_available_hours}{Style.RESET_ALL} '
                   f'({Fore.LIGHTCYAN_EX}{max_available_hours * self.work_requirements[work]["steps"]}{Style.RESET_ALL} шагов, '
                   f'{Fore.LIGHTGREEN_EX}{max_available_hours * self.work_requirements[work]["energy"]}{Style.RESET_ALL} энергии, '
-                  f'{Fore.LIGHTYELLOW_EX}{max_available_hours * self.work_requirements[work]["salary"]}{Style.RESET_ALL} $ заработка).')
+                  f'{Fore.LIGHTYELLOW_EX}{format_money(max_available_hours * effective_salary)}{Style.RESET_ALL} $ заработка).')
 
             try:
                 working_hours = abs(int(input('\nВведите количество рабочих часов: 1 - 8.\n0. Выход.\n>>> ')))
@@ -96,10 +99,12 @@ class Work:
 
     def add_working_hours(self, work: str) -> None:
         state = self._state
+        # 4.23 — apply_earnings_boost для display активной смены.
+        effective_salary = apply_earnings_boost(state.work.salary, state)
         print(f'\nПерсонаж на работе. Вы можете добавить несколько рабочих часов.'
               f'\nМесто работы: {Fore.GREEN}{state.work.work_type.title()}{Style.RESET_ALL}, '
-              f'в час - {Fore.LIGHTYELLOW_EX}{state.work.salary}{Style.RESET_ALL} $ '
-              f'(💰: + {Fore.LIGHTYELLOW_EX}{state.work.salary * state.work.hours}{Style.RESET_ALL} $).'
+              f'в час - {Fore.LIGHTYELLOW_EX}{format_money(effective_salary)}{Style.RESET_ALL} $ '
+              f'(💰: + {Fore.LIGHTYELLOW_EX}{format_money(effective_salary * state.work.hours)}{Style.RESET_ALL} $).'
               '\n1. Добавить рабочие часы.'
               '\n0. Назад')
         ask = input('\nДобавить рабочие часы или вернуться обратно? \n>>> ')
@@ -167,7 +172,9 @@ class Work:
         print(f'\nИспользовано 🏃: {Fore.LIGHTCYAN_EX}{steps_cost}{Style.RESET_ALL} + '
               f'🔋: {Fore.GREEN}{energy_cost}{Style.RESET_ALL}.')
         print(f'Время работы 🕑: {time(working_hours * (round(60 - ((60 / 100) * state.gym.speed_skill + equipment_speed_skill_bonus(state)))))}')
-        print(f'Зарплата 💰: {Fore.LIGHTYELLOW_EX}{working_hours * state.work.salary}{Style.RESET_ALL} $.')
+        # 4.23 — preview зарплаты с earnings_boost.
+        effective_salary = apply_earnings_boost(state.work.salary, state)
+        print(f'Зарплата 💰: {Fore.LIGHTYELLOW_EX}{format_money(working_hours * effective_salary)}{Style.RESET_ALL} $.')
         return True
 
 
@@ -183,19 +190,27 @@ def work_check_done(state: GameState) -> GameState:
         print('\n--- Персонаж на работе ---.')
 
     if state.work.end <= now:
-        earned = state.work.salary * state.work.hours
+        # 4.23 — earnings_boost: state.work.salary базовая, итог считается через
+        # apply_earnings_boost (recompute — учитывает текущий уровень skill,
+        # даже если он был прокачан во время смены).
+        base_salary = state.work.salary
+        effective_salary = apply_earnings_boost(base_salary, state)
+        earned = effective_salary * state.work.hours
         finished_vacancy = state.work.work_type
         finished_hours = state.work.hours
         state.money += earned
-        print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{earned}{Style.RESET_ALL} $.')
+        print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{format_money(earned)}{Style.RESET_ALL} $.')
         state.work.work_type = None
         state.work.salary = 0
         state.work.active = False
         state.work.hours = 0
         state.work.start = None
         state.work.end = None
-        # 4.6 — log_event завершения смены.
+        # 4.6 — log_event завершения смены. salary = итоговая (с bonus),
+        # salary_base = базовая (без bonus) — для отладки.
         from history import log_event
-        log_event('work_done', vacancy=finished_vacancy, hours=finished_hours, salary=earned)
+        log_event('work_done', vacancy=finished_vacancy, hours=finished_hours,
+                  salary=round(earned, 2), salary_base=base_salary,
+                  earnings_boost_pct=state.gym.earnings_boost)
         save_characteristic()
     return state

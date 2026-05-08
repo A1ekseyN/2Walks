@@ -106,7 +106,7 @@
         {% if state.work.active %}
         <p>
             🏭 Работа: <strong>{{ state.work.work_type.title() if state.work.work_type else "?" }}</strong>
-            (💰 +{{ state.work.salary * state.work.hours }} $ за смену)
+            (💰 +{{ format_money(work_effective_total) }} $ за смену)
             <br>
             🕑 До конца смены:
             {% if work_end_ts %}
@@ -170,7 +170,7 @@
             🏭 <strong>Работа</strong>
             {%- if state.work.active and state.work.work_type %}
                 · {{ state.work.work_type.title() }}
-                <small>· {{ state.work.salary * state.work.hours }} $ ({{ format_hours(state.work.hours) }})</small>
+                <small>· {{ format_money(work_effective_total) }} $ ({{ format_hours(state.work.hours) }})</small>
             {%- else %}
                 <small>· выбери вакансию</small>
             {%- endif %}
@@ -183,7 +183,7 @@
         {% if state.work.active and state.work.work_type %}
             {# Уже работаешь — форма "Добавить часы". Кнопки 1..work_max_add_hours. #}
             <p style="margin-top: 0.5rem;">
-                <small>Добавить часы к смене (зарплата {{ state.work.salary }} $/ч):</small>
+                <small>Добавить часы к смене (зарплата {{ format_money(work_effective_salary) }} $/ч):</small>
             </p>
             {% if work_max_add_hours > 0 %}
             <form hx-post="/web/work/add_hours" hx-target="#status-bar" hx-swap="innerHTML"
@@ -192,7 +192,7 @@
                 {% for opt in work_add_hour_options %}
                 <button type="submit" name="hours" value="{{ opt.h }}"
                         class="outline" style="margin: 0; text-align: center;">
-                    +{{ opt.h }}h 🕑 {{ opt.real_time }} · 🏃 -{{ opt.steps }} · 🔋 -{{ opt.energy }} · 💰 +{{ opt.salary }}
+                    +{{ opt.h }}h 🕑 {{ opt.real_time }} · 🏃 -{{ opt.steps }} · 🔋 -{{ opt.energy }} · 💰 +{{ format_money(opt.salary) }}
                 </button>
                 {% endfor %}
             </form>
@@ -205,7 +205,7 @@
             <article style="padding: 0.5rem 0.75rem; margin: 0.5rem 0;">
                 <div>
                     <strong>{{ vacancy.icon }} {{ vacancy.title }}</strong>
-                    <small>· {{ vacancy.salary_per_hour }} $/ч · 🏃 {{ vacancy.steps_per_hour }}/ч · 🔋 {{ vacancy.energy_per_hour }}/ч</small>
+                    <small>· {{ format_money(vacancy.salary_per_hour) }} $/ч · 🏃 {{ vacancy.steps_per_hour }}/ч · 🔋 {{ vacancy.energy_per_hour }}/ч</small>
                 </div>
                 {% if vacancy.max_hours > 0 %}
                 <form hx-post="/web/work/start" hx-target="#status-bar" hx-swap="innerHTML"
@@ -215,7 +215,7 @@
                     {% for opt in vacancy.hour_options %}
                     <button type="submit" name="hours" value="{{ opt.h }}"
                             class="outline" style="margin: 0; text-align: center;">
-                        {{ opt.h }}h 🕑 {{ opt.real_time }} · 🏃 -{{ opt.steps }} · 🔋 -{{ opt.energy }} · 💰 +{{ opt.salary }}
+                        {{ opt.h }}h 🕑 {{ opt.real_time }} · 🏃 -{{ opt.steps }} · 🔋 -{{ opt.energy }} · 💰 +{{ format_money(opt.salary) }}
                     </button>
                     {% endfor %}
                 </form>

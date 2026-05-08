@@ -1088,6 +1088,43 @@ def test_money_saving_skill_in_web_display_dict():
     assert meta['title'] == 'Экономия денег'
 
 
+# ---------------------------------------------------------------------------
+# 4.23 — earnings_boost skill registration.
+# Бизнес-логика — в test_bonus.py (apply_earnings_boost).
+# ---------------------------------------------------------------------------
+
+def test_earnings_boost_skill_in_descriptions_dict():
+    import gym as gym_module
+    assert 'earnings_boost' in gym_module._SKILL_DESCRIPTIONS
+    title, _, body = gym_module._SKILL_DESCRIPTIONS['earnings_boost']
+    assert title == 'Бонус к зарплате'
+    assert '1%' in body or '+1' in body or 'зарплат' in body.lower()
+
+
+def test_earnings_boost_skill_in_web_display_dict():
+    from web.main import _GYM_SKILL_DISPLAY
+    assert 'earnings_boost' in _GYM_SKILL_DISPLAY
+    meta = _GYM_SKILL_DISPLAY['earnings_boost']
+    assert meta['available'] is True
+    assert meta['icon'] == '💵'
+    assert meta['field'] == 'earnings_boost'
+    assert meta['title'] == 'Бонус к зарплате'
+
+
+def test_earnings_boost_default_zero():
+    s = GameState.default_new_game()
+    assert s.gym.earnings_boost == 0
+
+
+def test_earnings_boost_round_trip():
+    s1 = GameState.default_new_game()
+    s1.gym.earnings_boost = 25
+    d = s1.to_dict()
+    assert d['earnings_boost'] == 25
+    s2 = GameState.from_dict(d)
+    assert s2.gym.earnings_boost == 25
+
+
 def test_try_spend_accepts_float_money():
     """try_spend(money=float) — после 4.20 сигнатура принимает float
     (raised from int). Корректно сравнивается со state.money: float."""

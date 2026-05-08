@@ -78,3 +78,23 @@ def apply_money_saving(cost: float, state: GameState) -> float:
     discount = state.gym.money_saving / 100.0
     discounted = cost * (1.0 - discount)
     return round(max(0.0, discounted), 2)
+
+
+def apply_earnings_boost(salary: float, state: GameState) -> float:
+    """4.23 — Бонус к зарплате (только Work). Линейная: +1% за уровень
+    `state.gym.earnings_boost`. Возвращает `round(..., 2)`. Симметричен
+    `apply_money_saving` — обёрнут во ВСЕ display точки и при начислении
+    в `work_check_done`, чтобы игрок видел итоговую зарплату с бонусом
+    в preview меню работы.
+
+    Edge cases:
+    - skill=0 → salary без изменений (round до 2 знаков).
+    - skill=100 → удвоение дохода. Без cap (намеренный design choice).
+    - skill=200 → утроение и т.д. Линейно бесконечно.
+    - state.work.salary остаётся **базовой** (без bonus) — все обёртки
+      применяют bonus на лету. Это даёт recompute: прокачал во время
+      смены → next render preview показывает новую сумму, при завершении
+      применяется текущий уровень skill.
+    """
+    boost = state.gym.earnings_boost / 100.0
+    return round(salary * (1.0 + boost), 2)
