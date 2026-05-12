@@ -19,7 +19,18 @@ drop_percent_item_c = 75
 drop_percent_item_b = 60
 drop_percent_item_a = 45
 drop_percent_item_s = 30
-drop_percent_item_s_ = 15  # s_ = s+ Grade
+drop_percent_item_s_ = 15  # s_ = s+ Grade (base, walk_20k)
+
+# Per-adventure overrides для S+ threshold (0.2.4g balance — follow-up
+# задачи 4.29-replacement). Базовый `drop_percent_item_s_=15` остаётся для
+# walk_20k (где s+ — редкий бонус среди 3 тиров). На endgame'е повышен
+# чтобы walk_30k не выглядел бесполезным относительно walk_25k:
+#   - до 0.2.4g: walk_25k P(S+)=14%, walk_30k P(S+)=15.5% (luck=12) —
+#     практически одинаково при цене +20% шагов/энергии/времени.
+#   - после 0.2.4g: walk_25k S+=20 → 18.2%, walk_30k S+=35 → 36.2% —
+#     четкое позиционирование walk_30k как endgame walk «специально за S+».
+drop_percent_item_s_walk_25k = 20
+drop_percent_item_s_walk_30k = 35
 
 
 def current_luck(state: GameState) -> int:
@@ -162,14 +173,16 @@ class Drop_Item:
                 s_ = randint(1, 100 - luck)
                 if s < s_ and s <= drop_percent_item_s:
                     return 's-grade'
-                elif s_ < s and s_ <= drop_percent_item_s_:
+                # 0.2.4g — per-adventure override (см. константы выше).
+                elif s_ < s and s_ <= drop_percent_item_s_walk_25k:
                     return 's+grade'
 
         elif hard == 'walk_30k':
             i = randint(1, 100 - luck)
             if i <= drop_percent_gl:
                 s_ = randint(1, 100 - luck)
-                if s_ <= drop_percent_item_s_:
+                # 0.2.4g — per-adventure override, endgame bonus (см. выше).
+                if s_ <= drop_percent_item_s_walk_30k:
                     return 's+grade'
 
     def item_bonus_value(item, grade):

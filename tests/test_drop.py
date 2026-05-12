@@ -236,11 +236,23 @@ def test_compute_grade_probabilities_walk_normal_known_values():
 
 
 def test_compute_grade_probabilities_walk_30k_known_values():
-    """luck=0: walk_30k → s+grade 12%, nothing 88%. P = 0.8 × 15/100 = 0.12."""
+    """luck=0: walk_30k → s+grade 28%, nothing 72%.
+    P = 0.8 × 35/100 = 0.28 (0.2.4g — endgame bonus, threshold 15 → 35)."""
     state = GameState.default_new_game()
     probs = compute_grade_probabilities('walk_30k', state)
-    assert abs(probs['s+grade'] - 0.12) < 1e-9
-    assert abs(probs['nothing'] - 0.88) < 1e-9
+    assert abs(probs['s+grade'] - 0.28) < 1e-9
+    assert abs(probs['nothing'] - 0.72) < 1e-9
+
+
+def test_compute_grade_probabilities_walk_25k_known_values():
+    """luck=0: walk_25k → s-grade 20.28%, s+grade 14.32%, nothing 65.40%.
+    P(S+) = 0.8 × (Σ_{r=1..20} (100-r)/100²) = 0.8 × 0.179 = 0.1432
+    (0.2.4g — S+ threshold 15 → 20, S threshold unchanged at 30)."""
+    state = GameState.default_new_game()
+    probs = compute_grade_probabilities('walk_25k', state)
+    assert abs(probs['s-grade'] - 0.2028) < 1e-9
+    assert abs(probs['s+grade'] - 0.1432) < 1e-9
+    assert abs(probs['nothing'] - 0.6540) < 1e-9
 
 
 def test_compute_grade_probabilities_luck_increases_chances():

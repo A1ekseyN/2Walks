@@ -16,6 +16,9 @@ from drop import (
     drop_percent_item_a,
     drop_percent_item_s,
     drop_percent_item_s_,
+    # 0.2.4g — per-adventure overrides для S+ threshold (walk_25k / walk_30k).
+    drop_percent_item_s_walk_25k,
+    drop_percent_item_s_walk_30k,
 )
 
 
@@ -71,13 +74,15 @@ adventure_data_table = {
         'time': 300,
         'drops': [
             ('s-grade', drop_percent_item_s),
-            ('s+grade', drop_percent_item_s_),
+            # 0.2.4g — S+ threshold 15 → 20 (см. drop.py:drop_percent_item_s_walk_25k).
+            ('s+grade', drop_percent_item_s_walk_25k),
         ],
     },
     'walk_30k': {
         'steps': 30000,
         'energy': 70,
         'time': 360,
-        'drops': [('s+grade', drop_percent_item_s_)],
+        # 0.2.4g — S+ threshold 15 → 35 (endgame bonus; см. drop.py).
+        'drops': [('s+grade', drop_percent_item_s_walk_30k)],
     },
 }
