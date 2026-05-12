@@ -71,6 +71,52 @@
         /* Loading state кнопки во время HTMX-запроса. */
         .htmx-request .steps-btn-default { display: none !important; }
         .htmx-request .steps-btn-loading { display: inline !important; }
+
+        /* Save overlay (UX задержки persist_state_to_cloud → Sheets ~1-2 сек).
+           Класс `.htmx-saving` вешается JS-handler'ом на body в момент любого
+           HTMX-запроса (см. блок скриптов внизу). Без класса оверлей невидим
+           (opacity:0). Используем JS-class вместо `body:has(.htmx-request)`
+           selector ради совместимости со старыми Safari (<15.4). */
+        #save-overlay {
+            position: fixed; inset: 0;
+            background: rgba(15, 20, 30, 0.5);
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            opacity: 0;
+            /* 150ms задержка fade-in — короткие запросы не мигнут;
+               для длинных (Sheets 1-2 сек) появится плавно. Fade-out быстрый. */
+            transition: opacity 0.2s ease-out;
+        }
+        body.htmx-saving #save-overlay {
+            opacity: 1;
+            transition: opacity 0.2s ease-out 0.15s;
+        }
+        .save-overlay-card {
+            background: var(--pico-card-background-color, #fff);
+            color: var(--pico-color, #1c1c1c);
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 500;
+            font-size: 1rem;
+        }
+        .save-overlay-spinner {
+            width: 24px; height: 24px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-top-color: var(--pico-primary, #1095c1);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -99,6 +145,16 @@
         {% include "_status_fragment.html" %}
     </div>
 </main>
+
+{# Save overlay (UX feedback во время persist_state_to_cloud → Sheets).
+   Размещён ВНЕ <main> чтобы HTMX swap-target `#status-bar` не задевал его.
+   Видимость управляется JS-handler'ами на body (.htmx-saving класс). #}
+<div id="save-overlay" aria-hidden="true">
+    <div class="save-overlay-card">
+        <div class="save-overlay-spinner"></div>
+        <span>Сохраняем...</span>
+    </div>
+</div>
 
 <script>
     /* JS-таймер: между HTMX-обновлениями (каждые 15 сек) плавно убывает время
@@ -212,6 +268,22 @@
     setInterval(tickEnergy, 60 * 1000);
     document.addEventListener("DOMContentLoaded", tickEnergy);
     document.body.addEventListener("htmx:afterSwap", tickEnergy);
+
+    /* Save overlay — глобальный спиннер во время любого HTMX-запроса
+       (UX задержки persist_state_to_cloud → Google Sheets, обычно 1-2 сек).
+       JS-driven класс на body вместо `body:has(.htmx-request)` selector ради
+       совместимости со старыми Safari (<15.4). htmx:beforeRequest и
+       htmx:afterRequest надёжно срабатывают для всех hx-post / hx-get элементов.
+       htmx:sendError тоже добавлен — на сетевые ошибки нужно снимать спиннер. */
+    document.body.addEventListener("htmx:beforeRequest", () => {
+        document.body.classList.add("htmx-saving");
+    });
+    document.body.addEventListener("htmx:afterRequest", () => {
+        document.body.classList.remove("htmx-saving");
+    });
+    document.body.addEventListener("htmx:sendError", () => {
+        document.body.classList.remove("htmx-saving");
+    });
 
     /* Steps form toggle (4.48.2). Используем event delegation на body, чтобы
        обработчики работали и после HTMX swap (фрагмент перерисовывается). */
