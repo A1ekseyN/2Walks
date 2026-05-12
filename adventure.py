@@ -7,7 +7,7 @@ from colorama import Fore, Style
 
 from adventure_data import adventure_data_table
 from colors import steps_color, energy_color
-from drop import Drop_Item
+from drop import Drop_Item, compute_grade_probabilities
 from functions_02 import format_money, format_timedelta, time
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from settings import debug_mode
@@ -92,48 +92,73 @@ class Adventure:
     def _render_adventure_menu(self) -> None:
         """Печать меню приключений с условной разблокировкой по counters.
         Вынесено в helper (1.5.5 — 0.2.1h), чтобы тело adventure_menu loop'а
-        не раздувалось до 50 строк."""
+        не раздувалось до 50 строк.
+
+        Since 0.2.4f (4.29-replacement): % вероятности выпадения каждого грейда
+        рассчитываются через `compute_grade_probabilities` (учитывает current_luck)
+        и встраиваются в строку «Награда: <Grade> (XX.XX%)». Item-type инфо
+        («могут выпасть: ring · necklace · ...») вынесена во вступительный
+        блок т.к. она одинакова для ВСЕХ приключений (drop.py:item_type
+        сэмплит 5 типов с равной вероятностью независимо от hard'а).
+        """
         state = self._state
         print('\n ️🗺 ️--- Меню Приключения --- 🗺️')
         print(f"Steps 🏃: {state.steps.can_use}, Energy 🔋: {state.energy}, Money 💰: {format_money(state.money)} $,")
         print('Вы можете отправить персонажа в приключение.'
-              '\nВ приключении, персонаж может получить полезные предметы.')
+              '\nВ приключении, персонаж может получить полезные предметы.'
+              '\n🎁 Могут выпасть: ring · necklace · helmet · shoes · t-shirt (по ~20% каждый).')
 
         print('\nДоступные приключения: ')
         counters = state.adventure.counters
-        print(f'\t1. Прогулка вокруг озера: {self.get_adventure_requirement("walk_easy")} - (Награда: C-Grade (Ring, Necklace))')
+        print(f'\t1. Прогулка вокруг озера: {self.get_adventure_requirement("walk_easy")} - (Награда: {self._format_reward("walk_easy")})')
 
         if counters.get('walk_easy', 0) >= 3:
-            print(f'\t2. Прогулка по району:    {self.get_adventure_requirement("walk_normal")} - (Награда: C-Grade, B-Grade (Ring, Necklace))')
+            print(f'\t2. Прогулка по району:    {self.get_adventure_requirement("walk_normal")} - (Награда: {self._format_reward("walk_normal")})')
         else:
             print(f'\t- Пройдите "Прогулку вокруг озера" ещё: {3 - counters.get("walk_easy", 0)} раз.')
 
         if counters.get('walk_normal', 0) >= 3:
-            print(f'\t3. Прогулка в лес:        {self.get_adventure_requirement("walk_hard")} - (Награда: C-Grade, B-Grade, A-Grade (Ring, Necklace))')
+            print(f'\t3. Прогулка в лес:        {self.get_adventure_requirement("walk_hard")} - (Награда: {self._format_reward("walk_hard")})')
         else:
             print(f'\t- Пройдите "Прогулку по району" ещё: {3 - counters.get("walk_normal", 0)} раз.')
 
         if counters.get('walk_hard', 0) >= 3:
-            print(f'\t4. Прогулка 15к шагов:    {self.get_adventure_requirement("walk_15k")} - (Награда: B-Grade, A-Grade, S-Grade)')
+            print(f'\t4. Прогулка 15к шагов:    {self.get_adventure_requirement("walk_15k")} - (Награда: {self._format_reward("walk_15k")})')
         else:
             print(f'\t- Пройдите "Прогулку в лес" ещё: {3 - counters.get("walk_hard", 0)} раз.')
 
         if counters.get('walk_15k', 0) >= 3:
-            print(f'\t5. Прогулка 20к шагов:    {self.get_adventure_requirement("walk_20k")} - (Награда: A-Grade, S-Grade, S+Grade (Ring, Necklace))')
+            print(f'\t5. Прогулка 20к шагов:    {self.get_adventure_requirement("walk_20k")} - (Награда: {self._format_reward("walk_20k")})')
         else:
             print(f'\t- Пройдите прогулку на 15к ещё: {3 - counters.get("walk_15k", 0)} раз.')
 
         if counters.get('walk_20k', 0) >= 3:
-            print(f'\t6. Прогулка 25к шагов:    {self.get_adventure_requirement("walk_25k")} - (Награда: S-Grade, S+Grade (Ring, Necklace))')
+            print(f'\t6. Прогулка 25к шагов:    {self.get_adventure_requirement("walk_25k")} - (Награда: {self._format_reward("walk_25k")})')
         else:
             print(f'\t- Пройдите прогулку на 20к ещё: {3 - counters.get("walk_20k", 0)} раз.')
 
         if counters.get('walk_25k', 0) >= 3:
-            print(f'\t7. Прогулка 30к шагов:    {self.get_adventure_requirement("walk_30k")} - (Награда: S+Grade (Ring, Necklace))')
+            print(f'\t7. Прогулка 30к шагов:    {self.get_adventure_requirement("walk_30k")} - (Награда: {self._format_reward("walk_30k")})')
         else:
             print(f'\t- Пройдите прогулку на 25к ещё: {3 - counters.get("walk_25k", 0)} раз.')
 
         print('\t0. Выход')
+
+    def _format_reward(self, adventure_name: str) -> str:
+        """4.29-replacement (0.2.4f) — формирует строку наград с % выпадения.
+
+        Пример: 'C-Grade (37.20%), B-Grade (33.36%)' для walk_normal.
+        Учитывает текущий luck игрока через compute_grade_probabilities.
+        Грейд 'nothing' (вероятность miss'а) не отображается — игрок видит
+        только потенциальные награды.
+        """
+        probs = compute_grade_probabilities(adventure_name, self._state)
+        parts = [
+            f'{grade.title()} [{pct * 100:.2f}%]'
+            for grade, pct in probs.items()
+            if grade != 'nothing' and pct > 0
+        ]
+        return ', '.join(parts) if parts else '—'
 
     def adventure_menu(self) -> None:
         # adventure_menu теперь только entry-point — вся retry-логика в

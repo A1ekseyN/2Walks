@@ -195,3 +195,111 @@ def test_item_collect_branch_forced_sale_when_full_and_pending(monkeypatch, caps
     assert state.pending_drop is existing_pending  # не тронут
     assert len(state.inventory) == 10
     assert 'автоматически продана' in capsys.readouterr().out
+
+
+# ----- 4.29-replacement (0.2.4f) — compute_grade_probabilities -----
+
+from drop import compute_grade_probabilities
+
+
+_ADVENTURES = ['walk_easy', 'walk_normal', 'walk_hard', 'walk_15k',
+               'walk_20k', 'walk_25k', 'walk_30k']
+
+
+def test_compute_grade_probabilities_sum_to_one():
+    """Сумма вероятностей всех грейдов + nothing должна давать 1.0."""
+    state = GameState.default_new_game()
+    for adv in _ADVENTURES:
+        probs = compute_grade_probabilities(adv, state)
+        total = sum(probs.values())
+        assert abs(total - 1.0) < 1e-9, f'{adv}: sum={total}'
+
+
+def test_compute_grade_probabilities_walk_easy_known_values():
+    """luck=0: walk_easy → c-grade 60%, nothing 40%.
+    Расчёт: gate=80/100, c-prob = 75/100, итог = 0.8 × 0.75 = 0.60."""
+    state = GameState.default_new_game()
+    probs = compute_grade_probabilities('walk_easy', state)
+    assert abs(probs['c-grade'] - 0.60) < 1e-9
+    assert abs(probs['nothing'] - 0.40) < 1e-9
+
+
+def test_compute_grade_probabilities_walk_normal_known_values():
+    """luck=0: walk_normal → c-grade 37.20%, b-grade 33.36%, nothing 29.44%.
+    P(c) = 0.8 × (Σ_{r=1..75} (100-r)/100²) = 0.8 × 0.465 = 0.372.
+    P(b) = 0.8 × (Σ_{r=1..60} (100-r)/100²) = 0.8 × 0.417 = 0.3336."""
+    state = GameState.default_new_game()
+    probs = compute_grade_probabilities('walk_normal', state)
+    assert abs(probs['c-grade'] - 0.3720) < 1e-9
+    assert abs(probs['b-grade'] - 0.3336) < 1e-9
+    assert abs(probs['nothing'] - 0.2944) < 1e-9
+
+
+def test_compute_grade_probabilities_walk_30k_known_values():
+    """luck=0: walk_30k → s+grade 12%, nothing 88%. P = 0.8 × 15/100 = 0.12."""
+    state = GameState.default_new_game()
+    probs = compute_grade_probabilities('walk_30k', state)
+    assert abs(probs['s+grade'] - 0.12) < 1e-9
+    assert abs(probs['nothing'] - 0.88) < 1e-9
+
+
+def test_compute_grade_probabilities_luck_increases_chances():
+    """Прокачка luck увеличивает шансы дропа и уменьшает nothing."""
+    state = GameState.default_new_game()
+    base = compute_grade_probabilities('walk_easy', state)
+
+    state.gym.luck_skill = 20  # N=80, gate=80/80=1.0, c-prob=75/80
+    boosted = compute_grade_probabilities('walk_easy', state)
+
+    assert boosted['c-grade'] > base['c-grade']
+    assert boosted['nothing'] < base['nothing']
+    # Точно: 1.0 × 75/80 = 0.9375
+    assert abs(boosted['c-grade'] - 0.9375) < 1e-9
+
+
+def test_compute_grade_probabilities_unknown_adventure():
+    """Неизвестное имя приключения → 100% nothing."""
+    state = GameState.default_new_game()
+    probs = compute_grade_probabilities('walk_fake', state)
+    assert probs == {'nothing': 1.0}
+
+
+def test_compute_grade_probabilities_luck_100_clamps():
+    """luck≥100 не падает на делении на ноль (N clamp ≥ 1)."""
+    state = GameState.default_new_game()
+    state.gym.luck_skill = 150  # переборы N=100-150=-50, clamp в 1
+    probs = compute_grade_probabilities('walk_easy', state)
+    assert sum(probs.values()) > 0  # не упало
+    # При N=1: gate=min(80,1)/1=1.0, k=min(75,1)=1, sum=(0/1)^0/1=1/1=1.0
+    # P(c-grade) = 1.0 × 1.0 = 1.0, nothing = 0
+    assert abs(probs['c-grade'] - 1.0) < 1e-9
+
+
+# ----- MC parity: аналитические формулы vs реальная drop.py логика -----
+
+@pytest.mark.parametrize('adventure', _ADVENTURES)
+def test_compute_probabilities_matches_monte_carlo(adventure):
+    """Аналитические формулы должны совпадать с MC-симуляцией реальной
+    one_item_random_grade() в пределах ±1.5% (статистическая погрешность для
+    10k итераций). Защита от рассинхрона если кто-то изменит drop_percent_*
+    в drop.py или порядок тиеров — забыл обновить ADVENTURE_DROP_TIERS."""
+    state = GameState.default_new_game()
+    analytical = compute_grade_probabilities(adventure, state)
+
+    N = 10000
+    drop = Drop_Item()
+    counts: dict[str, int] = {}
+    for _ in range(N):
+        g = drop.one_item_random_grade(adventure, state)
+        key = g if g is not None else 'nothing'
+        counts[key] = counts.get(key, 0) + 1
+    mc = {k: v / N for k, v in counts.items()}
+
+    # Проверка по всем грейдам которые могут выпасть в этом приключении.
+    for grade, p_analytical in analytical.items():
+        p_mc = mc.get(grade, 0.0)
+        diff = abs(p_analytical - p_mc)
+        assert diff < 0.015, (
+            f'{adventure} {grade}: analytical={p_analytical:.4f}, '
+            f'MC={p_mc:.4f}, diff={diff:.4f}'
+        )

@@ -6,6 +6,7 @@
 """
 
 from random import randint
+from typing import Any
 
 from bonus import inventory_full
 from equipment_bonus import equipment_luck_bonus
@@ -24,6 +25,73 @@ drop_percent_item_s_ = 15  # s_ = s+ Grade
 def current_luck(state: GameState) -> int:
     """Текущая удача = luck_skill (gym) + equipment + level. Pure (без побочных эффектов)."""
     return state.gym.luck_skill + equipment_luck_bonus(state) + state.char_level.skill_luck
+
+
+def compute_grade_probabilities(adventure_name: str, state: GameState) -> dict[str, float]:
+    """4.29-replacement (0.2.4f) — аналитическая вероятность каждого грейда
+    для приключения с учётом current_luck. Pure (без рандома).
+
+    Returns: `{'c-grade': 0.60, 'b-grade': 0.0, ..., 'nothing': 0.40}` —
+    ключ 'nothing' = вероятность miss'а (не выпал ни один грейд).
+
+    Формула: пусть N = 100 - luck (clamp ≥ 1). Тиры — упорядоченный список
+    `[(grade_i, threshold_i)]` из `adventure_data_table[adv]['drops']`. На
+    каждый дроп drop.py делает один gate-roll `i ~ U[1, N]` + по одному
+    конкурентному ролу на каждый тир `R_i ~ U[1, N]`. Тир `i` выигрывает
+    если `R_i ≤ threshold_i` И `R_i < R_j ∀ j ≠ i`.
+
+        P(gate) = min(drop_percent_gl, N) / N
+        P(tier i wins | gate) = Σ_{r=1}^{min(T_i, N)} (1/N) · ((N-r)/N)^{n-1}
+        P(grade_i) = P(gate) · P(tier i wins | gate)
+
+    где n — количество тиеров.
+
+    Sanity (luck=0, N=100):
+        walk_easy   → c-grade 60.00%, nothing 40.00%
+        walk_normal → c-grade 37.20%, b-grade 33.36%, nothing 29.44%
+        walk_30k    → s+grade 11.94%, nothing 88.06%
+    """
+    # Lazy import чтобы избежать circular (adventure_data.py импортирует
+    # constants из drop.py — наш caller — а если бы drop импортил adventure_data
+    # на module-level, был бы цикл).
+    from adventure_data import adventure_data_table
+
+    luck = current_luck(state)
+    N = max(1, 100 - luck)  # clamp: при luck≥100 защита от деления на ноль
+
+    adv = adventure_data_table.get(adventure_name)
+    if adv is None:
+        return {'nothing': 1.0}
+    # adventure_data_table[..]['drops']: list[tuple[str, int]] — гарантировано
+    # схемой adventure_data.py, но dict-значения внутри adv общие (через `object`),
+    # т.к. в одной таблице мешаются 'steps': int / 'drops': list. Annotate явно
+    # и cast'им — без этого mypy ругается на len() и iteration.
+    drops_raw: Any = adv.get('drops')
+    if not drops_raw:
+        return {'nothing': 1.0}
+    tiers: list[tuple[str, int]] = drops_raw
+    n_tiers = len(tiers)
+    n_competitors = n_tiers - 1
+    p_gate = min(drop_percent_gl, N) / N
+
+    result: dict[str, float] = {}
+    total = 0.0
+    for grade, threshold in tiers:
+        k = min(threshold, N)
+        if k <= 0:
+            p_grade = 0.0
+        else:
+            # Σ_{r=1}^{k} (1/N) · ((N-r)/N)^{n-1}
+            acc = 0.0
+            for r in range(1, k + 1):
+                acc += ((N - r) / N) ** n_competitors
+            p_grade = acc / N
+        p = p_gate * p_grade
+        result[grade] = p
+        total += p
+
+    result['nothing'] = max(0.0, 1.0 - total)
+    return result
 
 
 class Drop_Item:
