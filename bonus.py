@@ -159,3 +159,30 @@ def apply_earnings_boost(salary: float, state: GameState) -> float:
     """
     boost = state.gym.earnings_boost / 100.0
     return round(salary * (1.0 + boost), 2)
+
+
+def apply_trader(price: float, state: GameState) -> float:
+    """4.28 — Бонус к цене продажи (все предметы). Линейная: +1% за уровень
+    `state.gym.trader`. Возвращает `round(..., 2)`. Третья нога
+    экономической трилогии (4.20 money_saving / 4.23 earnings_boost /
+    4.28 trader).
+
+    Применяется во ВСЕХ 4 точках продажи (0.2.4h):
+    - `inventory._sell_item_at_index` — обычная продажа из меню Inventory.
+    - `inventory._resolve_pending_drop_sell_existing` — продажа предмета
+      из инвентаря в pending-drop resolve (4.50.1).
+    - `inventory._resolve_pending_drop_sell_new` — продажа самой находки
+      (pending).
+    - `drop.Drop_Item.item_collect` — forced sale новой находки когда
+      full inventory + pending уже занят (4.50.1 ветка (3)).
+
+    Edge cases:
+    - skill=0 → price без изменений (round до 2 знаков).
+    - skill=100 → удвоение цены продажи. Без cap (симметрично с earnings_boost).
+    - skill=200 → утроение. Линейно бесконечно.
+    - Применяется ко ВСЕМ предметам (включая еду / Shop-покупки): игрок изначально
+      платит больше в Shop чем получает обратно — баланс остаётся положительным
+      даже с большим trader. Не требует source-tracking item-формата.
+    """
+    boost = state.gym.trader / 100.0
+    return round(price * (1.0 + boost), 2)

@@ -318,9 +318,10 @@ class Drop_Item:
                           price=item['price'][0])
             else:
                 # (3) Рюкзак полон + pending уже занят — forced sale (вариант D-iii):
-                # новая находка авто-продаётся за base price, money += price.
-                # Pending остаётся прежним; не теряем уже найденное.
-                price = item['price'][0]
+                # новая находка авто-продаётся, money += price (с учётом
+                # trader skill бонуса с 0.2.4h). Pending остаётся прежним.
+                from bonus import apply_trader
+                price = apply_trader(item['price'][0], state)
                 state.money += price
                 print(f'🎒 Инвентарь и слот находок заняты. '
                       f'Находка автоматически продана за {price} $.')

@@ -269,6 +269,12 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "effect": "+1 % к зарплате на работе",
         "available": True,
     },
+    "trader": {
+        "title": "Торговец", "icon": "💎",
+        "field": "trader",
+        "effect": "+1 % к цене продажи предметов",
+        "available": True,
+    },
     "banking_interest_rate": {
         "title": "Банковская ставка", "icon": "🏦",
         "field": "banking_interest_rate",

@@ -4,7 +4,7 @@
 тестируемости — UI-обёртки `inventory_menu` / `sold_item` остаются с input/print.
 """
 
-from bonus import backpack_capacity
+from bonus import apply_trader, backpack_capacity
 from state import GameState
 
 
@@ -22,7 +22,7 @@ def _sort_inventory(inventory: list[dict]) -> list[dict]:
     )
 
 
-def _resolve_pending_drop_sell_existing(state: GameState, inventory_index: int) -> tuple[dict, dict, int]:
+def _resolve_pending_drop_sell_existing(state: GameState, inventory_index: int) -> tuple[dict, dict, float]:
     """4.50.1 — Resolve pending drop: продать предмет инвентаря по индексу,
     положить pending на освободившийся слот.
 
@@ -31,7 +31,8 @@ def _resolve_pending_drop_sell_existing(state: GameState, inventory_index: int) 
     """
     sold_item = state.inventory[inventory_index]
     try:
-        refund = round(sold_item['price'][0])
+        # 4.28 (0.2.4h) — apply_trader применяет skill-бонус к цене продажи.
+        refund = apply_trader(sold_item['price'][0], state)
     except (KeyError, IndexError, TypeError):
         refund = 0
     state.money += refund
@@ -55,12 +56,13 @@ def _resolve_pending_drop_sell_existing(state: GameState, inventory_index: int) 
     return sold_item, kept_item, refund
 
 
-def _resolve_pending_drop_sell_new(state: GameState) -> tuple[dict, int]:
+def _resolve_pending_drop_sell_new(state: GameState) -> tuple[dict, float]:
     """4.50.1 — Resolve pending drop: продать саму находку за base price.
     Инвентарь не трогается. Возвращает (sold_pending, refund)."""
     pending = state.pending_drop
     try:
-        refund = round(pending['price'][0])
+        # 4.28 (0.2.4h) — apply_trader применяет skill-бонус к цене продажи.
+        refund = apply_trader(pending['price'][0], state)
     except (KeyError, IndexError, TypeError):
         refund = 0
     state.money += refund
@@ -74,7 +76,7 @@ def _resolve_pending_drop_sell_new(state: GameState) -> tuple[dict, int]:
     return pending, refund
 
 
-def _sell_item_at_index(state: GameState, index: int) -> tuple[dict, int]:
+def _sell_item_at_index(state: GameState, index: int) -> tuple[dict, float]:
     """Продажа предмета по индексу — мутирует state.inventory и state.money.
 
     Возвращает (item, refund). Refund добавляется к state.money.
@@ -82,7 +84,8 @@ def _sell_item_at_index(state: GameState, index: int) -> tuple[dict, int]:
     """
     item = state.inventory[index]
     try:
-        refund = round(item['price'][0])
+        # 4.28 (0.2.4h) — apply_trader применяет skill-бонус к цене продажи.
+        refund = apply_trader(item['price'][0], state)
     except (KeyError, IndexError, TypeError):
         refund = 0
     state.money += refund

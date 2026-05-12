@@ -2323,11 +2323,11 @@ def test_gym_skills_use_nested_details():
     next_section_pos = body.find('id="bonuses"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
-    # (после 0.2.4b / 4.50.0 — 15 навыков: + backpack_skill).
+    # (после 0.2.4h / 4.28 — 16 навыков: + trader в money trilogy).
     import re
     details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
-    # 1 внешний + 15 nested = 16.
-    assert len(details_tags) == 16
+    # 1 внешний + 16 nested = 17.
+    assert len(details_tags) == 17
     # Ни один не должен быть `open`.
     for tag in details_tags:
         assert "open" not in tag, f"details unexpectedly open: {tag}"
@@ -2577,12 +2577,14 @@ def test_build_gym_skills_returns_all_entries():
     # money_saving; reorder: money_saving поднят на позицию 9. После 0.2.4a (4.23)
     # — добавлен earnings_boost рядом с money_saving (позиция 10), остальные
     # money/loan/inspiration сдвинуты на одну вниз. После 0.2.4b (4.50.0) —
-    # добавлен backpack_skill в самый низ (позиция 15).
+    # добавлен backpack_skill в самый низ. После 0.2.4h (4.28) — добавлен
+    # trader в money trilogy (позиция 11), bank/inspiration/backpack
+    # сдвинуты на одну вниз.
     assert keys == [
         "stamina", "energy_max_skill", "speed_skill", "luck_skill",
         "move_optimization_adventure", "move_optimization_gym",
         "move_optimization_work", "neatness_in_using_things",
-        "money_saving", "earnings_boost",
+        "money_saving", "earnings_boost", "trader",
         "banking_interest_rate", "loan_capacity", "loan_interest_reduction",
         "inspiration",
         "backpack_skill",

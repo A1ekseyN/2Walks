@@ -361,3 +361,50 @@ def test_auto_collect_idempotent_after_success():
     auto_collect_pending_drop(state)
     assert auto_collect_pending_drop(state) is None
     assert state.pending_drop is None
+
+
+# ----- 4.28 (0.2.4h) — apply_trader -----
+
+from bonus import apply_trader
+
+
+def test_apply_trader_skill_zero_unchanged():
+    """skill=0 → цена без изменений (round до 2 знаков)."""
+    state = GameState.default_new_game()
+    assert apply_trader(100, state) == 100.00
+    assert apply_trader(0, state) == 0.00
+
+
+def test_apply_trader_linear():
+    """skill=10 → 100 * 1.10 = 110.00."""
+    state = GameState.default_new_game()
+    state.gym.trader = 10
+    assert apply_trader(100, state) == 110.00
+
+
+def test_apply_trader_fractional_result():
+    """Дробный результат — round до 2 знаков. 17 * 1.07 = 18.19."""
+    state = GameState.default_new_game()
+    state.gym.trader = 7
+    assert apply_trader(17, state) == 18.19
+
+
+def test_apply_trader_doubles_at_skill_100():
+    """skill=100 — удвоение цены продажи. Без cap."""
+    state = GameState.default_new_game()
+    state.gym.trader = 100
+    assert apply_trader(120, state) == 240.00
+
+
+def test_apply_trader_grows_above_100():
+    """skill=200 — утроение. Линейно бесконечно."""
+    state = GameState.default_new_game()
+    state.gym.trader = 200
+    assert apply_trader(50, state) == 150.00
+
+
+def test_apply_trader_returns_float_type():
+    """Тип всегда float — для consistency с другими money-helper'ами."""
+    state = GameState.default_new_game()
+    result = apply_trader(50, state)
+    assert isinstance(result, float)

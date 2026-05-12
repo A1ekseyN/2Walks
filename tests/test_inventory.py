@@ -80,12 +80,15 @@ def test_sell_item_no_price_refunds_zero():
 
 
 def test_sell_item_rounds_float_price():
+    """0.2.4h — apply_trader использует round(..., 2) для consistency
+    с другими money-helper'ами (money_saving / earnings_boost).
+    Раньше refund был int (round до целого), теперь float с 2 знаками."""
     state = GameState.default_new_game()
     state.inventory = [_make_item(price=129.7)]
     state.money = 0
 
     _, refund = _sell_item_at_index(state, 0)
-    assert refund == 130
+    assert refund == 129.7  # trader=0 → без бонуса, round до 2 знаков
 
 
 # ----- inventory_view (UI) -----
