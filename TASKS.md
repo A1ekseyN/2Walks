@@ -724,18 +724,28 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 ---
 
-### 4.3. Стрик-счётчик дней подряд `[H / S / todo]`
+### 4.3. Стрик-счётчик дней подряд `[H / S / rejected (13.05.2026 — daily_bonus уже выполняет роль streak-счётчика)]`
+
+**Отклонено 13.05.2026** — функционал уже работает:
+
+`state.steps.daily_bonus` инкрементируется в `functions.today_steps_to_yesterday_steps()` каждый день когда `yesterday >= 10000`, сбрасывается в 0 при пропуске. Это математически идентично streak-counter'у. Значение видно в `status_bar` строкой `Energy 🔋: ... (Bonus: ... / Daily 🔋: + N / ...)` — игрок может узнать свой стрик косвенно через это число.
+
+**Что НЕ хватает (не критично):** семантической явности — игрок может не понимать что «Daily 🔋: +7» это именно «7 дней подряд». При желании можно мини-улучшить лейбл (добавить 🔥 emoji-маркер) — это 5 минут полировки, не отдельная задача.
+
+**Если в будущем понадобится переоткрыть:**
+- Реальный use case — 4.36 (Streak Freeze) или ачивки требующие decoupled-counter от daily_bonus (например если daily_bonus capнем для баланса).
+- Longest streak record — фича для мотивации бить рекорд.
+- Threat warning «до конца дня осталось 2,500 для стрика».
+
+При этом нужна будет новая task: separate `state.streak` поле + migration из daily_bonus.
+
+---
+
+#### Legacy plan (для истории, не выполняется)
 
 Счётчик "N дней подряд >= 10k шагов" (`state.steps.streak_days` — новое поле). В `status_bar` показать `🔥 7 дней подряд`. Это то, что реально мотивирует ходить каждый день.
 
 **Без экспоненциальных бонусов** — задача 4.35 (Exponential Daily Bonus) отклонена 01.05.2026 как ломающая баланс. Стрик остаётся как чистый визуальный мотиватор. Если позже потребуется привязать к нему награду — мелкая (achievement / открытие предмета в Shop), точно не множитель к `steps_daily_bonus`.
-
-**Реализация:**
-1. Поле `streak_days` в `state.steps` (или отдельный `state.streak`).
-2. В `today_steps_to_yesterday_steps(state)`: если `state.steps.yesterday >= 10000` → `streak_days += 1`, иначе → `streak_days = 0`.
-3. UI: "🔥 Стрик: N дней" в `status_bar`.
-4. Тесты на инкремент/сброс/edge-case (ровно 10000).
-5. Update `from_dict` / `to_dict` чтобы пережить save/load.
 
 **Связана с:** 4.36 (Streak Freeze — защита от случайного сброса).
 
@@ -898,9 +908,11 @@ Append-only лог значимых игровых событий. Даёт:
 
 ---
 
-### 4.8. Webhook-уведомления о крутых дропах `[M / S / todo]`
+### 4.8. Webhook-уведомления о крутых дропах `[L / S / todo (отложено 13.05.2026 — нет Telegram bot / Discord сервера для интеграции)]`
 
 Функция `notify(event)` шлёт POST в Telegram/Discord webhook на S+ дроп, lvl up, новое достижение. URL в `.env`. 30 строк кода, сильно повышает вовлечённость.
+
+**Отложено** до момента когда появится готовая внешняя инфраструктура для уведомлений (Telegram bot настроен через BotFather, или Discord-сервер создан, или другой channel). Технически — задача простая (S, hook в `history.log_event`, fire-and-forget threading, есть `httpx` в requirements). Когда возьмёмся — см. обсуждение 13.05.2026 в conversation history: Variant A (hook в log_event), threading.Thread fire-and-forget, поддержка Discord + Telegram + Generic, env vars `WEBHOOK_*` для конфига.
 
 ---
 
@@ -1934,9 +1946,11 @@ Gym training (top-tier base 95 эн) → 76 эн при skill=20.
 
 ---
 
-### 4.43. Daily Reflection — статистика прогресса при старте дня `[M / S / todo]`
+### 4.43. Daily Reflection — статистика прогресса при старте дня `[L / S / todo (отложено 13.05.2026 — низкая ценность на текущем этапе)]`
 
 В начале каждого нового дня — короткое meta-сообщение с трекингом. Поощрение через данные.
+
+**Отложено** до момента когда engagement-фичи (4.3 Streak, 4.4 Achievements) станут актуальны — Daily Reflection лучше всего работает в связке с ними (цели на день, streak status). Сейчас reflection без этих контекстов даёт меньше ценности. Технически — задача простая (S, derived from history.jsonl, новый module daily_reflection.py + state.last_reflection_date flag). Когда возьмёмся — см. обсуждение 13.05.2026: Variant A (derive from history.jsonl), Trigger B (last_reflection_date flag), 7 базовых метрик (steps vs avg, drops, earnings, skills, level progress, streak).
 
 **Пример:**
 ```
@@ -2359,9 +2373,74 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 - 2 endpoint'а: `POST /web/level/allocate` (Form → HTML fragment) и `POST /api/level/allocate` (JSON через Pydantic `SkillAllocateRequest`). Общий helper `_validate_and_apply_skill_allocation(state, skill)` валидирует skill name + наличие очков, мутирует state, зовёт `persist_state_to_cloud`.
 - **Prerequisite-фикс:** `_dashboard_context` теперь зовёт `CharLevel(state).update_level()` на каждом рендере. До 0.2.1d web-игрок никогда не апал level и не получал очков навыков (метод вызывался только из CLI `level_status_bar`). Persist делается только при фактическом level-up.
 
+#### 4.48.9. Web: Банк (депозиты + кредиты) `[M / M / todo (формализовано 13.05.2026, blocked by 4.48.1 + 4.49 done ✓)]`
+
+Web-зеркало CLI Bank меню (4.49). Сейчас локация Банка работает **только в CLI** — игрок не может управлять депозитами / кредитами через web. Эта задача восполняет gap, переиспользуя готовую pure-логику из `bank.py`.
+
+**Контекст готовности:**
+- ✅ `bank.py` (4.49) содержит полный набор pure mutation helpers: `_deposit`, `_deposit_all`, `_withdraw`, `_withdraw_all`, `_take_loan`, `_repay_loan`, `_repay_loan_all`, `accrue_deposit`, `accrue_loan`, gate helpers (`can_open_deposit`, `can_withdraw`, `can_take_loan`, `can_repay_loan`).
+- ✅ Все 3 банк-навыка зарегистрированы в `_GYM_SKILL_DISPLAY` (banking_interest_rate / loan_capacity / loan_interest_reduction).
+- ✅ Round-trip persist через flat-keys в state.
+
+**Что нужно сделать:**
+
+1. **Display layer** — новая секция `<section id="bank">` в `_status_fragment.html`:
+   - Collapsed `<details>` по умолчанию.
+   - Summary: `🏦 Банк (12,345.67 $ deposit / 5,000 $ loan)` или `🔒 Заблокирован — прокачай навыки` при skill=0.
+   - Внутри 2 sub-блока (Депозит / Кредит), аналогичные CLI шапке.
+   - Pre-computed данные через helper `_build_bank_view(state)`.
+
+2. **Mutation endpoints** (7 Form + 7 API):
+   - `POST /web/bank/deposit` (Form: amount) + `POST /api/bank/deposit` (JSON)
+   - `POST /web/bank/deposit_all` + `POST /api/bank/deposit_all`
+   - `POST /web/bank/withdraw` (Form: amount) + `POST /api/bank/withdraw`
+   - `POST /web/bank/withdraw_all` + `POST /api/bank/withdraw_all`
+   - `POST /web/bank/take_loan` (Form: amount) + `POST /api/bank/take_loan`
+   - `POST /web/bank/repay_loan` (Form: amount) + `POST /api/bank/repay_loan`
+   - `POST /web/bank/repay_all` + `POST /api/bank/repay_all`
+
+3. **Pydantic models:**
+   - `BankAmountRequest(amount: float, gt=0)` — для операций с суммой.
+   - Endpoints без amount (`*_all`, `repay_all`) — без request body.
+
+4. **Helpers в `web/main.py`:**
+   - `_validate_and_apply_bank_op(state, op_name, amount=None) -> Optional[str]` — единая точка валидации + delegation в `bank.py` helpers + `persist_state_to_cloud()`. Возвращает текст ошибки или None.
+   - `_build_bank_view(state) -> dict` — pre-compute для шаблона: `{deposit, deposit_accrued_preview, loan, loan_accrued_preview, rate_deposit, rate_loan, max_loan, can_open_deposit, can_withdraw, can_take_loan, can_repay_loan, locked_reason}`.
+
+5. **UI patterns (следуя 4.48.5 Work):**
+   - `hx-confirm` на critical операциях: take_loan («Взять X $ под Y% годовых?»), withdraw_all («Снять всё (X $)?»), repay_all («Погасить весь долг (Y $)?»).
+   - Disabled buttons при gate-блокировке — visual indication (как в Gym для locked navykov).
+   - `bank_error` прокидывается через `_dashboard_context(bank_error=...)` для отображения сообщений.
+
+6. **Auto-finalize на каждом render:**
+   - `accrue_deposit(state)` + `accrue_loan(state)` в `_dashboard_context` (как `work_check_done`). Синхронизирует preview значения.
+   - Persist **не делается** на render (как `energy_time_charge`) — следующая mutation подтянет snapshot.
+
+7. **Тесты (по pattern 4.48.5 Work + 4.50.2 Drop UI):**
+   - Render: bank section visible, summary форматирование, locked/unlocked states.
+   - 7 web endpoints + 7 api endpoints — happy path + validation errors (insufficient funds, locked, zero amount).
+   - `_validate_and_apply_bank_op` — все 7 ops × all error paths.
+   - `_build_bank_view` — pre-compute correctness в разных states.
+   - hx-confirm presence на critical операциях.
+
+**Architecture pattern:** следует 4.48.5 (Work) — Form-data возвращают `_status_fragment.html` для HTMX swap, JSON endpoints возвращают snapshot dict. Reuse существующих helpers — никакой бизнес-логики в web layer.
+
+**Effort:** **M** — основная логика в `bank.py` готова. Скоуп: ~14 endpoints + 2 helpers в web/main.py + 1 section в template + ~20-25 тестов. По объёму близко к 4.48.5 (Work) или 4.50.2 (Drop UI).
+
+**Зависимости:**
+- ✅ 4.49 (Bank CLI) — done.
+- ✅ 4.48.1 (Dashboard) — done.
+- ⚠ 4.49.2.2 (Auto-repay) — НЕ блокирует, может быть реализован позже как Web-toggle отдельно.
+
 ---
 
-### 4.49. Локация "Банк" — депозиты, кредиты (зонтичная) `[H / M / todo]`
+### 4.49. Локация "Банк" — депозиты, кредиты (зонтичная) `[H / M / done in 0.2.2 (06.05.2026, 8 подзадач)]`
+
+**Зонтичная завершена 13.05.2026** — основная функциональность Банка (депозиты + кредиты + 3 банк-навыка) реализована в версии 0.2.2 в течение 06.05.2026.
+
+**Follow-up'ы (НЕ блокируют closure, вынесены в отдельные задачи):**
+- **4.49.2.2** Auto-repay toggle — низкий приоритет, оставлен под номером 4.49.2.2 для traceability с зонтичной.
+- **4.48.9** Web UI Банка — формальная подзадача в зонтичной 4.48 (Web Interface), не часть 4.49.
 
 **Контекст:** в коде уже есть `locations.py:bank_location` — печатает "В разработке". Эта зонтичная наполняет локацию реальной экономикой: депозиты с пассивным доходом + кредиты с долговой нагрузкой. CLI-only на старте, web — отдельная задача 4.48.9 после стабилизации CLI.
 
@@ -2527,7 +2606,9 @@ Phase 6 (loan skill)   → 4.49.3
 
 **Тесты:** 35 новых в test_bank.py (current_loan_rate / max_loan / can_take/repay matrix, accrue_loan idempotent / 100% / no-op, preview no-mutation, _take_loan blocked at skill=0 / normal / cap respect / zero, _repay_loan partial / auto-promote at ceil / over reject / insufficient / no debt / zero, _repay_loan_all exact float / insufficient / no debt, hook capitalize on skill-up для loan_interest_reduction / not on other skills, UI shows credit section / unlocked / take confirmation flow / cancel / repay full message). 1 тест в test_state.py обновлён (expected_keys: +2 ключа). All 499 tests pass (464 + 35), mypy 0 issues.
 
-##### 4.49.2.2. Auto-repay toggle: %-отчисление с зарплаты `[L / S / todo (blocked by 4.49.2.1)]`
+##### 4.49.2.2. Auto-repay toggle: %-отчисление с зарплаты `[L / S / deferred follow-up (вынесена 13.05.2026 из зонтичной 4.49 для closure, номер сохранён для traceability)]`
+
+**Не блокирует зонтичную 4.49** — вынесена как самостоятельный low-priority follow-up. Реализуется когда понадобится QoL-улучшение для игроков с активным кредитом.
 
 Опциональный toggle в Bank меню. Игрок включает «отчислять X% с каждой зарплаты на погашение кредита». При выплате зарплаты в `work_check_done` — если toggle ON и `loan_amount > 0` — забрать `salary * X / 100`, отдать в `_repay_loan` (с `accrue_loan` под капотом). Принудительной блокировки зарплаты НЕТ — это user-controlled опция.
 
