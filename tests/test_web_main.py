@@ -1931,12 +1931,14 @@ def test_energy_regen_does_not_trigger_persist(monkeypatch):
     assert persist_calls == []
 
 
-def test_energy_interval_with_speed_bonus():
-    """Speed-бонус 25% → interval = 60 * 0.75 = 45 сек на +1 энергии."""
+def test_energy_interval_with_regen_bonus():
+    """0.2.4i (task 4.21) — energy_regen_skill 25% → interval = 60 * 0.75 = 45 сек.
+    Speed-skill больше не влияет на regen (раньше до 0.2.4i — влиял через
+    speed_skill_equipment_and_level_bonus)."""
     state = GameState.default_new_game()
     state.energy = 30
     state.energy_max = 65
-    state.gym.speed_skill = 25  # 25% бонус
+    state.gym.energy_regen_skill = 25  # 25% бонус к regen
     # Stamp 90 сек назад → 90 // 45 = 2 → +2 энергии.
     state.energy_time_stamp = datetime.now().timestamp() - 90
     _setup_state(state)
@@ -1948,6 +1950,20 @@ def test_energy_interval_with_speed_bonus():
     # И data-energy-interval = 45 в DOM.
     body = response.text
     assert 'data-energy-interval="45"' in body
+
+
+def test_energy_interval_speed_skill_does_not_affect_regen():
+    """0.2.4i (task 4.21) — speed_skill больше НЕ влияет на regen.
+    interval = 60 даже при speed_skill=50 (если energy_regen_skill=0)."""
+    state = GameState.default_new_game()
+    state.gym.speed_skill = 50  # speed=50, regen=0
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/status")
+
+    body = response.text
+    assert 'data-energy-interval="60"' in body  # speed_skill игнорируется
 
 
 def test_format_real_time_helper():
@@ -2323,11 +2339,11 @@ def test_gym_skills_use_nested_details():
     next_section_pos = body.find('id="bonuses"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
-    # (после 0.2.4h / 4.28 — 16 навыков: + trader в money trilogy).
+    # (после 0.2.4i / 4.21 — 17 навыков: + energy_regen_skill после energy_max).
     import re
     details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
-    # 1 внешний + 16 nested = 17.
-    assert len(details_tags) == 17
+    # 1 внешний + 17 nested = 18.
+    assert len(details_tags) == 18
     # Ни один не должен быть `open`.
     for tag in details_tags:
         assert "open" not in tag, f"details unexpectedly open: {tag}"
@@ -2579,9 +2595,12 @@ def test_build_gym_skills_returns_all_entries():
     # money/loan/inspiration сдвинуты на одну вниз. После 0.2.4b (4.50.0) —
     # добавлен backpack_skill в самый низ. После 0.2.4h (4.28) — добавлен
     # trader в money trilogy (позиция 11), bank/inspiration/backpack
-    # сдвинуты на одну вниз.
+    # сдвинуты на одну вниз. После 0.2.4i (4.21) — добавлен
+    # energy_regen_skill сразу после energy_max_skill (позиция 3),
+    # все остальные сдвинуты на одну вниз.
     assert keys == [
-        "stamina", "energy_max_skill", "speed_skill", "luck_skill",
+        "stamina", "energy_max_skill", "energy_regen_skill",
+        "speed_skill", "luck_skill",
         "move_optimization_adventure", "move_optimization_gym",
         "move_optimization_work", "neatness_in_using_things",
         "money_saving", "earnings_boost", "trader",

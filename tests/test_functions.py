@@ -215,6 +215,39 @@ def test_energy_time_charge_clamps_to_max():
     assert state.energy == 50
 
 
+def test_energy_time_charge_uses_energy_regen_not_speed():
+    """0.2.4i (task 4.21) — energy_time_charge зависит от energy_regen_skill,
+    но НЕ от speed_skill. Прокачка Speed не должна влиять на regen.
+
+    До 0.2.4i эти две механики были связаны (общий speed_skill_equipment_and_level_bonus)."""
+    state = GameState.default_new_game()
+    state.gym.speed_skill = 50          # speed=50, regen=0
+    state.char_level.skill_speed = 30   # тоже не должен влиять
+    state.energy = 0
+    state.energy_max = 10
+    state.energy_time_stamp = timestamp_now() - 60  # ровно один base interval
+
+    energy_time_charge(state)
+
+    # interval = 60 сек (regen=0), elapsed=60 → +1 эн.
+    # Если бы speed_skill влиял (как до 0.2.4i): interval = 60 - 60*0.80 = 12 сек,
+    # elapsed=60 → 60//12 = 5 единиц энергии → state.energy=5.
+    assert state.energy == 1, "speed_skill не должен ускорять regen"
+
+
+def test_energy_time_charge_accelerates_with_energy_regen_skill():
+    """0.2.4i — прокачка energy_regen_skill ускоряет regen."""
+    state = GameState.default_new_game()
+    state.gym.energy_regen_skill = 50  # interval = 60 - 30 = 30 сек
+    state.energy = 0
+    state.energy_max = 10
+    state.energy_time_stamp = timestamp_now() - 90  # 90 // 30 = 3 единицы
+
+    energy_time_charge(state)
+
+    assert state.energy == 3
+
+
 # ----- save_game_date_last_enter (same-day path) -----
 
 def test_save_game_date_last_enter_same_day_recalcs_can_use():

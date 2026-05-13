@@ -7,7 +7,7 @@ from colorama import Fore, Style
 from datetime import datetime
 
 from adventure import Adventure
-from bonus import equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
+from bonus import energy_regen_interval, equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
 from functions_02 import format_money, format_timedelta
 from locations import icon_loc
 from settings import debug_mode
@@ -24,13 +24,19 @@ def timestamp_now() -> float:
 
 def energy_time_charge(state: GameState) -> None:
     """Регенерация энергии во времени. Одна единица каждые
-    speed_skill_equipment_and_level_bonus(60) секунд. При достижении
-    energy_max регенерация приостанавливается, стамп синкается к now."""
+    energy_regen_interval(60, state) секунд. При достижении
+    energy_max регенерация приостанавливается, стамп синкается к now.
+
+    Since 0.2.4i (task 4.21): использует `energy_regen_interval` (зависит
+    только от `gym.energy_regen_skill` + `char_level.skill_energy_regen`)
+    вместо ранее `speed_skill_equipment_and_level_bonus`. Это разделяет
+    регенерацию энергии от длительности активностей — Speed-прокачка
+    больше не ускоряет regen, и наоборот."""
     from bonus import compute_energy_max  # lazy — избегаем циклов при импорте functions
     now = timestamp_now()
     energy = state.energy
     energy_max = compute_energy_max(state)
-    interval = speed_skill_equipment_and_level_bonus(60, state)
+    interval = energy_regen_interval(60, state)
 
     if energy >= energy_max:
         # Клэмп излишка (например, после снятия экипировки energy_max уменьшился).
@@ -84,7 +90,7 @@ def status_bar(state: GameState) -> None:
           f'Daily 🔋: + {Fore.GREEN}{state.steps.daily_bonus}{Style.RESET_ALL} / '
           f'Level: + {Fore.GREEN}{state.char_level.skill_energy_max}{Style.RESET_ALL})', end='')
     if debug_mode:
-        print(f'(+ 1 эн. через: {abs(speed_skill_equipment_and_level_bonus(60, state) - (timestamp_now() - state.energy_time_stamp)):,.0f} sec.)', end='')
+        print(f'(+ 1 эн. через: {abs(energy_regen_interval(60, state) - (timestamp_now() - state.energy_time_stamp)):,.0f} sec.)', end='')
     print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{format_money(state.money)}{Style.RESET_ALL} $.')
 
     char_level_view.level_status_bar()
@@ -215,6 +221,7 @@ def char_info(state: GameState) -> None:
     print(f'\n- Выносливость: + {state.gym.stamina} % (+ {stamina_skill_bonus_def(state)} шагов).')
     print(f'- Максимальный запас энергии: + {state.gym.energy_max_skill} энергии.')
     print(f'- Скорость: + {state.gym.speed_skill} %.')
+    print(f'- Регенерация энергии: + {state.gym.energy_regen_skill} %.')
     print(f'- Удача: + {state.gym.luck_skill} %.')
 
     print('\n### Бонусы экипировки: ###')
@@ -231,6 +238,7 @@ def char_info(state: GameState) -> None:
           f"\n\t- Stamina: {state.char_level.skill_stamina}"
           f"\n\t- Energy Max: {state.char_level.skill_energy_max}"
           f"\n\t- Speed Skill: {state.char_level.skill_speed}"
+          f"\n\t- Energy Regen: {state.char_level.skill_energy_regen}"
           f"\n\t- Luck: {state.char_level.skill_luck}")
 
     print('\n####################################')

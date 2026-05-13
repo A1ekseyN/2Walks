@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 61 ключей legacy save format."""
+    """to_dict() возвращает все 63 ключа legacy save format."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -319,13 +319,14 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'char_level', 'char_level_up_skills',
         'lvl_up_skill_stamina', 'lvl_up_skill_energy_max',
         'lvl_up_skill_speed', 'lvl_up_skill_luck',
+        'lvl_up_skill_energy_regen',
         # Resources
         'loc', 'energy', 'energy_max', 'energy_time_stamp', 'money',
         # Training
         'skill_training', 'skill_training_name',
         'skill_training_timestamp', 'skill_training_time_end',
         # Gym skills
-        'stamina', 'energy_max_skill', 'speed_skill', 'luck_skill',
+        'stamina', 'energy_max_skill', 'speed_skill', 'energy_regen_skill', 'luck_skill',
         'neatness_in_using_things', 'mechanics', 'it_technologies',
         'banking_interest_rate', 'loan_capacity', 'loan_interest_reduction',
         'inspiration', 'money_saving', 'earnings_boost', 'trader',

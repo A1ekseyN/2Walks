@@ -17,6 +17,7 @@
 | `lvl_up_skill_stamina` | Прокачанное очками значение навыка "Stamina" от уровня |
 | `lvl_up_skill_energy_max` | Прокачанное очками значение навыка "Energy" от уровня |
 | `lvl_up_skill_speed` | Прокачанное очками значение навыка "Speed" от уровня |
+| `lvl_up_skill_energy_regen` | Прокачанное очками значение навыка "Energy Regen" от уровня (0.2.4i / task 4.21) |
 | `lvl_up_skill_luck` | Прокачанное очками значение навыка "Luck" от уровня |
 
 Источник данных для расчёта — `char_characteristic['steps_total_used']` (общее количество "потраченных" шагов за всю историю игры).
@@ -105,7 +106,8 @@ def calculate_level_from_total_used_steps(self):
 | 1 | Stamina | + 1 % к общему количеству шагов за день |
 | 2 | Energy | + 1 единица к максимальному запасу энергии (`energy_max`) |
 | 3 | Speed | + 1 % к скорости выполнения всех активностей (работа, тренировки, приключения) |
-| 4 | Luck | + 1 % к удаче (влияет на шанс выпадения предметов и их качество) |
+| 4 | Energy Regen | + 1 % к скорости регенерации энергии (с 0.2.4i / task 4.21 — отдельно от Speed) |
+| 5 | Luck | + 1 % к удаче (влияет на шанс выпадения предметов и их качество) |
 
 Распределение точечное: игрок выбирает один навык из списка, очко списывается из `char_level_up_skills`, соответствующее поле `lvl_up_skill_*` увеличивается на 1. Если очков нет (`char_level_up_skills == 0`), меню показывает текущие значения навыков, но не даёт прокачать.
 
@@ -153,6 +155,7 @@ progress_percentage = (steps_into_level / steps_needed) * 100 if steps_needed > 
 - `lvl_up_skill_stamina`
 - `lvl_up_skill_energy_max`
 - `lvl_up_skill_speed`
+- `lvl_up_skill_energy_regen` (с 0.2.4i / task 4.21)
 - `lvl_up_skill_luck`
 
 Сама таблица `LEVEL_THRESHOLDS` в сейв не идёт — она захардкожена в коде и одинакова для всех персонажей.

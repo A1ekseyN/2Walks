@@ -46,9 +46,9 @@ python game.py
 | Группа | Поле в state |
 |---|---|
 | Идентификатор дня и шаги | `state.date_last_enter`, `state.timestamp_last_enter`, `state.steps.{today,used,yesterday,total_used,can_use,daily_bonus}` |
-| Уровень и очки | `state.char_level.{level,up_skills,skill_stamina,skill_energy_max,skill_speed,skill_luck}` |
+| Уровень и очки | `state.char_level.{level,up_skills,skill_stamina,skill_energy_max,skill_speed,skill_energy_regen,skill_luck}` |
 | Ресурсы | `state.energy`, `state.energy_max` (cache; canonical = `bonus.compute_energy_max(state)`), `state.energy_time_stamp`, `state.money` |
-| Прокачиваемые навыки (Gym) | `state.gym.{stamina,energy_max_skill,speed_skill,luck_skill,neatness_in_using_things,move_optimization_adventure,move_optimization_gym,move_optimization_work,mechanics,it_technologies}` |
+| Прокачиваемые навыки (Gym) | `state.gym.{stamina,energy_max_skill,energy_regen_skill,speed_skill,luck_skill,neatness_in_using_things,move_optimization_adventure,move_optimization_gym,move_optimization_work,mechanics,it_technologies}` (17 навыков total после 0.2.4i / 4.21) |
 | Текущая тренировка | `state.training.{active,skill_name,timestamp,time_end}` |
 | Работа | `state.work.{work_type,active,hours,salary,start,end}` |
 | Приключение | `state.adventure.{active,name,start_ts,end_ts}` + `state.adventure.counters` (dict с 7 ключами `walk_easy/walk_normal/.../walk_30k`) |
@@ -136,16 +136,21 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 Меню `gym_menu(state)` позволяет запустить тренировку одного из навыков. На каждый навык рассчитана стоимость следующего уровня по общей таблице `skill_training_table` (`skill_training_data.py`): `steps`, `energy`, `money`, `time` (в секундах).
 
-Пункты меню Gym:
+Пункты меню Gym (17 навыков после 0.2.4i):
 
 1. Stamina — +1 % к общему количеству шагов.
 2. Energy Max — +1 ед. к максимуму энергии.
-3. Speed — +1 % к скорости всех активностей (работа, тренировки, приключения).
-4. Luck — +1 % к удаче (дропы).
-5. Оптимизация движений Adventure — -1 % требуемых шагов для приключений.
-6. Оптимизация движений Gym — -1 % шагов для тренировок.
-7. Оптимизация движений Work — -1 % шагов для работы.
-8. Аккуратность при использовании вещей — -1 % к износу экипировки.
+3. Регенерация энергии — +1 % к скорости regen (0.2.4i / task 4.21 — отдельно от Speed).
+4. Speed — +1 % к скорости активностей (работа, тренировки, приключения). НЕ влияет на regen с 0.2.4i.
+5. Luck — +1 % к удаче (дропы).
+6. Оптимизация движений Adventure — -1 % требуемых шагов для приключений.
+7. Оптимизация движений Gym — -1 % шагов для тренировок.
+8. Оптимизация движений Work — -1 % шагов для работы.
+9. Аккуратность при использовании вещей — -1 % к износу экипировки.
+10-12. Money trilogy (Экономия денег / Бонус к зарплате / Торговец).
+13-15. Bank-skills (Банковская ставка / Кредитный лимит / Снижение ставки по кредиту).
+16. Обучение (Inspiration) — +1 % к XP.
+17. Размер инвентаря — +1 слот к рюкзаку.
 
 При выборе ресурсы списываются через `actions.try_spend(state, steps, energy, money)` (атомарно: либо все хватит и спишется, либо ничего), затем `actions.start_training(state, skill_name, time_end, ...)` выставляет `state.training.active=True`, `state.training.skill_name`, `state.training.time_end = now + time * speed_modifier`. Фактический прирост уровня навыка случится в `skill_training_check_done(state)` на следующем тике главного цикла.
 
@@ -217,9 +222,9 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ### 4.3 Level и распределение очков (`u` в главном меню)
 
-`CharLevel(state)` (`level.py`) считает уровень персонажа по `state.steps.total_used` (формула в `update_level`), рисует прогресс-бар через `progress_bar()`, и при `state.char_level.up_skills > 0` даёт пункт `menu_skill_point_allocation()` — распределить очки на один из: `state.char_level.{skill_stamina, skill_energy_max, skill_speed, skill_luck}`.
+`CharLevel(state)` (`level.py`) считает уровень персонажа по `state.steps.total_used` (формула в `update_level`), рисует прогресс-бар через `progress_bar()`, и при `state.char_level.up_skills > 0` даёт пункт `menu_skill_point_allocation()` — распределить очки на один из: `state.char_level.{skill_stamina, skill_energy_max, skill_speed, skill_energy_regen, skill_luck}` (5 опций после 0.2.4i / 4.21 — добавлен skill_energy_regen).
 
-**Web (4.48.8 / 0.2.1d):** тот же модуль работает через 2 endpoint'а в `web/main.py` — `POST /web/level/allocate` (Form → HTML fragment), `POST /api/level/allocate` (JSON через `SkillAllocateRequest`). Общий helper `_validate_and_apply_skill_allocation(state, skill)` валидирует skill name и наличие очков, мутирует `state.char_level.{skill_<X>, up_skills}` и зовёт `persist_state_to_cloud()`. UI: `<section id="skills">` рендерится только если `up_skills > 0` (или есть `skill_error` для race condition'а), свёрнута по умолчанию. 4 кнопки с подтверждением через нативный browser confirm (HTMX `hx-confirm` атрибут) — игрок подтверждает каждый клик до отправки запроса. Без отмены (как в CLI). Важный prerequisite-фикс: `_dashboard_context` теперь зовёт `CharLevel(state).update_level()` на каждом рендере с persist'ом при фактическом level-up — до 0.2.1d web-only игрок никогда не апал уровень и не получал очков.
+**Web (4.48.8 / 0.2.1d):** тот же модуль работает через 2 endpoint'а в `web/main.py` — `POST /web/level/allocate` (Form → HTML fragment), `POST /api/level/allocate` (JSON через `SkillAllocateRequest`). Общий helper `_validate_and_apply_skill_allocation(state, skill)` валидирует skill name и наличие очков, мутирует `state.char_level.{skill_<X>, up_skills}` и зовёт `persist_state_to_cloud()`. UI: `<section id="skills">` рендерится только если `up_skills > 0` (или есть `skill_error` для race condition'а), свёрнута по умолчанию. 5 кнопок (с 0.2.4i / 4.21 — добавлена Energy Regen) с подтверждением через нативный browser confirm (HTMX `hx-confirm` атрибут) — игрок подтверждает каждый клик до отправки запроса. Без отмены (как в CLI). Важный prerequisite-фикс: `_dashboard_context` теперь зовёт `CharLevel(state).update_level()` на каждом рендере с persist'ом при фактическом level-up — до 0.2.1d web-only игрок никогда не апал уровень и не получал очков.
 
 ---
 
@@ -294,7 +299,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ## 7. Энергия, скорость, бонусы — формулы коротко
 
-- **Регенерация энергии:** 1 единица за `speed_skill_equipment_and_level_bonus(60, state)` секунд. Это `60 * (1 - (state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed)/100)`. То есть при +50 % скорости одна энергия восстанавливается за 30 секунд. На максимуме (`state.energy == compute_energy_max(state)`) регенерация приостановлена — стамп двигается к `now`, время не банкуется.
+- **Регенерация энергии (после 0.2.4i / 4.21):** 1 единица за `bonus.energy_regen_interval(60, state)` секунд. Это `60 * (1 - (state.gym.energy_regen_skill + state.char_level.skill_energy_regen)/100)`. Equipment **не** учитывается в V1 (V2 / задача 4.57 добавит characteristic='energy_regen'). При +50 % бонуса одна энергия восстанавливается за 30 секунд. На максимуме (`state.energy == compute_energy_max(state)`) регенерация приостановлена — стамп двигается к `now`, время не банкуется. Длительность активностей (Gym/Work/Adventure) рассчитывается отдельно через `skill_bonus.speed_skill_equipment_and_level_bonus(time, state)` (использует speed_skill + equipment + char_level.skill_speed) — две независимые механики начиная с 0.2.4i.
 - **Energy max (после 0.2.1g):** `bonus.compute_energy_max(state) = 50 + state.gym.energy_max_skill + equipment_energy_max_bonus(state) + state.steps.daily_bonus + state.char_level.skill_energy_max`. Поле `state.energy_max` — кэш для save-format, в логике игры читается только через эту функцию.
 - **Время активностей (Gym/Work/Adventure):** `time * (1 - speed_bonus/100)` секунд.
 - **Шаги за активность:** `base_steps * (1 - state.gym.move_optimization_<area>/100)` через `apply_move_optimization_*(steps, state)` из `bonus.py`.

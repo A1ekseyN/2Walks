@@ -408,3 +408,61 @@ def test_apply_trader_returns_float_type():
     state = GameState.default_new_game()
     result = apply_trader(50, state)
     assert isinstance(result, float)
+
+
+# ----- 4.21 (0.2.4i) — energy_regen_interval -----
+
+from bonus import energy_regen_interval
+
+
+def test_energy_regen_interval_default_no_skill():
+    """Default state (regen=0, speed=0) → interval = base (60 сек)."""
+    state = GameState.default_new_game()
+    assert energy_regen_interval(60, state) == 60
+
+
+def test_energy_regen_interval_gym_skill_only():
+    """Только Gym energy_regen_skill = 25 → 60 - 60*0.25 = 45 сек."""
+    state = GameState.default_new_game()
+    state.gym.energy_regen_skill = 25
+    assert energy_regen_interval(60, state) == 45
+
+
+def test_energy_regen_interval_char_level_skill_only():
+    """Только CharLevel skill_energy_regen = 10 → 60 - 60*0.10 = 54 сек."""
+    state = GameState.default_new_game()
+    state.char_level.skill_energy_regen = 10
+    assert energy_regen_interval(60, state) == 54
+
+
+def test_energy_regen_interval_combined_sources():
+    """Gym + CharLevel суммируются. 14 + 6 = 20 → 60 - 60*0.20 = 48 сек."""
+    state = GameState.default_new_game()
+    state.gym.energy_regen_skill = 14
+    state.char_level.skill_energy_regen = 6
+    assert energy_regen_interval(60, state) == 48
+
+
+def test_energy_regen_interval_speed_skill_does_not_affect():
+    """0.2.4i — speed_skill больше НЕ влияет на regen. Это критическое
+    свойство разделения 4.21."""
+    state = GameState.default_new_game()
+    state.gym.speed_skill = 50            # speed=50 — не должен учитываться
+    state.char_level.skill_speed = 30     # тоже не должен
+    # Equipment speed не учитывается ни через одно поле (в V1 / 4.21).
+    assert energy_regen_interval(60, state) == 60  # interval = base
+
+
+def test_energy_regen_interval_skill_100_zero_interval():
+    """Edge: regen=100 → interval = 0 (мгновенный regen)."""
+    state = GameState.default_new_game()
+    state.gym.energy_regen_skill = 100
+    assert energy_regen_interval(60, state) == 0
+
+
+def test_energy_regen_interval_returns_int_type():
+    """Тип всегда int — для consistency с speed_skill_equipment_and_level_bonus."""
+    state = GameState.default_new_game()
+    state.gym.energy_regen_skill = 10
+    result = energy_regen_interval(60, state)
+    assert isinstance(result, int)

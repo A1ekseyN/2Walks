@@ -58,6 +58,7 @@ class CharLevel:
     skill_energy_max: int = 0   # was lvl_up_skill_energy_max
     skill_speed: int = 0        # was lvl_up_skill_speed
     skill_luck: int = 0         # was lvl_up_skill_luck
+    skill_energy_regen: int = 0  # 4.21 — allocation point для скорости regen (0.2.4i)
 
 
 @dataclass
@@ -65,6 +66,7 @@ class GymSkills:
     stamina: int = 0
     energy_max_skill: int = 0
     speed_skill: int = 0
+    energy_regen_skill: int = 0          # 4.21 — +1%/level к скорости regen энергии (0.2.4i). Без equipment-бонуса в V1 (V2 — задача 4.57).
     luck_skill: int = 0
     neatness_in_using_things: int = 0
     move_optimization_adventure: int = 0
@@ -223,12 +225,14 @@ class GameState:
                 skill_energy_max=int(d.get('lvl_up_skill_energy_max', 0)),
                 skill_speed=int(d.get('lvl_up_skill_speed', 0)),
                 skill_luck=int(d.get('lvl_up_skill_luck', 0)),
+                skill_energy_regen=int(d.get('lvl_up_skill_energy_regen', 0)),
             ),
 
             gym=GymSkills(
                 stamina=int(d.get('stamina', 0)),
                 energy_max_skill=int(d.get('energy_max_skill', 0)),
                 speed_skill=int(d.get('speed_skill', 0)),
+                energy_regen_skill=int(d.get('energy_regen_skill', 0)),
                 luck_skill=int(d.get('luck_skill', 0)),
                 neatness_in_using_things=int(d.get('neatness_in_using_things', 0)),
                 move_optimization_adventure=int(d.get('move_optimization_adventure', 0)),
@@ -366,6 +370,7 @@ class GameState:
             'lvl_up_skill_energy_max': self.char_level.skill_energy_max,
             'lvl_up_skill_speed': self.char_level.skill_speed,
             'lvl_up_skill_luck': self.char_level.skill_luck,
+            'lvl_up_skill_energy_regen': self.char_level.skill_energy_regen,
 
             # Resources
             'loc': self.loc,
@@ -384,6 +389,7 @@ class GameState:
             'stamina': self.gym.stamina,
             'energy_max_skill': self.gym.energy_max_skill,
             'speed_skill': self.gym.speed_skill,
+            'energy_regen_skill': self.gym.energy_regen_skill,
             'luck_skill': self.gym.luck_skill,
             'neatness_in_using_things': self.gym.neatness_in_using_things,
             'mechanics': self.gym.mechanics,

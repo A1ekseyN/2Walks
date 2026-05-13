@@ -113,15 +113,21 @@ class CharLevel:
         return ""
 
     def menu_skill_point_allocation(self) -> None:
-        """Меню распределения очков навыков после lvl up."""
+        """Меню распределения очков навыков после lvl up.
+
+        Since 0.2.4i (task 4.21): 5 опций вместо 4. Добавлена опция
+        Energy Regen — отделена от Speed по той же причине что в Gym
+        (см. bonus.energy_regen_interval / state.gym.energy_regen_skill).
+        """
         cl = self._state.char_level
         if cl.up_skills > 0:
             print(f"\nВам доступно: + {cl.up_skills} очков навыков."
                   f" Текущие навыки от уровня персонажа:"
                   f"\n\t1. Stamina: + {cl.skill_stamina} Добавляет + 1 % к общему количеству шагов"
-                  f"\n\t2. Energy: + {cl.skill_energy_max}  Добавляет + 1 ед. к общему запасу энергии "
+                  f"\n\t2. Energy: + {cl.skill_energy_max}  Добавляет + 1 ед. к общему запасу энергии"
                   f"\n\t3. Speed: + {cl.skill_speed}   Добавляет + 1 % к скорости выполнения активностей"
-                  f"\n\t4. Luck: + {cl.skill_luck}    Добавляет + 1 % к удаче."
+                  f"\n\t4. Energy Regen: + {cl.skill_energy_regen}  Добавляет + 1 % к скорости regen энергии"
+                  f"\n\t5. Luck: + {cl.skill_luck}    Добавляет + 1 % к удаче."
                   f"\n\t0. Назад")
             try:
                 ask = int(input(f"\nВведите навык, который хотите улучшить: \n>>> "))
@@ -142,6 +148,11 @@ class CharLevel:
                     print(f"\nНавык Speed Skill повышен до {cl.skill_speed}.")
                     log_event('skill_alloc', skill='speed', new_level=cl.skill_speed)
                 elif ask == 4:
+                    cl.skill_energy_regen += 1
+                    cl.up_skills -= 1
+                    print(f"\nНавык Energy Regen повышен до {cl.skill_energy_regen}.")
+                    log_event('skill_alloc', skill='energy_regen', new_level=cl.skill_energy_regen)
+                elif ask == 5:
                     cl.skill_luck += 1
                     cl.up_skills -= 1
                     print(f"\nНавык Luck повышен до {cl.skill_luck}.")
@@ -158,9 +169,10 @@ class CharLevel:
             print("\nУ вас нет очков навыков для распределения.")
             print(f"\nНавыки: "
                   f"\n\t1. Stamina: + {cl.skill_stamina} Добавляет + 1 % к общему количеству шагов"
-                  f"\n\t2. Energy: + {cl.skill_energy_max}  Добавляет + 1 ед. к общему запасу энергии "
+                  f"\n\t2. Energy: + {cl.skill_energy_max}  Добавляет + 1 ед. к общему запасу энергии"
                   f"\n\t3. Speed: + {cl.skill_speed}   Добавляет + 1 % к скорости выполнения активностей"
-                  f"\n\t4. Luck: + {cl.skill_luck}    Добавляет + 1 % к удаче.")
+                  f"\n\t4. Energy Regen: + {cl.skill_energy_regen}  Добавляет + 1 % к скорости regen энергии"
+                  f"\n\t5. Luck: + {cl.skill_luck}    Добавляет + 1 % к удаче.")
 
     def level_status_bar(self) -> None:
         """Отображение информации об Level персонажа, Прогресс бар, lvl-up."""

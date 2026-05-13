@@ -174,10 +174,11 @@ def _validate_and_apply_work(state, work_type: str, hours: int) -> Optional[str]
 
 # Skill allocation (4.48.8) — отображаемые навыки и эффект.
 _SKILL_DISPLAY = {
-    "stamina":    {"title": "Stamina",    "icon": "🏃", "effect": "+1 % к общему количеству шагов"},
-    "energy_max": {"title": "Energy Max", "icon": "🔋", "effect": "+1 ед. к общему запасу энергии"},
-    "speed":      {"title": "Speed",      "icon": "⚡", "effect": "+1 % к скорости активностей"},
-    "luck":       {"title": "Luck",       "icon": "🍀", "effect": "+1 % к удаче дропа"},
+    "stamina":      {"title": "Stamina",      "icon": "🏃",   "effect": "+1 % к общему количеству шагов"},
+    "energy_max":   {"title": "Energy Max",   "icon": "🔋",   "effect": "+1 ед. к общему запасу энергии"},
+    "speed":        {"title": "Speed",        "icon": "⚡",   "effect": "+1 % к скорости активностей"},
+    "energy_regen": {"title": "Energy Regen", "icon": "🔋⚡", "effect": "+1 % к скорости регенерации энергии"},
+    "luck":         {"title": "Luck",         "icon": "🍀",   "effect": "+1 % к удаче дропа"},
 }
 
 
@@ -219,6 +220,12 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "title": "Energy Max", "icon": "🔋",
         "field": "energy_max_skill",
         "effect": "+1 ед. к макс энергии",
+        "available": True,
+    },
+    "energy_regen_skill": {
+        "title": "Регенерация энергии", "icon": "🔋⚡",
+        "field": "energy_regen_skill",
+        "effect": "+1 % к скорости регенерации энергии",
         "available": True,
     },
     "speed_skill": {
@@ -645,7 +652,9 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
 
     # Параметры для JS-таймера энергии в _status_fragment.html (data-attrs).
     # JS раз в 60 сек обновляет цифру, считая `min(energy + floor((now-stamp)/interval), max)`.
-    energy_interval_sec = speed_skill_equipment_and_level_bonus(60, state)
+    # 0.2.4i (task 4.21) — interval теперь зависит от energy_regen_skill, не speed_skill.
+    from bonus import energy_regen_interval
+    energy_interval_sec = energy_regen_interval(60, state)
     # Computed energy_max (4.48.4.1 / 0.2.1g) — теперь не читается из state-кэша,
     # вычисляется из источников каждый рендер.
     from bonus import compute_energy_max
@@ -1028,7 +1037,7 @@ async def api_work_add_hours(payload: WorkAddHoursRequest):
 
 class SkillAllocateRequest(BaseModel):
     """Body для POST /api/level/allocate."""
-    skill: str = Field(..., description="stamina / energy_max / speed / luck")
+    skill: str = Field(..., description="stamina / energy_max / speed / energy_regen / luck")
 
 
 def _char_level_snapshot(state) -> dict:
@@ -1040,6 +1049,7 @@ def _char_level_snapshot(state) -> dict:
         "skill_stamina": cl.skill_stamina,
         "skill_energy_max": cl.skill_energy_max,
         "skill_speed": cl.skill_speed,
+        "skill_energy_regen": cl.skill_energy_regen,  # 0.2.4i (task 4.21)
         "skill_luck": cl.skill_luck,
     }
 

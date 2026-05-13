@@ -186,3 +186,28 @@ def apply_trader(price: float, state: GameState) -> float:
     """
     boost = state.gym.trader / 100.0
     return round(price * (1.0 + boost), 2)
+
+
+def energy_regen_interval(base_seconds: int, state: GameState) -> int:
+    """4.21 (0.2.4i) — Интервал regen энергии в секундах. Pure helper.
+
+    До 0.2.4i regen использовал `speed_skill_equipment_and_level_bonus` —
+    тот же helper что и для длительности активностей. Это связывало
+    несвязанные механики: прокачка Speed невольно ускоряла regen.
+
+    После 0.2.4i regen зависит ТОЛЬКО от energy_regen-источников:
+    - `state.gym.energy_regen_skill` (новый Gym-скилл)
+    - `state.char_level.skill_energy_regen` (новая CharLevel allocation)
+    - Equipment **не учитывается** в V1 (V2 / задача 4.57 добавит characteristic='energy_regen').
+
+    Формула: base - (base / 100) * (gym_regen + char_level_regen).
+    Возвращает целое (как и оригинальный speed_skill_equipment_and_level_bonus).
+
+    Edge cases:
+    - regen=0 (default) → interval = base (60 сек).
+    - regen=100 → interval = 0 (мгновенный regen).
+    - regen > 100 → отрицательный interval, но fmt сам clamp'нит к корректному
+      поведению (regen фактически мгновенный).
+    """
+    total = state.gym.energy_regen_skill + state.char_level.skill_energy_regen
+    return int(base_seconds - (base_seconds / 100) * total)
