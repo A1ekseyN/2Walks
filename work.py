@@ -9,7 +9,7 @@ from characteristics import save_characteristic
 from settings import debug_mode
 from functions_02 import format_money, time
 from equipment_bonus import equipment_speed_skill_bonus
-from bonus import apply_earnings_boost, apply_move_optimization_work
+from bonus import apply_earnings_boost, apply_energy_optimization_work, apply_move_optimization_work
 from inventory import Wear_Equipped_Items
 from actions import try_spend, start_work
 from state import GameState
@@ -18,6 +18,21 @@ from state import GameState
 def _speed_bonus_pct(state: GameState) -> int:
     """Сумма speed-бонусов в процентах: skill + equipment + level."""
     return state.gym.speed_skill + equipment_speed_skill_bonus(state) + state.char_level.skill_speed
+
+
+def _max_work_hours_by_energy(state: GameState, per_hour: int, cap: int = 8) -> int:
+    """4.22 (0.2.4j) — Максимальное кол-во часов которое игрок может позволить
+    себе по энергии С УЧЁТОМ `apply_energy_optimization_work` (total approach).
+
+    Без этой логики `max_hours = state.energy // per_hour` был бы слишком
+    консервативным — игрок не видит что с оптимизацией мог бы взять больше
+    часов. Loop по убыванию h от cap до 1, возвращает первое h при котором
+    optimized total ≤ state.energy. Дёшево (cap=8 итераций).
+    """
+    for h in range(cap, 0, -1):
+        if apply_energy_optimization_work(per_hour * h, state) <= state.energy:
+            return h
+    return 0
 
 
 class Work:
@@ -73,12 +88,17 @@ class Work:
             print(f'Оплата почасовая 🕑: 1 час = {time(work_time_per_hour)}')
 
             max_hours_by_steps = state.steps.can_use // self.work_requirements[work]['steps']
-            max_hours_by_energy = state.energy // self.work_requirements[work]['energy']
+            # 4.22 (0.2.4j) — max_hours_by_energy теперь учитывает energy_optimization_work
+            # (total approach). Loop helper — без него max_hours был бы слишком консервативным.
+            per_hour_energy = self.work_requirements[work]['energy']
+            max_hours_by_energy = _max_work_hours_by_energy(state, per_hour_energy)
             max_available_hours = min(max_hours_by_steps, max_hours_by_energy, 8)
 
+            # 4.22 — отображение optimized total energy за max_available_hours.
+            max_total_energy = apply_energy_optimization_work(max_available_hours * per_hour_energy, state)
             print(f'Max work hours: {Fore.LIGHTBLUE_EX}{max_available_hours}{Style.RESET_ALL} '
                   f'({Fore.LIGHTCYAN_EX}{max_available_hours * self.work_requirements[work]["steps"]}{Style.RESET_ALL} шагов, '
-                  f'{Fore.LIGHTGREEN_EX}{max_available_hours * self.work_requirements[work]["energy"]}{Style.RESET_ALL} энергии, '
+                  f'{Fore.LIGHTGREEN_EX}{max_total_energy}{Style.RESET_ALL} энергии, '
                   f'{Fore.LIGHTYELLOW_EX}{format_money(max_available_hours * effective_salary)}{Style.RESET_ALL} $ заработка).')
 
             try:
@@ -122,7 +142,13 @@ class Work:
             return False
 
         steps_cost = working_hours * self.work_requirements[work]['steps']
-        energy_cost = working_hours * self.work_requirements[work]['energy']
+        # 4.22 (0.2.4j) — apply_energy_optimization_work на TOTAL (per_hour × hours).
+        # Это важно — total approach убирает плато при low-base активностях
+        # (watchman 4 эн/ч: per-hour rounding давал бы saving=1 на skill 1-25,
+        # total approach даёт линейный saving).
+        energy_cost = apply_energy_optimization_work(
+            working_hours * self.work_requirements[work]['energy'], state
+        )
 
         if not try_spend(state, steps=steps_cost, energy=energy_cost):
             print('\nДописать функционал, который показывает, чего именно не хватило. Можно использовать метод класса.')

@@ -72,9 +72,24 @@ _WORK_DISPLAY = {
 
 
 def _max_work_hours(state, requirements: dict) -> int:
-    """Сколько часов работы покрывают текущие ресурсы (cap 8)."""
+    """Сколько часов работы покрывают текущие ресурсы (cap 8).
+
+    Since 0.2.4j (task 4.22) — energy cap учитывает `apply_energy_optimization_work`
+    (total approach): loop ищет максимальное h при котором optimized total ≤
+    state.energy. Без этого max_hours был бы консервативным.
+    """
+    from bonus import apply_energy_optimization_work
     steps_cap = state.steps.can_use // requirements['steps'] if requirements['steps'] > 0 else 0
-    energy_cap = state.energy // requirements['energy'] if requirements['energy'] > 0 else 0
+    per_hour_energy = requirements['energy']
+    if per_hour_energy > 0:
+        # Loop по убыванию (max 8 итераций).
+        energy_cap = 0
+        for h in range(8, 0, -1):
+            if apply_energy_optimization_work(per_hour_energy * h, state) <= state.energy:
+                energy_cap = h
+                break
+    else:
+        energy_cap = 8
     return int(min(steps_cap, energy_cap, 8))
 
 
@@ -105,13 +120,16 @@ def _build_hour_options(state, req: dict, max_hours: int) -> list:
     `{h}h 🕑 {real_time} · 🏃 -{steps} · 🔋 -{energy} · 💰 +{salary}` без
     арифметики в Jinja (4.48.5 follow-up — pre-compute в Python).
     """
+    from bonus import apply_energy_optimization_work
     speed_bonus_pct = _speed_bonus_pct(state)
     effective_salary = apply_earnings_boost(req['salary'], state)
     return [
         {
             "h": h,
             "steps": h * req['steps'],
-            "energy": h * req['energy'],
+            # 0.2.4j (task 4.22) — apply_energy_optimization_work на TOTAL
+            # (per_hour × h), не per-hour. Это убирает плато на low-base работах.
+            "energy": apply_energy_optimization_work(h * req['energy'], state),
             "salary": round(h * effective_salary, 2),
             "real_time": _format_real_time(round(h * 60 * (1 - speed_bonus_pct / 100))),
         }
@@ -258,6 +276,24 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "effect": "-1 % шагов на работу",
         "available": True,
     },
+    "energy_optimization_adventure": {
+        "title": "Экономия энергии в Adventure", "icon": "🗺️⚡",
+        "field": "energy_optimization_adventure",
+        "effect": "-1 % энергии на приключения (мин 1)",
+        "available": True,
+    },
+    "energy_optimization_gym": {
+        "title": "Экономия энергии в Gym", "icon": "🏋⚡",
+        "field": "energy_optimization_gym",
+        "effect": "-1 % энергии на тренировки (мин 1)",
+        "available": True,
+    },
+    "energy_optimization_work": {
+        "title": "Экономия энергии в Work", "icon": "🏭⚡",
+        "field": "energy_optimization_work",
+        "effect": "-1 % энергии на смену, применяется к total (мин 1)",
+        "available": True,
+    },
     "neatness_in_using_things": {
         "title": "Neatness", "icon": "🧰",
         "field": "neatness_in_using_things",
@@ -348,8 +384,9 @@ def _build_gym_skills(state) -> list:
             })
             continue
 
+        from bonus import apply_energy_optimization_gym
         steps_needed = apply_move_optimization_gym(cost_raw["steps"], state)
-        energy_needed = cost_raw["energy"]
+        energy_needed = apply_energy_optimization_gym(cost_raw["energy"], state)  # 4.22
         money_needed = apply_money_saving(cost_raw["money"], state)  # 4.20 — float после скидки
         real_minutes = round(_apply_speed_bonus(cost_raw["time"], state))
 
@@ -405,12 +442,14 @@ def _validate_and_apply_training(state, skill_name: str) -> Optional[str]:
     if cost_raw is None:
         return f"Навык '{skill_name}' достиг максимума по таблице (lvl {current})."
 
+    from bonus import apply_energy_optimization_gym
     steps_needed = apply_move_optimization_gym(cost_raw["steps"], state)
+    energy_needed = apply_energy_optimization_gym(cost_raw["energy"], state)  # 4.22
     money_needed = apply_money_saving(cost_raw["money"], state)
     if state.steps.can_use < steps_needed:
         return f"Не хватает 🏃: нужно {steps_needed}, есть {state.steps.can_use}."
-    if state.energy < cost_raw["energy"]:
-        return f"Не хватает 🔋: нужно {cost_raw['energy']}, есть {state.energy}."
+    if state.energy < energy_needed:
+        return f"Не хватает 🔋: нужно {energy_needed}, есть {state.energy}."
     if state.money < money_needed:
         return f"Не хватает 💰: нужно {format_money(money_needed)}, есть {format_money(state.money)}."
 

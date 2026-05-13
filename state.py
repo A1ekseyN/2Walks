@@ -72,6 +72,9 @@ class GymSkills:
     move_optimization_adventure: int = 0
     move_optimization_gym: int = 0
     move_optimization_work: int = 0
+    energy_optimization_adventure: int = 0     # 4.22 — -1%/level к энергозатратам Adventure. max(1, int(...)) clamp
+    energy_optimization_gym: int = 0           # 4.22 — -1%/level к энергозатратам Gym training
+    energy_optimization_work: int = 0          # 4.22 — -1%/level к total energy Work (per_hour × hours)
     mechanics: int = 0
     it_technologies: int = 0
     banking_interest_rate: int = 0       # 4.49 — bonus к ставке депозита (+1%/level)
@@ -238,6 +241,9 @@ class GameState:
                 move_optimization_adventure=int(d.get('move_optimization_adventure', 0)),
                 move_optimization_gym=int(d.get('move_optimization_gym', 0)),
                 move_optimization_work=int(d.get('move_optimization_work', 0)),
+                energy_optimization_adventure=int(d.get('energy_optimization_adventure', 0)),
+                energy_optimization_gym=int(d.get('energy_optimization_gym', 0)),
+                energy_optimization_work=int(d.get('energy_optimization_work', 0)),
                 mechanics=int(d.get('mechanics', 0)),
                 it_technologies=int(d.get('it_technologies', 0)),
                 banking_interest_rate=int(d.get('banking_interest_rate', 0)),
@@ -407,6 +413,9 @@ class GameState:
             'move_optimization_adventure': self.gym.move_optimization_adventure,
             'move_optimization_gym': self.gym.move_optimization_gym,
             'move_optimization_work': self.gym.move_optimization_work,
+            'energy_optimization_adventure': self.gym.energy_optimization_adventure,
+            'energy_optimization_gym': self.gym.energy_optimization_gym,
+            'energy_optimization_work': self.gym.energy_optimization_work,
 
             # Work session
             'work': self.work.work_type,

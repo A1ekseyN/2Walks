@@ -1264,46 +1264,146 @@ Append-only лог значимых игровых событий. Даёт:
 
 ---
 
-### 4.22. Новые навыки: Energy Optimization per-activity (-1% к энергозатратам) `[M / M / todo]`
+### 4.22. Новые навыки: Energy Optimization per-activity (-1% к энергозатратам) `[M / M / done in 0.2.4j (13.05.2026)]`
 
 Группа из **трёх навыков**, симметрично существующим `move_optimization_adventure / gym / work`. Каждый снижает стоимость энергии для своей категории активностей на 1% за уровень.
 
 **Цель разбиения** — увеличить количество прокачиваемых навыков (стимул больше ходить), а не давать один универсальный мульти-эффект.
 
-**Новые навыки:**
+**Глобальная цель скиллов** — не просто «сэкономить энергию», а **разблокировать прогрессию**: дать игроку возможность прокачивать навыки в Спортзале / делать high-tier Adventures / запускать длинные Work shifts, когда базовая стоимость превышает текущий `energy_max`. Конкретный кейс: Stamina lvl 19 стоит 95 эн, а `energy_max` = 65. Без energy_optimization это полная блокировка.
+
+#### Новые навыки
+
 - `energy_optimization_adventure` — экономия энергии в Adventure (`adventure.py`).
-- `energy_optimization_gym` — экономия энергии в Gym training (`skill_training_table[lvl]["energy"]`).
+- `energy_optimization_gym` — экономия энергии в Gym training (`gym.py`).
 - `energy_optimization_work` — экономия энергии в Work shifts (`work.py`).
 
-**Реализация:**
-1. Три новых ключа в `char_characteristic` (`characteristics.py`).
-2. Записи в `skill_training_table` для каждого (или общая таблица — как для `move_optimization_*` сейчас).
-3. Три пункта в меню Gym (после существующих move_optimization).
-4. Helper-функции в `bonus.py` по аналогии с `apply_move_optimization_*`: `apply_energy_optimization_adventure(base)`, `..._gym(base)`, `..._work(base)`.
-5. Вызовы в местах списания энергии — каждая категория свой helper.
-6. Save в трёх форматах (CSV, JSON, Sheets).
+#### Дизайн-решения (13.05.2026, обсуждение)
 
-**Баланс — ключевой вопрос (требует обсуждения).**
+| Вопрос | Решение |
+|---|---|
+| Формула | Линейная `-1% за уровень`, **clamp `max(1, int(adjusted))`** — никогда не бесплатно. |
+| Сравнение с другими reduction-скиллами | Match с `move_optimization_*` / `money_saving` / `trader` — все используют `int(base × (1 − skill/100))`. Никаких diminishing/cap для consistency. |
+| **Round behaviour** | `int()` truncate финальной стоимости = savings округляются ВВЕРХ. Например base=10, skill=1: cost=int(9.9)=9, saving=1 (0.1 округлено до 1). |
+| **Application scope для Work** | На **TOTAL** (per_hour × hours), НЕ per-hour. Это убирает плато в low-base активностях (watchman 4 эн/ч: per-hour rounding давал бы saving=1 на skill 1-25, total approach даёт линейный saving). |
+| Application scope для Gym / Adventure | На single transaction (base = total, нет batching). |
+| **Min cost = 1** | `max(1, int(adjusted))` — игрок никогда не платит 0 энергии. Защита от skill=100 эксплоита. |
+| Migration legacy сейвов | β-вариант — все 3 новых скилла начинают с 0. |
+| Position в Gym menu | Сразу после `move_optimization_*` (поз. 9-11). 17 → **20 опций**. neatness/money trilogy/bank/inspiration/backpack сдвигаются 9-17 → 12-20. |
+| Title (CLI + web) | «Экономия энергии в Adventure / Gym / Work». |
+| Icon (web) | 🗺️⚡ / 🏋⚡ / 🏭⚡ — match с move_opt icons + молния. |
+| Adventure architecture | **Отдельный helper** `apply_energy_optimization_adventure(adv_data, state)` мутирует `adv_data['energy']`. Вызывается в `Adventure.__init__` после `apply_move_optimization_adventure`. |
+| Equipment characteristic | НЕТ. Match `move_optimization_*` pattern. |
+| CharLevel allocation | НЕТ. Match `move_optimization_*` (CharLevel skill allocation остаётся 5 опций после 4.21). |
+| Skill training cost | Общая `skill_training_table` (без отдельной таблицы для energy_opt). |
+| Версия | **0.2.4j**. |
 
-Текущая ситуация: `energy_max` в начале игры 50, прокачивается до ~100. Активности тратят 4-95 энергии (от 4 за watchman work до 95 за топ-skill training). Энергия восстанавливается ~1 ед./мин.
+#### Implementation plan
 
-Если сделать линейное `-1% за уровень`:
-- На lvl=10: training за 95 эн. → 85 эн.
-- На lvl=50: training за 95 эн. → 47 эн.
-- На lvl=100: training за 95 эн. → 0 эн. ⚠️ — играть бесплатно.
+**Code:**
 
-Варианты:
-- **Diminishing returns**: `actual = base / (1 + lvl / 100)`. На lvl=100 даст −50%, на lvl=200 даст −66%. Никогда не уйдёт в 0.
-- **Hard cap**: max 30-50% скидка, дальше прокачка ничего не даёт.
-- **Soft cap с диминишингом** — комбинация (как в Path of Exile / Diablo).
-- **Линейная с малым множителем**: `-0.5%` за уровень, тогда на lvl=100 будет −50% и игра остаётся challenging.
+1. **`state.py`** — 3 новых поля `GymSkills.energy_optimization_{adventure,gym,work}: int = 0` + round-trip flat-keys.
 
-**Что нужно сделать перед реализацией:**
-1. Прогнать симулятор `drop_test_montecarlo.py` (или новый `economy_test.py`) с разными формулами и cap'ами.
-2. Посмотреть **реальные примеры** из подобных игр: Path of Exile (mana cost reduction caps), RuneScape (skill bonuses), idle-RPGs.
-3. Согласовать с другими reduction-навыками (`move_optimization_*`, потенциальный 4.20 Money Saving) — единая формула для всех reduction-скиллов или разные?
+2. **`bonus.py`** — 3 helper'а:
+   ```python
+   def apply_energy_optimization_adventure(adv_data: dict, state) -> dict:
+       adjusted = adv_data['energy'] * (1 - state.gym.energy_optimization_adventure / 100)
+       adv_data['energy'] = max(1, int(adjusted))
+       return adv_data
 
-**Зависимость:** напрямую не блокируется ничем, но логично делать **после 4.20** (там же будет принят выбор формулы для reduction-скиллов). Также имеет смысл синхронизировать с `move_optimization_*` — если переходим на diminishing returns или cap, имеет смысл переделать и существующие move_optimization скиллы под ту же формулу.
+   def apply_energy_optimization_gym(energy: int, state) -> int:
+       adjusted = energy * (1 - state.gym.energy_optimization_gym / 100)
+       return max(1, int(adjusted))
+
+   def apply_energy_optimization_work(energy: int, state) -> int:
+       """Применяется к TOTAL energy (per_hour × hours), не per-hour."""
+       adjusted = energy * (1 - state.gym.energy_optimization_work / 100)
+       return max(1, int(adjusted))
+   ```
+
+3. **`adventure.py`** — в `Adventure.__init__` для каждого приключения после `apply_move_optimization_adventure`:
+   ```python
+   data = dict(adventure_data_table[name])
+   data = apply_move_optimization_adventure(data, state)
+   data = apply_energy_optimization_adventure(data, state)
+   ```
+
+4. **`gym.py`** — wrap `cost['energy']` в `apply_energy_optimization_gym(cost['energy'], state)`:
+   - В `start_skill_training` перед `try_spend`.
+   - В cost preview меню (display).
+
+5. **`work.py`** — wrap `energy_per_hour × hours` через helper:
+   - В `check_requirements`: `energy_cost = apply_energy_optimization_work(per_hour × hours, state)` перед `try_spend`.
+   - В UI / hour_options: каждая опция показывает optimized total.
+   - `max_hours_by_energy` — новый helper с loop (max 8 итераций) находит максимальное h, где optimized total ≤ state.energy. Без этого игрок видит конс ервативный cap и не понимает что может больше.
+
+6. **`gym.py`** — `_SKILL_DESCRIPTIONS` + skill_options menu (положение 9-11, сдвиг 12-20 для остальных).
+
+7. **`web/main.py`** — `_GYM_SKILL_DISPLAY` с тремя entries и иконками 🗺️⚡ / 🏋⚡ / 🏭⚡. `_build_hour_options` / `_build_work_vacancies` показывают optimized total.
+
+**Tests:**
+
+| Файл | Изменения |
+|---|---|
+| `tests/test_state.py` | expected_keys 63 → 66 (3 новых поля). |
+| `tests/test_bonus.py` | +9 тестов (sanity / linear / clamp_min_1 / clamp_at_zero / Work total approach). |
+| `tests/test_functions.py` | n/a (helpers не в functions.py). |
+| `tests/test_work.py` | max_hours_by_energy с optimization (forwarder 65 эн, skill=50 → 4h вместо 2h). |
+| `tests/test_adventure.py` | walk_30k base 70 → 56 при skill=20. |
+| `tests/test_gym.py` | Gym training cost reduces with skill. |
+| `tests/test_web_main.py` | gym order 17 → 20 keys, +3 details (18 → 21 total). |
+
+**Docs:**
+
+- `CLAUDE.md` — skill count 17 → 20. Описание apply_energy_optimization_* в bonus.py секции. Объяснение total-vs-per-hour для Work.
+- `docs/game_console.md` — Gym menu 17 → 20 опций. Energy regen formula уже отдельно (4.21), добавить энергозатраты с energy_optimization.
+- `changelog.txt` — entry 0.2.4j.
+
+#### Analysis при практической прокачке (skill 0-20)
+
+Для понимания UX в реальной игре. Все 4 работы в практическом диапазоне skill 0-20 показывают линейную экономию ~ nominal %:
+
+| Работа | base/h | 8h @ skill=20 | Real saving |
+|---|---|---|---|
+| Watchman | 4 | 25 (vs 32 base) | 22% |
+| Factory | 7 | 44 (vs 56) | 21% |
+| Courier | 10 | 64 (vs 80) | 20% |
+| Forwarder | 30 | 192 (vs 240) | 20% |
+
+Adventure walk_30k base 70 эн → 56 эн при skill=20 (20% saving) — открывает доступ для игроков с energy_max < 70.
+
+Gym training (top-tier base 95 эн) → 76 эн при skill=20.
+
+#### Известное ограничение — chicken-and-egg
+
+Прокачка `energy_optimization_gym` сама требует энергии из общего `skill_training_table`. При `energy_max=65` skill упирается в потолок ~lvl 15 (cost=int(80×0.85)=68 > 65 для lvl 16). Дальнейший progress требует параллельных каналов:
+
+- `steps.daily_bonus` (+1 эн за каждые 10k+ шагов в день).
+- Equipment с `characteristic='energy_max'` (random drop).
+- `char_level.skill_energy_max` allocation (требует unallocated CharLevel points).
+
+**Это намеренный design** — late-game требует grinding по нескольким направлениям, а не одной кнопки. Сам `energy_optimization` даёт значительный partial progress (открывает ~5-10 уровней прокачки) и стимулирует прокачивать его.
+
+Дополнительные balance changes (cheaper progression для energy_optimization / base ENERGY_MAX 50 → 60 / buff CharLevel allocation +5 вместо +1) — **не делаем в этой задаче**. Если в будущем chicken-and-egg окажется блокирующим — обсудим отдельной задачей.
+
+#### Effort
+
+| Phase | Сложность |
+|---|---|
+| state.py — 3 поля + round-trip | S |
+| bonus.py — 3 helper'а | S |
+| adventure.py — extend init | S |
+| gym.py — wrap cost + display | S |
+| work.py — wrap total cost + max_hours helper + 4 UI places | M |
+| gym.py — menu shift (17 → 20 опций) | M |
+| Tests — ~12 новых | M |
+| Docs — CLAUDE.md / docs / changelog | S |
+
+**Total: M** — широкий объём, но мелкие изменения.
+
+#### Зависимости
+
+Не блокируется ничем. После 4.21 (Speed split в 0.2.4i) — отдельная задача без overlap.
 
 ---
 

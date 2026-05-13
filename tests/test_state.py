@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 63 ключа legacy save format."""
+    """to_dict() возвращает все 66 ключей legacy save format."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -333,6 +333,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'backpack_skill',
         'move_optimization_adventure', 'move_optimization_gym',
         'move_optimization_work',
+        'energy_optimization_adventure', 'energy_optimization_gym',
+        'energy_optimization_work',
         # Work
         'work', 'work_salary', 'working', 'working_hours',
         'working_start', 'working_end',

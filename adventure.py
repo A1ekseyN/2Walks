@@ -11,7 +11,7 @@ from drop import Drop_Item, compute_grade_probabilities
 from functions_02 import format_money, format_timedelta, time
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from settings import debug_mode
-from bonus import apply_move_optimization_adventure
+from bonus import apply_energy_optimization_adventure, apply_move_optimization_adventure
 from inventory import Wear_Equipped_Items
 from actions import try_spend, start_adventure as actions_start_adventure
 from state import GameState
@@ -38,14 +38,22 @@ class Adventure:
         # dict[str, dict[str, Any]] — внутренние values имеют mixed types
         # ('name': str, 'data': dict). Без явного annotate mypy выводит
         # Collection[Any] и индексация adv['data']['steps'] становится ошибкой.
+        # Since 0.2.4j (task 4.22) — apply_energy_optimization_adventure после
+        # apply_move_optimization_adventure: первая мутирует 'steps', вторая 'energy'.
+        def _prepare_adv(name: str) -> dict:
+            data = dict(adventure_data_table[name])
+            data = apply_move_optimization_adventure(data, self._state)
+            data = apply_energy_optimization_adventure(data, self._state)
+            return data
+
         self.adventures: dict[str, dict[str, Any]] = {
-            '1': {'name': 'walk_easy', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_easy']), self._state)},
-            '2': {'name': 'walk_normal', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_normal']), self._state)},
-            '3': {'name': 'walk_hard', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_hard']), self._state)},
-            '4': {'name': 'walk_15k', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_15k']), self._state)},
-            '5': {'name': 'walk_20k', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_20k']), self._state)},
-            '6': {'name': 'walk_25k', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_25k']), self._state)},
-            '7': {'name': 'walk_30k', 'data': apply_move_optimization_adventure(dict(adventure_data_table['walk_30k']), self._state)},
+            '1': {'name': 'walk_easy', 'data': _prepare_adv('walk_easy')},
+            '2': {'name': 'walk_normal', 'data': _prepare_adv('walk_normal')},
+            '3': {'name': 'walk_hard', 'data': _prepare_adv('walk_hard')},
+            '4': {'name': 'walk_15k', 'data': _prepare_adv('walk_15k')},
+            '5': {'name': 'walk_20k', 'data': _prepare_adv('walk_20k')},
+            '6': {'name': 'walk_25k', 'data': _prepare_adv('walk_25k')},
+            '7': {'name': 'walk_30k', 'data': _prepare_adv('walk_30k')},
         }
         self.adventure_requirements = {}
         for key, adv in self.adventures.items():

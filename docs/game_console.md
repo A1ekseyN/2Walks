@@ -48,7 +48,7 @@ python game.py
 | Идентификатор дня и шаги | `state.date_last_enter`, `state.timestamp_last_enter`, `state.steps.{today,used,yesterday,total_used,can_use,daily_bonus}` |
 | Уровень и очки | `state.char_level.{level,up_skills,skill_stamina,skill_energy_max,skill_speed,skill_energy_regen,skill_luck}` |
 | Ресурсы | `state.energy`, `state.energy_max` (cache; canonical = `bonus.compute_energy_max(state)`), `state.energy_time_stamp`, `state.money` |
-| Прокачиваемые навыки (Gym) | `state.gym.{stamina,energy_max_skill,energy_regen_skill,speed_skill,luck_skill,neatness_in_using_things,move_optimization_adventure,move_optimization_gym,move_optimization_work,mechanics,it_technologies}` (17 навыков total после 0.2.4i / 4.21) |
+| Прокачиваемые навыки (Gym) | `state.gym.{stamina,energy_max_skill,energy_regen_skill,speed_skill,luck_skill,neatness_in_using_things,move_optimization_adventure,move_optimization_gym,move_optimization_work,energy_optimization_adventure,energy_optimization_gym,energy_optimization_work,mechanics,it_technologies}` (20 навыков total после 0.2.4j / 4.22) |
 | Текущая тренировка | `state.training.{active,skill_name,timestamp,time_end}` |
 | Работа | `state.work.{work_type,active,hours,salary,start,end}` |
 | Приключение | `state.adventure.{active,name,start_ts,end_ts}` + `state.adventure.counters` (dict с 7 ключами `walk_easy/walk_normal/.../walk_30k`) |
@@ -136,7 +136,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 Меню `gym_menu(state)` позволяет запустить тренировку одного из навыков. На каждый навык рассчитана стоимость следующего уровня по общей таблице `skill_training_table` (`skill_training_data.py`): `steps`, `energy`, `money`, `time` (в секундах).
 
-Пункты меню Gym (17 навыков после 0.2.4i):
+Пункты меню Gym (20 навыков после 0.2.4j):
 
 1. Stamina — +1 % к общему количеству шагов.
 2. Energy Max — +1 ед. к максимуму энергии.
@@ -146,11 +146,14 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 6. Оптимизация движений Adventure — -1 % требуемых шагов для приключений.
 7. Оптимизация движений Gym — -1 % шагов для тренировок.
 8. Оптимизация движений Work — -1 % шагов для работы.
-9. Аккуратность при использовании вещей — -1 % к износу экипировки.
-10-12. Money trilogy (Экономия денег / Бонус к зарплате / Торговец).
-13-15. Bank-skills (Банковская ставка / Кредитный лимит / Снижение ставки по кредиту).
-16. Обучение (Inspiration) — +1 % к XP.
-17. Размер инвентаря — +1 слот к рюкзаку.
+9. **Экономия энергии в Adventure** — -1 % энергии (мин 1) на приключения (0.2.4j / task 4.22).
+10. **Экономия энергии в Gym** — -1 % энергии на тренировки (0.2.4j).
+11. **Экономия энергии в Work** — -1 % к **total** энергии (per_hour × hours), не per-hour. Это убирает плато на low-base работах (0.2.4j).
+12. Аккуратность при использовании вещей — -1 % к износу экипировки.
+13-15. Money trilogy (Экономия денег / Бонус к зарплате / Торговец).
+16-18. Bank-skills (Банковская ставка / Кредитный лимит / Снижение ставки по кредиту).
+19. Обучение (Inspiration) — +1 % к XP.
+20. Размер инвентаря — +1 слот к рюкзаку.
 
 При выборе ресурсы списываются через `actions.try_spend(state, steps, energy, money)` (атомарно: либо все хватит и спишется, либо ничего), затем `actions.start_training(state, skill_name, time_end, ...)` выставляет `state.training.active=True`, `state.training.skill_name`, `state.training.time_end = now + time * speed_modifier`. Фактический прирост уровня навыка случится в `skill_training_check_done(state)` на следующем тике главного цикла.
 

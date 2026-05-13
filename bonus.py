@@ -63,6 +63,45 @@ def apply_move_optimization_work(steps: int, state: GameState) -> int:
     return int(adjusted)
 
 
+# ===== 4.22 (0.2.4j) — Energy Optimization per-activity =====
+#
+# Группа из трёх навыков, симметричных move_optimization_*, но для энергии.
+# Линейная формула -1%/level, clamp `max(1, ...)` (никогда не бесплатно).
+# Для Work применяется к TOTAL (per_hour × hours), не per-hour — это убирает
+# плато в low-base активностях (watchman 4 эн/ч). Для Gym/Adventure base = total
+# (одна транзакция, нет batching).
+
+def apply_energy_optimization_adventure(adv_data: dict, state: GameState) -> dict:
+    """Уменьшает энергозатраты Adventure на % прокачки. Мутирует `adv_data['energy']`
+    in-place (как `apply_move_optimization_adventure` для `'steps'`). Clamp min=1.
+
+    Вызывается в `Adventure.__init__` после `apply_move_optimization_adventure`.
+    """
+    adjusted = adv_data['energy'] * (1 - state.gym.energy_optimization_adventure / 100)
+    adv_data['energy'] = max(1, int(adjusted))
+    return adv_data
+
+
+def apply_energy_optimization_gym(energy: int, state: GameState) -> int:
+    """Уменьшает энергозатраты Gym training (одна транзакция = одно списание).
+    Clamp min=1.
+    """
+    adjusted = energy * (1 - state.gym.energy_optimization_gym / 100)
+    return max(1, int(adjusted))
+
+
+def apply_energy_optimization_work(energy: int, state: GameState) -> int:
+    """Уменьшает энергозатраты Work shift. **Применяется к TOTAL energy**
+    (per_hour × hours), НЕ per-hour. Это даёт линейную экономию без плато,
+    которое было бы при per-hour rounding на low-base активностях (watchman
+    4 эн/ч). Clamp min=1.
+
+    Caller (work.py) ДОЛЖЕН передавать уже умноженное `per_hour * hours` значение.
+    """
+    adjusted = energy * (1 - state.gym.energy_optimization_work / 100)
+    return max(1, int(adjusted))
+
+
 def apply_money_saving(cost: float, state: GameState) -> float:
     """4.20 — Скидка на денежные траты (Gym / Shop). Линейная: -1% за уровень
     `state.gym.money_saving`. Возвращает `round(..., 2)` чтобы цены имели

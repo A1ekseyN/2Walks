@@ -2339,11 +2339,11 @@ def test_gym_skills_use_nested_details():
     next_section_pos = body.find('id="bonuses"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
-    # (после 0.2.4i / 4.21 — 17 навыков: + energy_regen_skill после energy_max).
+    # (после 0.2.4j / 4.22 — 20 навыков: + 3 energy_optimization_* после move_opt).
     import re
     details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
-    # 1 внешний + 17 nested = 18.
-    assert len(details_tags) == 18
+    # 1 внешний + 20 nested = 21.
+    assert len(details_tags) == 21
     # Ни один не должен быть `open`.
     for tag in details_tags:
         assert "open" not in tag, f"details unexpectedly open: {tag}"
@@ -2597,12 +2597,17 @@ def test_build_gym_skills_returns_all_entries():
     # trader в money trilogy (позиция 11), bank/inspiration/backpack
     # сдвинуты на одну вниз. После 0.2.4i (4.21) — добавлен
     # energy_regen_skill сразу после energy_max_skill (позиция 3),
-    # все остальные сдвинуты на одну вниз.
+    # все остальные сдвинуты на одну вниз. После 0.2.4j (4.22) —
+    # добавлены 3 energy_optimization_* (adventure/gym/work) после
+    # move_optimization_*, остальные сдвинуты ещё на 3 вниз.
     assert keys == [
         "stamina", "energy_max_skill", "energy_regen_skill",
         "speed_skill", "luck_skill",
         "move_optimization_adventure", "move_optimization_gym",
-        "move_optimization_work", "neatness_in_using_things",
+        "move_optimization_work",
+        "energy_optimization_adventure", "energy_optimization_gym",
+        "energy_optimization_work",
+        "neatness_in_using_things",
         "money_saving", "earnings_boost", "trader",
         "banking_interest_rate", "loan_capacity", "loan_interest_reduction",
         "inspiration",

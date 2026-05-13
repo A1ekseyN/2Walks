@@ -466,3 +466,124 @@ def test_energy_regen_interval_returns_int_type():
     state.gym.energy_regen_skill = 10
     result = energy_regen_interval(60, state)
     assert isinstance(result, int)
+
+
+# ----- 4.22 (0.2.4j) — apply_energy_optimization_* -----
+
+from bonus import (
+    apply_energy_optimization_adventure,
+    apply_energy_optimization_gym,
+    apply_energy_optimization_work,
+)
+
+
+def test_apply_energy_optimization_gym_skill_zero_unchanged():
+    """skill=0 → cost = base, clamp min=1 не активируется."""
+    state = GameState.default_new_game()
+    assert apply_energy_optimization_gym(50, state) == 50
+    assert apply_energy_optimization_gym(5, state) == 5
+
+
+def test_apply_energy_optimization_gym_linear_savings():
+    """skill=20: int(50×0.80) = 40. Линейная экономия 20%."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_gym = 20
+    assert apply_energy_optimization_gym(50, state) == 40
+
+
+def test_apply_energy_optimization_gym_clamp_min_1():
+    """skill=100 на любой base → cost = 1 (никогда не бесплатно)."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_gym = 100
+    assert apply_energy_optimization_gym(5, state) == 1
+    assert apply_energy_optimization_gym(95, state) == 1
+
+
+def test_apply_energy_optimization_gym_above_100_still_1():
+    """skill > 100 — всё ещё clamp до 1."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_gym = 200
+    assert apply_energy_optimization_gym(50, state) == 1
+
+
+def test_apply_energy_optimization_gym_savings_round_up():
+    """Низкая base — savings округляется вверх через int() truncation.
+    base=5, skill=10: int(5×0.90) = int(4.5) = 4. Saving = 1 (round up)."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_gym = 10
+    assert apply_energy_optimization_gym(5, state) == 4  # saving 1 (20% real)
+
+
+def test_apply_energy_optimization_work_applied_to_total():
+    """4.22 ключевой momentum: oптимизация на TOTAL, не per-hour.
+    
+    Watchman 4 эн/ч × 8h = 32 total. skill=20: int(32×0.80) = 25. Линейный 22%.
+    Per-hour подход дал бы int(4×0.80)=3 per hour × 8 = 24. Близко но не то.
+    Total approach строже соответствует nominal % на больших h."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_work = 20
+    assert apply_energy_optimization_work(32, state) == 25
+
+
+def test_apply_energy_optimization_work_clamp_min_1():
+    """skill=100 на длинной смене → 1 эн (никогда не бесплатно)."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_work = 100
+    # Forwarder 30/h × 8h = 240. С skill=100 → max(1, int(0)) = 1.
+    assert apply_energy_optimization_work(240, state) == 1
+
+
+def test_apply_energy_optimization_adventure_mutates_dict():
+    """apply_energy_optimization_adventure мутирует adv_data['energy'] in-place
+    (как apply_move_optimization_adventure для 'steps')."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_adventure = 20
+    adv_data = {'steps': 5000, 'energy': 50, 'time': 60}
+    result = apply_energy_optimization_adventure(adv_data, state)
+    assert result is adv_data  # same dict
+    assert adv_data['energy'] == 40  # mutated: int(50×0.80) = 40
+
+
+def test_apply_energy_optimization_adventure_clamp_min_1():
+    """skill=100 на walk_easy (base=10) → cost=1."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_adventure = 100
+    adv_data = {'energy': 10}
+    apply_energy_optimization_adventure(adv_data, state)
+    assert adv_data['energy'] == 1
+
+
+def test_apply_energy_optimization_helpers_return_int():
+    """Все 3 helper'а возвращают int (consistency с apply_move_optimization_*)."""
+    state = GameState.default_new_game()
+    state.gym.energy_optimization_gym = 10
+    state.gym.energy_optimization_work = 10
+    state.gym.energy_optimization_adventure = 10
+
+    assert isinstance(apply_energy_optimization_gym(50, state), int)
+    assert isinstance(apply_energy_optimization_work(50, state), int)
+    adv = {'energy': 50}
+    apply_energy_optimization_adventure(adv, state)
+    assert isinstance(adv['energy'], int)
+
+
+def test_apply_energy_optimization_work_watchman_skill_levels():
+    """Real-world watchman 4 эн/ч × 8h на разных skill levels.
+    Tаблица из TASKS.md 4.22."""
+    state = GameState.default_new_game()
+    base = 4 * 8  # 32 эн total
+
+    state.gym.energy_optimization_work = 0
+    assert apply_energy_optimization_work(base, state) == 32
+
+    state.gym.energy_optimization_work = 5
+    assert apply_energy_optimization_work(base, state) == 30
+
+    state.gym.energy_optimization_work = 10
+    assert apply_energy_optimization_work(base, state) == 28
+
+    state.gym.energy_optimization_work = 20
+    assert apply_energy_optimization_work(base, state) == 25
+
+    state.gym.energy_optimization_work = 50
+    assert apply_energy_optimization_work(base, state) == 16
