@@ -3188,7 +3188,7 @@ Steps 🏃: N, Energy 🔋: M, Money 💰: K $
 - Эти же skill'ы будут применяться и к Crafting (4.59.2), и к Gem combining (4.59.3) — universal Forge resource savings.
 - Решение по skill — после реализации базовой repair-механики. Сейчас MVP без skill'ов.
 
-##### 4.59.2. Crafting: upgrade Grade (2 → 1) `[M / M / todo (merged from 4.38, blocked by 4.59.0)]`
+##### 4.59.2. Crafting: upgrade Grade (2 → 1) `[M / M / done in 0.2.4o (14.05.2026)]`
 
 **Объединяет старую задачу 4.38 (Crafting / Forging).** Из двух **идентичных** предметов одного grade → один предмет следующего grade.
 
@@ -3472,6 +3472,77 @@ Steps 🏃: N, Energy 🔋: M, Money 💰: K $
 **Effort:** **S** — паттерн знакомый, повторение existing pattern. Скоуп: 3 поля в state + 3 helper'а + 3 entries в Gym + tests.
 
 **Зависимость:** blocked by 4.59.0 + 4.59.1 + 4.59.2 (нужны базовые Forge cost-расчёты которые потом обёртываются helper'ами). 4.59.3 (Gems) — не обязательное условие, можно подключить позже.
+
+---
+
+### 4.61. Поломка предметов: реальный эффект quality на gameplay `[L / M / todo (14.05.2026)]`
+
+**Идея.** Сейчас quality предмета — почти косметика: визуальный индикатор + цена при продаже. На бонус характеристик и работоспособность экипировки quality **не влияет вообще**. Это значит, что Repair (4.59.1) экономически имеет смысл только если игрок планирует продавать предметы — для активной игры нет давления ремонтировать. Добавить «настоящую» механику поломки чтобы:
+
+1. Дать смысл существующему скиллу `neatness_in_using_things` (сейчас он замедляет деградацию, которая ни на что не влияет).
+2. Создать экономический pressure на Repair / Crafting в Кузнице.
+3. Добавить новую механику игрового напряжения «следить за состоянием экипировки».
+
+**Анализ текущего состояния (14.05.2026, что обнаружено при review 4.59):**
+
+**Triggers износа** (списывается СРАЗУ при старте активности, не на завершении):
+- `gym.py:298` — после `start_skill_training()`, передаёт `apply_move_optimization_gym(steps)`.
+- `work.py:113` + `web/main.py:187` — после `check_requirements`, передаёт `hours × steps_per_hour` (**без** move_optimization!).
+- `adventure.py:228` — после `_enter_adventure`, передаёт `adv_steps` (с move_optimization применённой в `Adventure.__init__`).
+- `web/main.py:464` — Gym training через web (с оптимизацией).
+
+**Формула износа** (`inventory.py:299-323`, класс `Wear_Equipped_Items`):
+```
+max_durability = 10_000_000  (константа)
+neatness_factor = 1 - state.gym.neatness_in_using_things / 100
+adjusted_steps = steps × neatness_factor
+
+для каждого занятого слота equipment (7 слотов):
+    item_durability = max_durability × (current_quality / 100)
+    item_durability -= adjusted_steps
+    if item_durability < 0: item_durability = 0   # clamp
+    new_quality = (item_durability / max_durability) × 100
+```
+
+**Калибровка:** при `neatness = 0` каждые **100,000 шагов активности = −1% quality**. Полный износ 100→0% = **10М шагов активности**. На `neatness = 50` урон делится пополам; на `neatness = 100` экипировка не теряет quality вообще.
+
+**Что quality реально влияет на (сейчас):**
+
+| Влияет | НЕ влияет |
+|---|---|
+| `item['price']` после каждой активности (через `recalc_item_prices`) | `equipment_bonus`, `equipment_stamina_bonus`, `equipment_energy_max_bonus`, `equipment_speed_skill_bonus`, `equipment_luck_bonus` — все эти функции в `equipment_bonus.py` берут `item['bonus'][0]` НАПРЯМУЮ, **без чтения quality** |
+| Sort key в `forge.repair_candidates` | Любые игровые расчёты (drop chance, energy regen, и т.д.) |
+| Display: Inventory / Equipment / Forge menu | Auto-unequip / поломка / штраф — **отсутствует как класс** |
+
+**Главный вывод анализа:** на `quality = 0` предмет **НЕ ломается, НЕ исчезает, НЕ снимается со слота** и **продолжает давать ПОЛНЫЙ бонус** к статам как новый. Сломанный `s+grade stamina-helmet` (qual=0, price=0) даёт те же `+5 stamina` что и новый. То есть никакой «поломки» в игре сейчас не существует.
+
+**Варианты реализации поломки (для будущего обсуждения):**
+
+| Вариант | Описание | Pros | Cons |
+|---|---|---|---|
+| **A — Linear penalty** | Бонус = `base_bonus × (quality / 100)`. На qual=0 → 0 эффективного бонуса. | Простая формула, плавная кривая | Серьёзно меняет баланс: игрок постоянно теряет бонус, нужно реремонтировать. |
+| **B — Threshold cliff** | Бонус 100% пока `quality > threshold` (например 25), потом резко 0% / 50%. | Более прощающий — поломка только когда совсем плохо | Резкий перепад, игрок может «застрять» с broken-предметом неожиданно. |
+| **C — Auto-unequip at 0** | Предмет работает на 100% до qual=0, потом **автоматически снимается** в инвентарь (или пропадает). | Чёткий event, ясный trigger | Сложно: что если инвентарь полон? Disrupt active session? |
+| **D — Tiered penalty** | 100-75% → бонус 100%, 75-50% → 90%, 50-25% → 75%, 25-0% → 50%. | Компромисс A+B | Магические числа, нужно балансировать таблицу |
+| **E — Smooth + soft floor** | `bonus × max(0.5, quality/100)` — даже сломанный даёт минимум 50% | Никогда не «бесполезный», но penalty виден | Может быть слишком мягко (broken = всё ещё OK) |
+
+**Связи с другими задачами:**
+- **4.59.1 Repair** — становится осмысленным: ремонт не «для перепродажи», а «для функциональности». Resource pressure растёт.
+- **4.59.2 Crafting** — новый crafted предмет начинает с avg quality, что при variant A может быть болезненно (получил a-grade с qual 37 → 37% эффективности). Возможно нужен «полировка» (≈ Repair after Craft) или Crafting сразу даёт qual 100.
+- **`neatness_in_using_things`** — наконец становится критически важным skill'ом.
+- **1.6 Items as dataclass** — желательно сделать ДО этой задачи (рассчёт effective_bonus(item) cleaner на typed Item, чем на legacy dict).
+
+**Открытые вопросы (для дизайн-сессии):**
+
+1. Какой из вариантов A-E? **Не решено.**
+2. Грэйс-период / migration: старые сейвы с qual=50 предметами — сразу теряют 50% бонуса (variant A) или есть grace? **Не решено.**
+3. Adventure session-in-progress: если предмет «сломался» во время приключения, что происходит с финальной наградой? (износ списывается на старте — может стать sub-zero к концу). **Не решено.**
+4. Visual feedback: warning в status_bar когда любой слот opasно низкий? **Не решено.**
+5. Crafted предметы: avg quality (текущая логика) vs auto-100 quality после Crafting? **Не решено.**
+
+**Эффорт:** **M** — формула в `equipment_bonus.py` + thread через все callers + миграция баланса (Stamina-калибровка может сдвинуться). Не тривиальная задача, нужна осторожная балансировка и тесты на economy regression.
+
+**Зависимость:** **blocked by 4.59.1 Repair** (уже done в 0.2.4n — игрок должен иметь способ ремонтировать ДО введения поломки). Желательно после **1.6 Items as dataclass**.
 
 ---
 

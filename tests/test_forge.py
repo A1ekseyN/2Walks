@@ -6,6 +6,9 @@
 
 from state import GameState
 from forge import (
+    craft_item,
+    crafting_cost,
+    find_craftable_groups,
     forge_menu,
     max_repair_percent,
     repair_candidates,
@@ -55,7 +58,7 @@ def test_forge_menu_shows_resources_in_header(monkeypatch, capsys):
     forge_menu(state)
 
     out = capsys.readouterr().out
-    assert '5000' in out  # steps
+    assert '5,000' in out  # steps с thousands separator (симметрично status_bar)
     assert '42' in out  # energy
     assert '1,234.56' in out  # money с format_money
 
@@ -70,18 +73,6 @@ def test_forge_menu_invalid_input_loops_back(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert out.count('Неверный выбор') >= 2  # xyz и 99
-
-
-def test_forge_menu_craft_stub(monkeypatch, capsys):
-    """Пункт 2 — stub в 4.59.0, не падает."""
-    state = GameState.default_new_game()
-    inputs = iter(['2', '0'])
-    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
-
-    forge_menu(state)
-
-    out = capsys.readouterr().out
-    assert 'разработке (4.59.2)' in out
 
 
 def test_forge_menu_gem_stubs_deferred(monkeypatch, capsys):
@@ -350,3 +341,396 @@ def test_repair_flow_out_of_range_percent(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert 'вне диапазона' in out
     assert state.equipment.head['quality'][0] == 50.0
+
+
+# ----- 4.59.2 Crafting: pure helpers -----
+
+def test_crafting_cost_linear_by_tier():
+    """tier × (1000ш / 100$ / 10эн). s+grade — (0,0,0) cap."""
+    assert crafting_cost('c-grade') == (1000, 100, 10)
+    assert crafting_cost('b-grade') == (2000, 200, 20)
+    assert crafting_cost('a-grade') == (3000, 300, 30)
+    assert crafting_cost('s-grade') == (4000, 400, 40)
+    assert crafting_cost('s+grade') == (0, 0, 0)
+
+
+def test_find_craftable_groups_empty_state():
+    """Нет предметов → пустой список."""
+    state = GameState.default_new_game()
+    assert find_craftable_groups(state) == []
+
+
+def test_find_craftable_groups_single_no_match():
+    """1 предмет без пары → пусто."""
+    state = GameState.default_new_game()
+    state.inventory.append(_make_item('ring', 'b-grade', 50.0, 'luck', 2))
+    assert find_craftable_groups(state) == []
+
+
+def test_find_craftable_groups_pairs_inventory():
+    """2 одинаковых в инвентаре → 1 группа с 2 candidates."""
+    state = GameState.default_new_game()
+    state.inventory.append(_make_item('ring', 'b-grade', 50.0, 'luck', 2))
+    state.inventory.append(_make_item('ring', 'b-grade', 80.0, 'luck', 2))
+    groups = find_craftable_groups(state)
+    assert len(groups) == 1
+    g = groups[0]
+    assert g['item_type'] == 'ring'
+    assert g['characteristic'] == 'luck'
+    assert g['grade'] == 'b-grade'
+    assert g['next_grade'] == 'a-grade'
+    assert g['cost'] == (2000, 200, 20)
+    assert len(g['candidates']) == 2
+
+
+def test_find_craftable_groups_skip_different_characteristics():
+    """Same type+grade, different characteristic → НЕ объединяются."""
+    state = GameState.default_new_game()
+    state.inventory.append(_make_item('ring', 'b-grade', 50.0, 'luck', 2))
+    state.inventory.append(_make_item('ring', 'b-grade', 80.0, 'speed', 2))
+    assert find_craftable_groups(state) == []
+
+
+def test_find_craftable_groups_skip_different_grades():
+    """Same type+characteristic, different grade → НЕ объединяются."""
+    state = GameState.default_new_game()
+    state.inventory.append(_make_item('ring', 'b-grade', 50.0, 'luck', 2))
+    state.inventory.append(_make_item('ring', 'a-grade', 80.0, 'luck', 3))
+    assert find_craftable_groups(state) == []
+
+
+def test_find_craftable_groups_mixed_equipment_and_inventory():
+    """Equipped + inventory одинаковые → объединяются в одну группу."""
+    state = GameState.default_new_game()
+    state.equipment.finger_01 = _make_item('ring', 'b-grade', 95.0, 'luck', 2)
+    state.equipment.finger_02 = _make_item('ring', 'b-grade', 80.0, 'luck', 2)
+    state.inventory.append(_make_item('ring', 'b-grade', 60.0, 'luck', 2))
+    groups = find_craftable_groups(state)
+    assert len(groups) == 1
+    assert len(groups[0]['candidates']) == 3
+    # 2 из equipment + 1 inventory
+    slot_attrs = [meta[2] for meta in groups[0]['candidates']]
+    assert slot_attrs.count(None) == 1
+    assert sum(1 for s in slot_attrs if s is not None) == 2
+
+
+def test_find_craftable_groups_splus_cap_no_next():
+    """s+grade пара → группа с next_grade=None, cost=(0,0,0)."""
+    state = GameState.default_new_game()
+    state.inventory.append(_make_item('ring', 's+grade', 90.0, 'luck', 5))
+    state.inventory.append(_make_item('ring', 's+grade', 80.0, 'luck', 5))
+    groups = find_craftable_groups(state)
+    assert len(groups) == 1
+    assert groups[0]['next_grade'] is None
+    assert groups[0]['cost'] == (0, 0, 0)
+
+
+def test_find_craftable_groups_sorted_by_grade():
+    """Сортировка по grade asc: C → B → A → S → S+."""
+    state = GameState.default_new_game()
+    state.inventory.extend([
+        _make_item('ring', 'a-grade', 50, 'luck', 3),
+        _make_item('ring', 'a-grade', 80, 'luck', 3),
+        _make_item('helmet', 'c-grade', 50, 'stamina', 1),
+        _make_item('helmet', 'c-grade', 80, 'stamina', 1),
+    ])
+    groups = find_craftable_groups(state)
+    assert [g['grade'] for g in groups] == ['c-grade', 'a-grade']
+
+
+def test_craft_item_success_inventory_only():
+    """2 inventory → 1 next-grade item в inventory, ресурсы списаны."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    state.inventory.extend([
+        _make_item('ring', 'b-grade', 60.0, 'luck', 2),
+        _make_item('ring', 'b-grade', 80.0, 'luck', 2),
+    ])
+    a, b = state.inventory[0], state.inventory[1]
+
+    result = craft_item(state, a, b)
+
+    assert result is not None
+    assert result['grade'][0] == 'a-grade'
+    assert result['bonus'][0] == 3  # a-grade bonus value
+    assert result['quality'][0] == 70.0  # avg(60, 80)
+    assert result['item_type'][0] == 'ring'
+    assert result['characteristic'][0] == 'luck'
+    # a-grade × 70 × 1.5 = 105
+    assert result['price'][0] == 105
+    # Source items удалены, новый добавлен
+    assert len(state.inventory) == 1
+    assert state.inventory[0] is result
+    # Resources списаны (b-grade cost 2k/200/20)
+    assert state.steps.can_use == 3000
+    assert state.money == 300.0
+    assert state.energy == 30
+
+
+def test_craft_item_success_equipped_auto_unequip():
+    """2 equipped → оба слота None, новый item в inventory."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    a = _make_item('ring', 'b-grade', 90.0, 'luck', 2)
+    b = _make_item('ring', 'b-grade', 70.0, 'luck', 2)
+    state.equipment.finger_01 = a
+    state.equipment.finger_02 = b
+
+    result = craft_item(state, a, b)
+
+    assert result is not None
+    assert result['quality'][0] == 80.0
+    assert state.equipment.finger_01 is None
+    assert state.equipment.finger_02 is None
+    assert len(state.inventory) == 1
+    assert state.inventory[0] is result
+
+
+def test_craft_item_success_mixed_equipped_and_inventory():
+    """1 equipped + 1 inventory → equipped слот None, inventory size unchanged
+    (удалили 1, добавили 1)."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    a = _make_item('ring', 'b-grade', 90.0, 'luck', 2)
+    b = _make_item('ring', 'b-grade', 70.0, 'luck', 2)
+    state.equipment.finger_01 = a
+    state.inventory.append(b)
+
+    result = craft_item(state, a, b)
+
+    assert result is not None
+    assert state.equipment.finger_01 is None
+    assert len(state.inventory) == 1
+    assert state.inventory[0] is result
+
+
+def test_craft_item_rejects_splus_cap():
+    """s+grade нельзя крафтить → None, без мутаций."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 10000
+    state.money = 1000.0
+    state.energy = 100
+    a = _make_item('ring', 's+grade', 90.0, 'luck', 5)
+    b = _make_item('ring', 's+grade', 80.0, 'luck', 5)
+    state.inventory.extend([a, b])
+
+    assert craft_item(state, a, b) is None
+    assert len(state.inventory) == 2
+    assert state.steps.can_use == 10000
+
+
+def test_craft_item_rejects_same_object():
+    """Item и сам с собой → None (нельзя крафтить из 1 предмета)."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    a = _make_item('ring', 'b-grade', 60.0, 'luck', 2)
+    state.inventory.append(a)
+    assert craft_item(state, a, a) is None
+
+
+def test_craft_item_rejects_mismatched_attributes():
+    """Разные item_type / characteristic / grade → None."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    a = _make_item('ring', 'b-grade', 60.0, 'luck', 2)
+    b = _make_item('helmet', 'b-grade', 80.0, 'luck', 2)
+    state.inventory.extend([a, b])
+    assert craft_item(state, a, b) is None
+    assert len(state.inventory) == 2
+
+
+def test_craft_item_rejects_insufficient_resources():
+    """Не хватает ресурсов → None, без мутаций."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 500  # < 2000 нужно для B→A
+    state.money = 50.0
+    state.energy = 5
+    a = _make_item('ring', 'b-grade', 60.0, 'luck', 2)
+    b = _make_item('ring', 'b-grade', 80.0, 'luck', 2)
+    state.inventory.extend([a, b])
+
+    assert craft_item(state, a, b) is None
+    assert len(state.inventory) == 2
+    assert state.steps.can_use == 500
+
+
+def test_craft_item_rejects_inventory_overflow():
+    """2 equipped + inventory at cap → after craft inv = cap+1 → reject."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    # Default backpack_capacity = 10 + gym.backpack_skill (0) = 10
+    for _ in range(10):
+        state.inventory.append(_make_item('helmet', 'c-grade', 50, 'stamina', 1))
+    a = _make_item('ring', 'b-grade', 90.0, 'luck', 2)
+    b = _make_item('ring', 'b-grade', 70.0, 'luck', 2)
+    state.equipment.finger_01 = a
+    state.equipment.finger_02 = b
+
+    assert craft_item(state, a, b) is None
+    assert state.equipment.finger_01 is a  # без мутаций
+    assert len(state.inventory) == 10
+
+
+def test_craft_item_quality_avg_clamped_for_high_grades():
+    """Avg quality для всех grade переходов работает корректно."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 10000
+    state.money = 1000.0
+    state.energy = 100
+    a = _make_item('ring', 'a-grade', 100.0, 'luck', 3)
+    b = _make_item('ring', 'a-grade', 50.0, 'luck', 3)
+    state.inventory.extend([a, b])
+
+    result = craft_item(state, a, b)
+    assert result is not None
+    assert result['grade'][0] == 's-grade'
+    assert result['bonus'][0] == 4
+    assert result['quality'][0] == 75.0
+    # s-grade × 75 × 2.0 = 150
+    assert result['price'][0] == 150
+
+
+# ----- 4.59.2 Crafting: UI flow -----
+
+def test_craft_menu_empty_message(monkeypatch, capsys):
+    """Нет пар → friendly message + возврат в Forge."""
+    state = GameState.default_new_game()
+    inputs = iter(['2', '0'])  # Craft → выйти Forge
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    forge_menu(state)
+
+    out = capsys.readouterr().out
+    assert 'Нечего улучшать' in out
+
+
+def test_craft_menu_lists_groups(monkeypatch, capsys):
+    """2 группы → обе показаны в списке."""
+    state = GameState.default_new_game()
+    state.inventory.extend([
+        _make_item('ring', 'b-grade', 60, 'luck', 2),
+        _make_item('ring', 'b-grade', 80, 'luck', 2),
+        _make_item('helmet', 'c-grade', 50, 'stamina', 1),
+        _make_item('helmet', 'c-grade', 70, 'stamina', 1),
+    ])
+    inputs = iter(['2', '0', '0'])  # Craft → назад из групп → выйти Forge
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    forge_menu(state)
+
+    out = capsys.readouterr().out
+    assert 'Helmet c-grade stamina' in out
+    assert 'Ring b-grade luck' in out
+
+
+def test_craft_flow_full_success(monkeypatch, capsys):
+    """Полный flow: список → выбор группы → выбор 2 → yes → success."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    state.inventory.extend([
+        _make_item('ring', 'b-grade', 60.0, 'luck', 2),
+        _make_item('ring', 'b-grade', 80.0, 'luck', 2),
+    ])
+    # Craft → выбрать группу 1 → выбрать "1,2" → yes → выйти Forge
+    inputs = iter(['2', '1', '1,2', 'yes', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    forge_menu(state)
+
+    out = capsys.readouterr().out
+    assert 'Создан' in out
+    assert 'a-grade' in out
+    assert len(state.inventory) == 1
+    assert state.inventory[0]['grade'][0] == 'a-grade'
+    assert state.steps.can_use == 3000
+
+
+def test_craft_flow_cancel_no_yes(monkeypatch, capsys):
+    """Любой ввод кроме 'yes' / 'y' → отмена, без мутаций."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    state.inventory.extend([
+        _make_item('ring', 'b-grade', 60.0, 'luck', 2),
+        _make_item('ring', 'b-grade', 80.0, 'luck', 2),
+    ])
+    inputs = iter(['2', '1', '1,2', 'no', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    forge_menu(state)
+
+    out = capsys.readouterr().out
+    assert 'Крафт отменён' in out
+    assert len(state.inventory) == 2
+    assert state.steps.can_use == 5000
+
+
+def test_craft_flow_equipped_warning(monkeypatch, capsys):
+    """Equipped sources → warning виден в preview."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    state.equipment.finger_01 = _make_item('ring', 'b-grade', 90.0, 'luck', 2)
+    state.equipment.finger_02 = _make_item('ring', 'b-grade', 70.0, 'luck', 2)
+    inputs = iter(['2', '1', '1,2', 'no', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    forge_menu(state)
+
+    out = capsys.readouterr().out
+    assert 'ВНИМАНИЕ' in out
+    assert 'finger_01' in out
+    assert 'finger_02' in out
+    assert 'останутся пустыми' in out
+
+
+def test_craft_flow_invalid_index_format(monkeypatch, capsys):
+    """Невалидный формат выбора (1 число / range) → 'Неверный формат'."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 5000
+    state.money = 500.0
+    state.energy = 50
+    state.inventory.extend([
+        _make_item('ring', 'b-grade', 60.0, 'luck', 2),
+        _make_item('ring', 'b-grade', 80.0, 'luck', 2),
+    ])
+    inputs = iter(['2', '1', '1', '0'])  # вводим только "1" вместо "1,2"
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    forge_menu(state)
+
+    out = capsys.readouterr().out
+    assert 'Неверный формат' in out
+    assert len(state.inventory) == 2  # без мутаций
+
+
+def test_craft_flow_splus_cap_blocks(monkeypatch, capsys):
+    """Выбор s+grade группы → блокировка cap message."""
+    state = GameState.default_new_game()
+    state.inventory.extend([
+        _make_item('ring', 's+grade', 90.0, 'luck', 5),
+        _make_item('ring', 's+grade', 80.0, 'luck', 5),
+    ])
+    inputs = iter(['2', '1', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    forge_menu(state)
+
+    out = capsys.readouterr().out
+    assert 'cap' in out  # cap mentioned in group line или после выбора

@@ -83,7 +83,7 @@ def status_bar(state: GameState) -> None:
           f'/ Equipment 🏃: + {Fore.LIGHTCYAN_EX}{equipment_bonus_stamina_steps(state):,.0f}{Style.RESET_ALL} '
           f'/ Daily 🏃: {Fore.LIGHTCYAN_EX}{daily_steps_bonus(state)}{Style.RESET_ALL} '
           f'/ Level: {Fore.LIGHTCYAN_EX}{level_steps_bonus(state)}{Style.RESET_ALL}. '
-          f'[🏃: {total_bonus:,.0f}, {bonus_percent:.2f} %]) '
+          f'[🏃: {Fore.LIGHTCYAN_EX}{total_bonus:,.0f}{Style.RESET_ALL}, {bonus_percent:.2f} %]) '
           f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{format_steps(state.steps.total_used)}{Style.RESET_ALL})'
           f'\nEnergy 🔋: {Fore.GREEN}{state.energy} / {energy_max_now}{Style.RESET_ALL} '
           f'(Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus(state)}{Style.RESET_ALL} / '
