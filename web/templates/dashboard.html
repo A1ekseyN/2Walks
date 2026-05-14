@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>2Walks — версия {{ version }}</title>
+    {# Favicon (0.2.4l) — SVG inline с эмодзи 🏃 для browser tab.
+       Vector рендерится crisply на retina/high-DPI, не требует hosting.
+       Apple Touch Icon — PNG 180×180, используется когда iPhone Safari
+       добавляет страницу на home-screen (выглядит как app-icon). #}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏃</text></svg>">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>

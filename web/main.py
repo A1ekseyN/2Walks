@@ -23,6 +23,7 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
@@ -521,6 +522,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="2Walks Web", version=VERSION, lifespan=lifespan)
+
+# Static files (0.2.4l) — apple-touch-icon (180×180 PNG для iOS home-screen),
+# CSS / future assets. Mount по пути /static. Файл генерируется через
+# scripts/generate_favicon.py (один раз, Pillow — dev-only зависимость).
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 
 def _compute_progress_pct(start_ts, end_ts, now_ts) -> float:
