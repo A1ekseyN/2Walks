@@ -37,6 +37,7 @@ from locations import (
     garage_location,
     auto_dialer_location,
     bank_location,
+    forge_location,
 )
 from work import work_check_done
 
@@ -110,6 +111,7 @@ def play():
                 '6': lambda: enter_location('garage', lambda: garage_location(state)),
                 '7': lambda: enter_location('auto_dialer', lambda: auto_dialer_location(state)),
                 '8': lambda: enter_location('bank', lambda: bank_location(state)),
+                '9': lambda: enter_location('forge', lambda: forge_location(state)),
                 # Шаги
                 '+': lambda: steps_today_manual_entry(state),
                 # Меню персонажа
@@ -157,6 +159,7 @@ def play():
                       f'\n\t4. 🏭 Работа'
                       f'\n\t5. 🗺️ Приключение (В тестовом режиме)'
                       f'\n\t8. 🏛 Банк'
+                      f'\n\t9. 🔨 Кузница (Каркас, MVP в работе)'
                       f'\n\t+. Ввести шаги вручную')
                 print(f'\tm. Меню // '
                       f'i. 🎒 Инвентарь // '
@@ -191,6 +194,7 @@ def play():
             'garage': lambda: garage_location(state),
             'auto_dialer': lambda: auto_dialer_location(state),
             'bank': lambda: bank_location(state),
+            'forge': lambda: forge_location(state),
         }
         loc_handler = loc_dispatch.get(state.loc)
         if loc_handler is not None:

@@ -7,6 +7,7 @@ from locations import (
     garage_location,
     auto_dialer_location,
     bank_location,
+    forge_location,
 )
 
 
@@ -32,6 +33,9 @@ def test_icon_loc_known_locations():
 
     state.loc = 'bank'
     assert icon_loc(state) == '🏛'
+
+    state.loc = 'forge'
+    assert icon_loc(state) == '🔨'
 
 
 def test_icon_loc_auto_dialer_returns_none():
@@ -75,3 +79,15 @@ def test_bank_location_opens_menu(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert 'Bank Location' in out
     assert 'Депозит' in out
+
+
+def test_forge_location_opens_menu(monkeypatch, capsys):
+    """4.59.0 — forge_location вызывает интерактивное меню Кузницы.
+    Передаём '0' (Назад) — меню должно отрисоваться и сразу вернуться."""
+    state = GameState.default_new_game()
+    monkeypatch.setattr('builtins.input', lambda *args, **kwargs: '0')
+    forge_location(state)
+    out = capsys.readouterr().out
+    assert '🔨 Кузница' in out
+    assert 'Отремонтировать предмет' in out
+    assert 'Улучшить Grade предмета' in out

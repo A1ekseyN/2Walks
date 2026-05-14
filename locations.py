@@ -1,6 +1,7 @@
 """Locations — диспатчер между game.py и каждой локацией."""
 
 from bank import bank_menu
+from forge import forge_menu
 from gym import gym_menu
 from work import Work
 from shop import Shop
@@ -16,6 +17,7 @@ _LOC_ICONS = {
     'garage': '🚗',
     'auto_dialer': None,
     'bank': '🏛',
+    'forge': '🔨',  # 4.59 — Кузница
 }
 
 
@@ -59,3 +61,8 @@ def auto_dialer_location(state: GameState):
 
 def bank_location(state: GameState):
     bank_menu(state)
+
+
+def forge_location(state: GameState):
+    """4.59 — Кузница / Blacksmith. Repair + Crafting + (deferred) Gems."""
+    forge_menu(state)

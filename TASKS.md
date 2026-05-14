@@ -3137,7 +3137,7 @@ Steps 🏃: N, Energy 🔋: M, Money 💰: K $
 
 #### Подзадачи
 
-##### 4.59.0. Локация Forge: infra + меню `[M / S / todo]`
+##### 4.59.0. Локация Forge: infra + меню `[M / S / done in 0.2.4m (14.05.2026)]`
 
 - Новый `forge_location` в `locations.py` (аналогично `bank_location`).
 - Иконка `🔨` в `icon_loc(state)`.
