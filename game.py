@@ -1,6 +1,7 @@
 #pyinstaller --onefile --icon=icons/2walks.ico game.py
 
 import os
+import platform
 import sys
 from datetime import datetime
 
@@ -200,7 +201,11 @@ def play():
 if __name__ == "__main__":
     from version import VERSION
     print(f"Version: {VERSION}")
-    os.system("chcp 65001")
+    # `chcp 65001` — Windows-only команда, переключает cmd.exe на UTF-8.
+    # Без неё на Windows кириллица / эмодзи отображаются как «???».
+    # На macOS / Linux команды нет — давала бы `sh: chcp: command not found`.
+    if platform.system() == "Windows":
+        os.system("chcp 65001")
     init()
 
     init_game_state()  # Загрузка из Sheets / CSV — отложена с импорта (1.2).
