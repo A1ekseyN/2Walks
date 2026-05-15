@@ -2241,40 +2241,194 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 
 **Note:** CLI (`python game.py`) и web (`uvicorn web.main:app`) — отдельные процессы, у каждого свой `game.state`. В MVP запускаем что-то одно. Sync — задача 4.54.
 
-#### 4.48.0.1. Deploy FastAPI на сервер `[H / S / todo (blocked by 4.54 — 15.05.2026)]`
+#### 4.48.0.1. Deploy FastAPI на сервер `[H / S / todo (разблокирована 15.05.2026 завершением 4.54)]`
 
-**Цель (15.05.2026):** локальный Ubuntu-сервер крутит web 24/7. Доступ только из домашней сети (`http://server-ip:8008`), без публичного интернета / без TLS / без auth. Игрок открывает вкладку с iPhone / MacBook / любого устройства и играет (вводит шаги, стартует смены, прокачивает скиллы).
+**Цель (15.05.2026):** локальный Ubuntu-сервер крутит web 24/7. Доступ только из домашней сети (`http://server-ip:8008`), без публичного интернета / без TLS / без auth. Игрок открывает вкладку с iPhone / MacBook / любого устройства и играет (вводит шаги, стартует смены, прокачивает скиллы). CLI на ноутбуке остаётся как secondary debug-инструмент — concurrent usage защищён через 4.54 optimistic concurrency (STALE prompt в CLI / auto-reload toast в web).
 
-**Блокер (15.05.2026):** **задача 4.54 (Sync CLI ↔ Web)**. Сервер крутит web 24/7, любой запуск CLI на ноутбуке создаёт окно тихого overwrite'а (CLI с stale RAM-snapshot → `s`/`q` затирает прогресс с сервера, см. CLAUDE.md замечание про concurrent usage). Deploy без 4.54 возможен только при жёстком правиле «CLI больше не запускаем» — что не приемлемо, так как CLI до сих пор основной debug-инструмент.
+**Блокер снят (15.05.2026):** 4.54 завершена, optimistic concurrency защищает данные при одновременной работе CLI ↔ web. Старого риска тихого overwrite'а больше нет.
 
-**План deploy после разблокировки:**
+---
 
-1. **Перенос на сервер:** `git clone` репозитория на Ubuntu, `scp credentials/2walks_service_account.json` (отдельно, в `.gitignore`), `python -m venv .venv && pip install -r requirements.txt`.
-2. **Тестовый запуск:** `uvicorn web.main:app --host 0.0.0.0 --port 8008` (manual), убедиться что Sheets подключается + страница открывается с MacBook + iPhone.
-3. **Bake-test через tmux (1-2 дня):** `tmux new -s 2walks` + uvicorn, detach. Проверить стабильность, поведение при реальной игре.
-4. **Production systemd unit:** `/etc/systemd/system/2walks.service` с auto-restart, `WorkingDirectory`, `User`, `Environment` для credentials path. `systemctl enable 2walks && systemctl start 2walks`.
-5. **Logging:** перенаправить stdout/stderr в журнал (systemd journal default OK) или в файл (`/var/log/2walks.log`) для grep'а history событий с сервера.
-6. **Updates:** workflow `ssh server; cd 2walks; git pull; systemctl restart 2walks`.
-7. **Документация:** обновить `docs/local_setup.md` инструкцией под deploy + правилами игры (CLI now read-only? auto-sync? зависит от выбранной 4.54 стратегии).
+##### Pre-flight checklist (что нужно знать до начала)
 
-**Не входит в скоуп MVP:**
+Перед запуском любого `ssh` собрать заранее:
 
-- Reverse proxy (nginx / caddy) — нужен только если будет несколько сервисов на одном порту или TLS.
-- Domain / DNS — local-only.
-- HTTPS / Let's Encrypt — local-only.
-- Auth (см. 4.55) — отдельная задача, не блокирует local deploy.
-- Multi-user (4.53) — single-user game, нет need.
+- **IP сервера в локальной сети** — `ipconfig getifaddr en0` на самом сервере (если Mac mini / лэптоп) или `ip addr show | grep inet` (Ubuntu). Этот IP нужно **зарезервировать в роутере** (DHCP reservation) чтобы не менялся.
+- **SSH доступ** — `ssh user@<server-ip>` должен работать без пароля (key-based auth). Если нет — `ssh-copy-id user@<server-ip>`.
+- **Python 3.11+ на сервере** — `python3 --version`. Если нет: `sudo apt install python3.11 python3.11-venv` (Ubuntu 22.04+) или из deadsnakes PPA для старых.
+- **Git installed** — `git --version`. Если нет: `sudo apt install git`.
+- **Файл `credentials/2walks_service_account.json`** на ноутбуке — копия service account для Google Sheets (gitignored). На сервере его не будет после `git clone`, нужно перенести вручную.
+- **Снимок текущего state** — Sheets уже primary source of truth, поэтому ничего seed'ить не нужно. Сервер при первом запуске прочитает Sheets и заведёт локальный `characteristic.csv` как фолбэк автоматически.
 
-**Эффорт:** **S** (1-2 часа после разблокировки 4.54), при условии что сервер уже с Python 3.x.
+**Critical nuance: `characteristic.csv` НЕ в репо** (с 0.2.4p, после .gitignore cleanup'а 15.05.2026). Раньше был отслеживаемым — теперь нет. На свежем clone файл отсутствует, но это **не блокер**: при наличии валидных credentials `init_game_state()` загружает state из Sheets и при первом save локальный CSV создаётся автоматически. Если же credentials невалидны / Sheets недоступен И CSV нет — `init_game_state()` упадёт с ошибкой, web не стартанёт. Поэтому критично: **переносим credentials до первого запуска**.
+
+---
+
+##### Пошаговая процедура deploy
+
+**Шаг 1 — Подготовка сервера (один раз).**
+
+```bash
+# На сервере (через SSH с ноутбука).
+ssh user@<server-ip>
+
+# Проверить базовое окружение.
+python3 --version    # ожидаем 3.11+
+git --version
+
+# Установить недостающее (Ubuntu).
+sudo apt update
+sudo apt install -y python3.11 python3.11-venv git
+
+# Создать директорию для проекта (опционально — можно в $HOME).
+mkdir -p ~/projects && cd ~/projects
+```
+
+**Шаг 2 — Clone репо + venv.**
+
+```bash
+# Всё ещё на сервере, в ~/projects.
+git clone https://github.com/A1ekseyN/2Walks.git
+cd 2Walks
+
+# Создать venv и поставить runtime-зависимости (НЕ requirements-dev).
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+```
+
+**Шаг 3 — Перенос credentials (CRITICAL).**
+
+```bash
+# С ноутбука (НЕ с сервера — credentials живут только локально на ноуте).
+scp credentials/2walks_service_account.json user@<server-ip>:~/projects/2Walks/credentials/
+
+# Если на сервере нет директории credentials/ — создать сначала:
+ssh user@<server-ip> "mkdir -p ~/projects/2Walks/credentials"
+
+# Проверить что файл на месте.
+ssh user@<server-ip> "ls -la ~/projects/2Walks/credentials/"
+```
+
+**Шаг 4 — Smoke-test ручным запуском.**
+
+```bash
+# На сервере.
+cd ~/projects/2Walks
+source .venv/bin/activate
+
+# Запустить web вручную с привязкой ко всем интерфейсам.
+.venv/bin/uvicorn web.main:app --host 0.0.0.0 --port 8008
+```
+
+В выводе должно быть:
+- `Loading...` → `Data Loaded from Google Sheets. [N sec]` — Sheets подключился, state загружен.
+- `Application startup complete.` — uvicorn готов принимать соединения.
+
+С ноутбука / iPhone открыть `http://<server-ip>:8008/` — должен показать dashboard. Submit'нуть форму steps (например +1) — проверить что обновляется + новая запись в `history.jsonl` на сервере.
+
+Если всё ОК — `Ctrl+C` в терминале сервера, переходим к systemd. Если нет — см. раздел Troubleshooting ниже.
+
+**Шаг 5 — Systemd unit для production.**
+
+Создать `/etc/systemd/system/2walks.service`:
+
+```ini
+[Unit]
+Description=2Walks web (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=<your-username>
+WorkingDirectory=/home/<your-username>/projects/2Walks
+Environment="PATH=/home/<your-username>/projects/2Walks/.venv/bin"
+ExecStart=/home/<your-username>/projects/2Walks/.venv/bin/uvicorn web.main:app --host 0.0.0.0 --port 8008
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Заменить `<your-username>` на реального пользователя** (обычно совпадает с тем, под кем `ssh`'ился). Проверить через `whoami`.
+
+```bash
+# Включить и запустить.
+sudo systemctl daemon-reload
+sudo systemctl enable 2walks
+sudo systemctl start 2walks
+
+# Проверить статус.
+sudo systemctl status 2walks
+# Ожидаем: Active: active (running)
+
+# Логи (через journald — default backend).
+sudo journalctl -u 2walks -f
+```
+
+Закрыть SSH — uvicorn продолжит работать. Перезагрузка сервера — auto-restart.
+
+**Шаг 6 — Updates workflow (после изменений в репо).**
+
+```bash
+# С ноутбука.
+ssh user@<server-ip>
+cd ~/projects/2Walks
+git pull
+sudo systemctl restart 2walks
+sudo systemctl status 2walks    # verify
+```
+
+Если в обновлении новые зависимости (изменился `requirements.txt`) — добавить `source .venv/bin/activate && pip install -r requirements.txt` между `git pull` и `restart`.
+
+**Шаг 7 — Bake-test 1-2 дня.**
+
+- Игра через iPhone / MacBook без рестартов.
+- Параллельно периодически запускать CLI на ноутбуке (`python game.py`) — проверять что STALE prompt появляется естественно при concurrent действиях.
+- Мониторить `journalctl -u 2walks -f` на ошибки.
+- В конце дня: `ssh user@<server-ip> "grep '\"sync_conflict\"' ~/projects/2Walks/history.jsonl | wc -l"` — счётчик STALE-конфликтов. Если стабильно >5/день — повод вернуть auto-retry в save_safe (см. follow-up watch в 4.54.8).
+
+---
+
+##### Troubleshooting
+
+| Симптом | Вероятная причина / решение |
+|---|---|
+| `ModuleNotFoundError: No module named 'fastapi'` | venv не активирован или пустой. `source .venv/bin/activate && pip install -r requirements.txt`. |
+| `init_game_state()` крашится с Sheets-ошибкой | credentials не на месте или невалидные. Проверить `ls credentials/2walks_service_account.json`, что в Sheets открыт share для service account email (см. CLAUDE.md). |
+| 404 при заходе с iPhone (а с самого сервера всё ОК) | uvicorn запущен с `--host 127.0.0.1` (default). Должно быть `--host 0.0.0.0`. Проверить `ExecStart` в systemd unit. |
+| iPhone не может зайти даже с правильным IP | Firewall на сервере: `sudo ufw allow 8008/tcp`. Или iPhone не в той же Wi-Fi сети. |
+| `systemctl status` показывает `failed` | `sudo journalctl -u 2walks -n 50` — посмотреть последние строки логов. Чаще всего: неправильный путь в WorkingDirectory / User / Environment. |
+| После git pull web не подхватил изменения | Забыли `systemctl restart 2walks`. systemd не auto-reload'ит на изменение файлов (это не uvicorn `--reload` mode). |
+
+---
+
+##### Не входит в скоуп MVP
+
+- **Reverse proxy** (nginx / caddy) — нужен только если будет несколько сервисов на одном порту или TLS.
+- **Domain / DNS** — local-only, по IP достаточно. Опционально mDNS (`<hostname>.local`) если хочется не запоминать IP.
+- **HTTPS / Let's Encrypt** — local-only, нет смысла.
+- **Auth** (см. 4.55) — отдельная задача, не блокирует local deploy.
+- **Multi-user** (4.53) — single-user game, нет нужды.
+- **Backups** Sheets — Sheets сами по себе хранят историю изменений. CSV-фолбэк на сервере как secondary safety. Этого достаточно для MVP.
+
+---
+
+##### Эффорт + зависимости
+
+**Эффорт:** **S** (1-2 часа на сервере с Python 3.11+, всё по checklist'у).
 
 **Зависимости:**
-- **Blocked by 4.54** (sync resolution) — critical.
-- 4.48.1 (dashboard) ✓ done.
-- 4.55 (auth) — НЕ блокирует (local-only).
+- **4.54** (sync resolution) ✓ done (15.05.2026, 0.2.4p) — разблокировал.
+- **4.48.1** (dashboard) ✓ done — основа для deploy.
+- **4.55** (auth) — НЕ блокирует (local-only deploy).
 
 **Связь с другими задачами:**
-- После deploy документация `docs/local_setup.md` (а также CLAUDE.md replace warning) актуализируется под новый primary flow.
-- `history.jsonl` будет жить на сервере — для чтения с ноутбука потребуется отдельный `scp` или 4.6.2 (CLI viewer истории) если хочется через web.
+- После deploy документация `docs/local_setup.md` дополняется новым разделом «Production: web на сервере» (текущий focus раздела — local dev на ноуте).
+- `history.jsonl` будет жить на сервере. Для чтения с ноутбука — `scp user@<server-ip>:~/projects/2Walks/history.jsonl ./` или ждём 4.6.2 (CLI viewer истории) для удобного access'а.
+- На сервере credentials живут локально — это **single point of failure**. При переустановке сервера / диск-краше credentials придётся переносить вручную с ноутбука. Backup-копию credentials рекомендую держать в защищённом месте (1Password / encrypted backup).
 
 #### 4.48.1. Dashboard (read-only HTML) `[H / M / done (01.05.2026)]`
 
