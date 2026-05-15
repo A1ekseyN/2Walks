@@ -15,7 +15,7 @@ import ast
 import json
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 import gspread
 from gspread.utils import ValueInputOption
@@ -188,6 +188,56 @@ class GameStateRepo:
         data = _rows_to_state_dict(rows)
         print(f"Data Loaded from Google Sheets. [{time.time() - ping:,.2f} sec]")
         return data
+
+    def load_meta(self) -> float:
+        """4.54.2 — Облегчённый запрос только `last_modified` ячейки.
+
+        Используется для optimistic concurrency check в `save_safe()`: нужен
+        только timestamp, не полный state. Тот же gspread round-trip что и
+        `load()`, но без parsing overhead полного `_rows_to_state_dict` (~50
+        ms saved на типичном save).
+
+        Returns 0.0 если ключ отсутствует (legacy save до 4.54) или формат
+        невалидный. Default 0.0 + check `current > expected + epsilon` → legacy
+        save без `last_modified` пройдёт первый save_safe (expected тоже 0.0).
+        """
+        ws = self._worksheet()
+        rows = ws.get_all_values()
+        for row in rows:
+            if len(row) >= 2 and row[0] == 'last_modified':
+                try:
+                    return float(row[1])
+                except (TypeError, ValueError):
+                    return 0.0
+        return 0.0
+
+    def save_safe(
+        self,
+        state_dict: dict,
+        expected_last_modified: Optional[float],
+    ) -> Literal["OK", "STALE"]:
+        """4.54.2 — Optimistic concurrency save.
+
+        Если `expected_last_modified is None` — bypass check (Force option в
+        CLI STALE prompt, 4.54.5). Иначе сначала `load_meta()` сверить с
+        Sheets: если Sheets newer чем expected → return `"STALE"` без записи.
+
+        На `OK`: мутирует `state_dict['last_modified'] = time.time()`, делает
+        полный save через `self.save()`, возвращает `"OK"`. Caller (4.54.4
+        wrappers) рассчитывает на мутацию `state_dict` чтобы синкнуть
+        `state.last_modified` после успеха.
+
+        Epsilon `0.01` сек на float-сравнение — float-точность timestamp'ов
+        Sheets / Python округляется в микросекундах, без epsilon идентичные
+        saves могли бы давать false-positive STALE.
+        """
+        if expected_last_modified is not None:
+            current = self.load_meta()
+            if current > expected_last_modified + 0.01:
+                return "STALE"
+        state_dict['last_modified'] = time.time()
+        self.save(state_dict)
+        return "OK"
 
 
 # ----------------------------------------------------------------------------

@@ -154,6 +154,126 @@ def test_game_state_repo_load_skips_header(monkeypatch):
     assert data == {'energy': 50, 'money': 100}
 
 
+# ----- 4.54.2: load_meta + save_safe (Optimistic concurrency) -----
+
+def test_load_meta_returns_timestamp_when_present(monkeypatch):
+    ws = _mock_worksheet([
+        ['Key', 'Value'],
+        ['energy', '50'],
+        ['last_modified', '1747275600.123'],
+        ['money', '100'],
+    ])
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    assert repo.load_meta() == 1747275600.123
+
+
+def test_load_meta_returns_zero_when_missing(monkeypatch):
+    """4.54.2 — Legacy save без last_modified → default 0.0 (первый save_safe пройдёт)."""
+    ws = _mock_worksheet([
+        ['Key', 'Value'],
+        ['energy', '50'],
+        ['money', '100'],
+    ])
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    assert repo.load_meta() == 0.0
+
+
+def test_load_meta_returns_zero_on_bad_value(monkeypatch):
+    """Невалидное float значение в ячейке → graceful 0.0 (не падаем)."""
+    ws = _mock_worksheet([
+        ['Key', 'Value'],
+        ['last_modified', 'not-a-number'],
+    ])
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    assert repo.load_meta() == 0.0
+
+
+def test_save_safe_ok_when_expected_matches(monkeypatch):
+    """Sheets timestamp == expected → save проходит, status OK."""
+    ws = _mock_worksheet([
+        ['Key', 'Value'],
+        ['last_modified', '100.0'],
+    ])
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    state_dict = {'energy': 50, 'last_modified': 100.0}
+
+    status = repo.save_safe(state_dict, expected_last_modified=100.0)
+
+    assert status == "OK"
+    ws.clear.assert_called_once()
+    ws.update.assert_called_once()
+    # state_dict мутирован — last_modified выставлен в time.time()
+    assert state_dict['last_modified'] > 100.0
+
+
+def test_save_safe_stale_when_sheets_newer(monkeypatch):
+    """Sheets newer чем expected → STALE, save НЕ происходит, state_dict НЕ мутируется."""
+    ws = _mock_worksheet([
+        ['Key', 'Value'],
+        ['last_modified', '200.0'],
+    ])
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    state_dict = {'energy': 50, 'last_modified': 100.0}
+
+    status = repo.save_safe(state_dict, expected_last_modified=100.0)
+
+    assert status == "STALE"
+    ws.clear.assert_not_called()
+    ws.update.assert_not_called()
+    # state_dict не мутирован
+    assert state_dict['last_modified'] == 100.0
+
+
+def test_save_safe_ok_with_epsilon_tolerance(monkeypatch):
+    """Идентичные float (с микросекундной разницей) НЕ дают false-positive STALE."""
+    ws = _mock_worksheet([
+        ['Key', 'Value'],
+        ['last_modified', '100.001'],  # на 1 ms newer, в пределах epsilon
+    ])
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    state_dict = {'energy': 50, 'last_modified': 100.0}
+
+    status = repo.save_safe(state_dict, expected_last_modified=100.0)
+
+    assert status == "OK"
+
+
+def test_save_safe_force_bypass_when_expected_none(monkeypatch):
+    """4.54.2 — `expected=None` bypass check (Force option в CLI prompt 4.54.5).
+    Save проходит даже если Sheets newer."""
+    ws = _mock_worksheet([
+        ['Key', 'Value'],
+        ['last_modified', '999.0'],  # на десятилетия newer
+    ])
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    state_dict = {'energy': 50, 'last_modified': 100.0}
+
+    status = repo.save_safe(state_dict, expected_last_modified=None)
+
+    assert status == "OK"
+    ws.clear.assert_called_once()
+    ws.update.assert_called_once()
+    assert state_dict['last_modified'] > 999.0  # обновлён к time.time()
+
+
+def test_save_safe_legacy_first_save_passes(monkeypatch):
+    """4.54.2 — Legacy Sheets без last_modified (load_meta=0.0) + state.last_modified=0.0
+    → проходит проверку (0.0 ≤ 0.0). Первый save после deploy 4.54 запишет реальный timestamp."""
+    ws = _mock_worksheet([
+        ['Key', 'Value'],
+        ['energy', '50'],
+        # last_modified отсутствует
+    ])
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    state_dict = {'energy': 50, 'last_modified': 0.0}
+
+    status = repo.save_safe(state_dict, expected_last_modified=0.0)
+
+    assert status == "OK"
+    # last_modified теперь реальный
+    assert state_dict['last_modified'] > 0.0
+
+
 # ----- StepsLogRepo (mock gspread) -----
 
 def test_steps_log_append_calls_append_row(monkeypatch):
