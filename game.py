@@ -65,15 +65,27 @@ def play():
                 elif can_reopen:
                     enter_fn()
 
-            def _sync_to_cloud():
-                """Save game_state в Sheets + лог замера шагов в steps_log.
+            def _sync_to_cloud() -> str:
+                """Save game_state (CSV + Sheets save_safe) + лог замера шагов.
 
-                Локальное сохранение (CSV/JSON) делаем всегда первым — оно гарантировано,
-                даже если Sheets-вызов ниже упадёт сетевой ошибкой. Это даёт offline-mode:
-                игрок может играть без сети, а синк в Sheets произойдёт в следующий save.
+                4.54.4 — `save_characteristic()` теперь сам делает CSV+Sheets через
+                save_safe (optimistic concurrency). Возвращает "OK"/"STALE".
+                Прежний явный `GameStateRepo().save(...)` удалён — он дублировал
+                Sheets write и не имел STALE-проверки.
+
+                На "STALE" steps_log append пропускается — нет смысла дублировать
+                stale-запись (max-merge всё равно вернёт максимум при следующем
+                load'е, но чище без шума).
+
+                CLI STALE prompt (Reload/Force/Cancel) — задача 4.54.5; пока
+                выводим короткий warning, caller (save_game_local_and_cloud /
+                save_and_exit) решает что делать.
                 """
-                save_characteristic()  # local CSV/JSON всегда
-                GameStateRepo().save(state.to_dict())
+                status = save_characteristic()
+                if status == "STALE":
+                    print('\n⚠️ Save aborted — Sheets изменён внешне (web на сервере / другой CLI). '
+                          'Полная STALE-обработка с diff/Reload/Force — в 4.54.5.')
+                    return status
                 # Append текущего snapshot шагов в steps_log с источником 'manual'
                 # (CLI — единственный канал ввода в этой задаче; web/auto канал
                 # будет писать сам в 4.48.2 / 4.13).
@@ -82,12 +94,18 @@ def play():
                     steps=state.steps.today,
                     source='manual',
                 )
+                return status
 
             def save_game_local_and_cloud():
                 _sync_to_cloud()
 
             def save_and_exit():
-                _sync_to_cloud()
+                status = _sync_to_cloud()
+                if status == "STALE":
+                    # Пока 4.54.5 не реализован — НЕ выходим, чтобы игрок не потерял
+                    # незасейвленный прогресс. Полное «Reload/Force/Cancel» — следующая
+                    # подзадача; здесь просто оставляем игрока в main loop с warning'ом.
+                    return
                 print('🚪 Спасибо за игру. До встречи.')
                 sys.exit()
 

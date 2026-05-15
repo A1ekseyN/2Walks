@@ -238,5 +238,9 @@ def work_check_done(state: GameState) -> GameState:
         log_event('work_done', vacancy=finished_vacancy, hours=finished_hours,
                   salary=round(earned, 2), salary_base=base_salary,
                   earnings_boost_pct=state.gym.earnings_boost)
-        save_characteristic()
+        # 4.54.4 — finalizers tolerate STALE: state в RAM уже с применённым finalize,
+        # следующий user save получит STALE prompt и через Reload подтянет fresh.
+        status = save_characteristic()
+        if status == "STALE":
+            print('[work finalize] STALE — concurrent save, retry on next user save.')
     return state

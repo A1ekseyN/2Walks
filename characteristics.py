@@ -1,6 +1,6 @@
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 import csv
 import json
 import ast
@@ -184,28 +184,63 @@ DATE_KEYS = [
 ]
 
 
-def save_characteristic() -> None:
-    """Записывает характеристики в локальный CSV-файл (offline fallback).
+def save_characteristic() -> Literal["OK", "STALE"]:
+    """Save state: Sheets save_safe + локальный CSV (offline fallback).
 
-    Sheets-сохранение делается отдельно через `GameStateRepo().save(...)`
-    в вызывающем коде (game.py / web). CSV — backup на случай отсутствия
-    интернета или ошибки Sheets API.
+    4.54.4 — обёртка для optimistic concurrency. Sheets save выполняется через
+    `GameStateRepo.save_safe()` с pre-check `state.last_modified` vs Sheets.
+
+    Returns:
+    - **"OK"** — Sheets save прошёл (или сетевая ошибка — fall back на CSV-only).
+      В этом случае: (1) `state.last_modified` синкается к новому timestamp'у
+      от Sheets, (2) `state.last_loaded_snapshot` обновляется через `take_snapshot()`,
+      (3) CSV пишется с новым timestamp'ом.
+    - **"STALE"** — Sheets имеет newer `last_modified` (someone else сохранил
+      первым). State не мутируется, CSV не пишется. Caller (4.54.5 CLI prompt /
+      4.54.6 web flash) должен показать игроку diff + Reload/Force/Cancel.
+
+    Сетевая ошибка Sheets → treat as "OK" (CSV-only fallback): pre-4.54 поведение
+    сохраняется для offline-mode, игрок продолжает играть локально.
 
     Формат сохранения (4.20.1, 0.2.3b): `state_dict = game.state.to_dict()`
     — flat-dict со всеми полями. dict / list-значения серилазуются как
-    JSON-строки (через `json.dumps`). Datetime — через `__str__()` (CSV
-    DictWriter автоматически приводит).
+    JSON-строки (через `json.dumps`). Datetime — через `__str__()`.
 
     Историческая заметка (1.4.1, 0.2.3c — 07.05.2026): раньше save также
     писал в `characteristic.txt` (JSON), который никогда не читался —
-    write-only zombie файл. Удалён в этой задаче. Helper `json_serial`
-    тоже удалён — он использовался только для .txt записи.
+    write-only zombie файл. Удалён в той задаче.
     """
     if game.state is None:
         raise RuntimeError("game.state не инициализирован — вызови init_game_state() до save_characteristic().")
     state_dict = game.state.to_dict()
     if debug_mode:
         print(f'Сохраняем данные: {state_dict}')
+
+    # Step 1: Sheets save_safe (optimistic concurrency check).
+    sheets_status: str = "OK"
+    sheets_network_error = False
+    try:
+        from google_sheets_db import GameStateRepo
+        sheets_status = GameStateRepo().save_safe(
+            state_dict, expected_last_modified=game.state.last_modified
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort sync
+        # Сетевая ошибка / Sheets недоступен → CSV-only fallback (pre-4.54 поведение).
+        print(f'[save] Sheets sync failed (CSV-only fallback): {e}')
+        sheets_network_error = True
+        sheets_status = "OK"
+
+    # Step 2: STALE — rejection, NO CSV write, NO state mutation. Caller handles.
+    if sheets_status == "STALE":
+        return "STALE"
+
+    # Step 3: OK (или network fallback) — синкаем state с тем что записано в Sheets.
+    # save_safe мутирует state_dict['last_modified'] к time.time() на успехе;
+    # при network error state_dict['last_modified'] остаётся прежним (CSV напишет
+    # старый ts — это OK, на восстановлении сети save_safe пересинкает).
+    game.state.last_modified = state_dict.get('last_modified', game.state.last_modified)
+
+    # Step 4: CSV write (с новым ts от Sheets, или старым при network error).
     try:
         with open('characteristic.csv', 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=state_dict.keys())
@@ -217,8 +252,16 @@ def save_characteristic() -> None:
         print("\nОшибка записи в файл 'characteristic.csv'. "
               "\nЗакройте файл и повторите попытку. Задержка 30 сек и повторный запуск.")
         time.sleep(30)
-        save_characteristic()
-    # 4.6 — log_event факта успешного локального save (CSV).
+        return save_characteristic()  # retry (могло поменяться состояние Sheets — снова save_safe)
+
+    # Step 5: Snapshot для следующего STALE check'а — отражает «что сейчас в Sheets/CSV».
+    game.state.take_snapshot()
+
+    # 4.6 — log_event факта успешного save.
     from history import log_event
     log_event('save')
-    print('\n💾 Save Successfully.')
+    if sheets_network_error:
+        print('\n💾 Save Successfully (local only).')
+    else:
+        print('\n💾 Save Successfully.')
+    return "OK"

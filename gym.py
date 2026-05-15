@@ -335,7 +335,12 @@ def skill_training_check_done(state: GameState) -> None:
     state.training.timestamp = None
     state.training.time_end = None
     stamina_skill_bonus_def(state)
-    save_characteristic()
+    # 4.54.4 — finalizers tolerate STALE: state в RAM уже с применённым finalize,
+    # следующий user save получит STALE prompt и через Reload подтянет fresh
+    # (где finalize, скорее всего, уже применён web'ом → idempotent).
+    status = save_characteristic()
+    if status == "STALE":
+        print('[gym finalize] STALE — concurrent save, retry on next user save.')
 
 
 class Skill_Training:

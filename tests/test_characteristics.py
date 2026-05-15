@@ -106,3 +106,92 @@ def test_state_attribute_is_live_reference():
     # И наоборот.
     game.state.money = 13
     assert s.money == 13
+
+
+# ----- 4.54.4: save_characteristic returns OK/STALE -----
+
+def test_save_characteristic_returns_ok_on_clean_save(monkeypatch, tmp_path):
+    """Чистый save: Sheets.save_safe OK → return "OK" + snapshot обновлён."""
+    from characteristics import save_characteristic
+    import google_sheets_db
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    init_game_state(s)
+
+    # Изоляция CSV — пишем в tmp_path.
+    monkeypatch.chdir(tmp_path)
+
+    # Mock save_safe → OK + установит last_modified.
+    saved_calls = []
+
+    def fake_save_safe(self, state_dict, expected_last_modified):
+        saved_calls.append((dict(state_dict), expected_last_modified))
+        state_dict['last_modified'] = 1700000000.0
+        return "OK"
+
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe", fake_save_safe)
+
+    status = save_characteristic()
+
+    assert status == "OK"
+    assert len(saved_calls) == 1
+    # State синкнут с тем что Sheets записал.
+    assert game.state.last_modified == 1700000000.0
+    # Snapshot обновлён.
+    assert game.state.last_loaded_snapshot is not None
+    assert game.state.last_loaded_snapshot['last_modified'] == 1700000000.0
+
+
+def test_save_characteristic_returns_stale_no_state_mutation(monkeypatch, tmp_path):
+    """STALE: state.last_modified не меняется, snapshot не меняется, CSV не пишется."""
+    from characteristics import save_characteristic
+    import google_sheets_db
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    s.last_modified = 100.0
+    s.take_snapshot()
+    snapshot_before = dict(s.last_loaded_snapshot or {})
+    init_game_state(s)
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+
+    status = save_characteristic()
+
+    assert status == "STALE"
+    # State НЕ мутирован.
+    assert game.state.last_modified == 100.0
+    # CSV НЕ создан (или старый — но тут tmp_path был пуст).
+    csv_path = tmp_path / 'characteristic.csv'
+    assert not csv_path.exists(), 'CSV не должен писаться на STALE'
+
+
+def test_save_characteristic_network_error_returns_ok(monkeypatch, tmp_path, capsys):
+    """Sheets network error → CSV-only fallback, return "OK" + warning в лог."""
+    from characteristics import save_characteristic
+    import google_sheets_db
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    init_game_state(s)
+
+    monkeypatch.chdir(tmp_path)
+
+    def failing_save_safe(self, sd, expected_last_modified):
+        raise RuntimeError("Sheets API quota exceeded")
+
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe", failing_save_safe)
+
+    status = save_characteristic()
+
+    assert status == "OK"
+    # CSV написан несмотря на Sheets-fail.
+    assert (tmp_path / 'characteristic.csv').exists()
+    # Warning в выводе.
+    captured = capsys.readouterr()
+    assert 'Sheets sync failed' in captured.out
+    assert 'CSV-only fallback' in captured.out
