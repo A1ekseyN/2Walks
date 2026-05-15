@@ -38,7 +38,7 @@ mypy .
 
 Dev-only deps (mypy и т.д.) живут в `requirements-dev.txt` — установка `pip install -r requirements-dev.txt`. Основные runtime-зависимости — `requirements.txt`.
 
-CLI и web — отдельные процессы, у каждого свой `game.state`. В MVP запускаем только что-то одно за раз; sync resolution CLI ↔ Web — задача 4.54.
+CLI и web — отдельные процессы, у каждого свой `game.state`. В MVP запускаем только что-то одно за раз; sync resolution CLI ↔ Web — задача 4.54. **Практическое следствие при переключении CLI ↔ web (до решения 4.54):** запущенный CLI держит state в RAM независимо от Sheets, web при `try_reload_state` подтягивает Sheets-snapshot + автоматически вызывает финализаторы (`work_check_done`, `skill_training_check_done`, `save_game_date_last_enter`, `auto_collect_pending_drop`) — то есть может **изменить** state (закрыть смену с зачислением зарплаты, прокачать завершившийся скилл, перевернуть день) и затем `persist_state_to_cloud()`. Если в этот момент CLI всё ещё запущен с устаревшим RAM-стейтом — следующий `s` / `q` в CLI ПЕРЕЗАПИШЕТ web'овский save обратно к старому. Безопасный паттерн: всегда закрывать CLI **без сохранения** (Ctrl+C / `q` если он не успел зафиксировать новые изменения с web) и перезапускать его до повторной работы из CLI, чтобы он загрузил свежий снепшот через `init_game_state()`.
 
 Подробная шпаргалка по локальному запуску (включая доступ с iPhone через домашнюю Wi-Fi) — [`docs/local_setup.md`](docs/local_setup.md).
 
