@@ -1,7 +1,13 @@
 tasks.txt
 
 /credentials/
-tests/__pycache__/
+
+# Python compile artifacts (matches at any depth — root, tests/, web/, etc.).
+__pycache__/
+*.pyc
+
+# macOS Finder metadata.
+.DS_Store
 
 # Legacy day-rollover marker (removed in 0.2.0k, task 2.1).
 # May still be created by older code revisions — keep gitignored.
@@ -9,3 +15,9 @@ save.txt
 
 # History log (4.6) — личные данные игрока, append-only JSONL.
 history.jsonl
+
+# Player save state (CSV-фолбэк) — личные данные, аналогично history.jsonl.
+# Sheets — primary source of truth, CSV пишется на каждый save_characteristic()
+# для offline-fallback. Не версионируем — заводится автоматически при первом
+# `s` в CLI после успешного init_game_state().
+characteristic.csv
