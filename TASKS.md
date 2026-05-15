@@ -751,9 +751,11 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 ---
 
-### 4.4. Достижения (базовый список) `[M / M / todo]`
+### 4.4. Достижения (базовый список) `[merged into 4.62 — 15.05.2026]`
 
-**Базовая версия** (без бонусов — просто trophies). Полноценная система с бонусами и расширенным списком — в **4.44**.
+**Объединена с 4.44** в новую зонтичную **4.62 Triumphs / Достижения** (концепция Destiny 2 Triumphs). MVP-trophy-список из этой задачи (первый S+ drop, streaks 10k+, 100 приключений, 1М шагов, all adventures unlocked) переезжает в подзадачу **4.62.1 MVP catalog**. Хранение `achievements: list[str]` пересмотрено в **4.62.0 Infra** в пользу `state.triumphs: dict[str, dict]` (id → tier + unlocked_at). Номер 4.4 оставлен для traceability ссылок.
+
+#### Legacy plan (для истории)
 
 Счётчики уже есть в `char_characteristic` (adventure counters, steps_total_used). Добавить:
 - первый S+ drop
@@ -2022,9 +2024,11 @@ Active buffs system (используется бустерами 4.7.2) выне
 
 ---
 
-### 4.44. Goals & Achievements — расширенная система достижений `[M / L / todo (нужно обсудить)]`
+### 4.44. Goals & Achievements — расширенная система достижений `[merged into 4.62 — 15.05.2026]`
 
-**⚠️ Расширение 4.4. Нужно обсудить структуру и список.**
+**Объединена с 4.4** в новую зонтичную **4.62 Triumphs / Достижения** (концепция Destiny 2 Triumphs). Goals как «player-defined custom targets» **переосмыслены** как Pinned/Tracked triumphs (выбор 1-3 из системного каталога для приоритетного показа) — это убрало необходимость в отдельной механике custom goals. Категории + бонусы + 4 открытых вопроса переехали в 4.62 как зафиксированные дизайн-решения / open questions. Номер 4.44 оставлен для traceability ссылок.
+
+#### Legacy plan (для истории)
 
 **Два уровня:**
 1. **Achievements** — статичные триггеры с бонусами (постоянные / временные / косметика / открытие контента).
@@ -3543,6 +3547,163 @@ adjusted_steps = steps × neatness_factor
 **Эффорт:** **M** — формула в `equipment_bonus.py` + thread через все callers + миграция баланса (Stamina-калибровка может сдвинуться). Не тривиальная задача, нужна осторожная балансировка и тесты на economy regression.
 
 **Зависимость:** **blocked by 4.59.1 Repair** (уже done в 0.2.4n — игрок должен иметь способ ремонтировать ДО введения поломки). Желательно после **1.6 Items as dataclass**.
+
+---
+
+### 4.62. Triumphs / Достижения (зонтичная — объединяет 4.4 + 4.44) `[L / L / todo (15.05.2026)]`
+
+**Объединяет 4.4 (базовый список) + 4.44 (расширенная система с бонусами + Goals)** в одну механику, концептуально вдохновлённую **Destiny 2 Triumphs**. Достижения = система-наградитель за milestones игрока с tiered структурой, категориями, score-метрикой, опциональными бонусами на части триумфов и pin/tracked-механикой (заменяет custom Goals из 4.44).
+
+**Концепция (зафиксировано 15.05.2026):**
+
+| Элемент Destiny 2 | Применение в 2Walks |
+|---|---|
+| **Tiered triumphs** | Один триумф = несколько ступеней (10/50/100/500/1000 приключений). Прогресс к next tier виден всегда. |
+| **Categories** | Шаги / Adventures / Дропы / Gym / Work / Bank / Forge / Энергия / Уровень — каждая категория = группа триумфов |
+| **Triumph Score** | Каждый unlock даёт N points. Total = «уровень коллекционера», простая статус-метрика |
+| **Bonus только на части триумфов** | ~80% — trophy + score. ~20% — реальный gameplay-эффект (постоянный bonus.py или временный через 4.58 Active buffs). |
+| **Seal / Title** | Полная категория unlock → титул в `state.title` (косметика, отображается в status_bar / web). Названия: «Marathoner» / «Treasure Hunter» / «Banker» / «Blacksmith» / etc. |
+| **Pinned / Tracked** | Игрок может «закрепить» 1-3 триумфа для приоритетного показа (status_bar / меню Home). **Заменяет custom Goals из 4.44** — нет нужды в free-form input. |
+
+**Что НЕ переносим из Destiny 2:**
+- **Lore triumphs** — у нас нет lore-pages (может появиться вместе с 4.46 Story Mode).
+- **PvP / Crucible** — у нас нет PvP.
+- **Time-limited / seasonal** — отложено до 4.12 (Сезонные события).
+- **Hidden / secret** — в MVP не делаем (added complexity, отложено в 4.62.5).
+
+**Связь с другими задачами:**
+- **4.6 History** (done) — `log_event` с 24 типами events = естественный hook source для триггеринга триумфов.
+- **4.58 Active buffs** (todo) — нужна для временных bonus-эффектов на части триумфов. Блокирует 4.62.2 для **временных** бонусов, но не для постоянных.
+- **4.31 Collector** (todo, обсудить) — natural fit для категории «Коллекции».
+- **4.37 Pets** (todo) — natural fit для категории «Питомцы».
+- **4.5 Daily / weekly quests** (todo) — overlap минимальный: quests = time-limited tasks, triumphs = permanent milestones. Не дублирует.
+
+#### Подзадачи
+
+##### 4.62.0. Infra: state schema + log_event hooks + меню skeleton `[L / M / todo (blocked by nothing)]`
+
+**Создаёт базовый движок триумфов без catalog'а.**
+
+- `state.triumphs: dict[str, dict]` — id → `{tier: int (current unlocked, 0 = none), unlocked_at: dict[tier→datetime]}`. Round-trip в `from_dict` / `to_dict`.
+- `state.pinned_triumphs: list[str]` (≤ 3) — id'шники закреплённых триумфов.
+- `state.title: Optional[str]` — текущий выбранный титул (None = без).
+- Triumph engine — модуль `triumphs.py`:
+  - `register_event(state, event_type, **payload)` — на каждый `log_event` вызывается parallel, проверяет какие триумфы триггерятся этим event'ом и инкрементирует прогресс. Идемпотентный (повторный event не двигает tier).
+  - `check_unlock(state, triumph_id)` — возвращает (newly_unlocked_tier or None, new_total_score).
+  - Pure helpers: `get_progress(state, triumph_id) -> dict` (current_tier, next_tier_threshold, current_count).
+- Меню «Triumphs» — каркас (пустой каталог). Pattern: новая location или sub-menu в Home?
+- Score calc — sum points по unlocked tiers (constant POINTS_PER_TIER в MVP).
+- Persist через round-trip flat keys в Sheets / CSV.
+
+**Тесты:** infra без catalog'а — round-trip, idempotency, score sum, pin/unpin (≤ 3).
+
+##### 4.62.1. MVP catalog (20-30 триумфов, без бонусов) `[L / M / todo (blocked by 4.62.0)]`
+
+**Заполняет каталог реальным контентом.** Только trophy + score, **никаких gameplay-эффектов** — поэтапная реализация.
+
+**Categories MVP (6):**
+- 🏃 **Шаги** — 10k / 100k / 1M / 10M total used
+- 🗺️ **Adventures** — 10 / 50 / 100 / 500 / 1000 (любые adventures)
+- 💎 **Дропы** — первый B / первый A / первый S / первый S+ + 10 / 100 S-grade items
+- 🏋️ **Gym** — прокачать любой skill до 5 / 10 / 20 / 30
+- 🏭 **Work** — отработать 10 / 100 / 1000 часов
+- 📈 **Уровень** — char_level 5 / 10 / 25 / 50 / 100
+
+Caталог = static dict в `triumphs_data.py` (по pattern `adventure_data.py` / `skill_training_data.py`):
+
+```python
+TRIUMPHS = {
+    'steps_total': {
+        'name': 'Marathoner',
+        'category': 'steps',
+        'tiers': [10_000, 100_000, 1_000_000, 10_000_000],
+        'metric': 'state.steps.total_used',
+        'event_hooks': ['steps_spent'],  # триггеры из log_event
+    },
+    ...
+}
+```
+
+**Тесты:** для каждой категории — happy path (накопил, tier unlock), idempotency, score increments.
+
+##### 4.62.2. Bonus integration на части триумфов `[L / M / todo (blocked by 4.62.1, partial-blocked by 4.58 Active buffs)]`
+
+**На ~5-10 триумфах вешаем gameplay-эффекты.** Стратегия — **бонус только на капстоунах** (max tier категории) — это даёт ощущение «закрыл всю категорию = получил награду».
+
+**Типы бонусов:**
+- **Постоянные** — добавляются как `bonus_<name>(state)` функции, читают `state.triumphs` и возвращают +N. Интегрируются в существующие helper'ы (например `total_bonus_steps(state)` суммирует и triumph-bonus).
+- **Временные** — через **4.58 Active buffs** (зависимость). Если 4.58 не готов — реализуем только постоянные, временные defer.
+
+**Примеры (для обсуждения):**
+- Marathoner капстоун (10M шагов) → +5% к Stamina навсегда.
+- Adventurer капстоун (1000 приключений) → +1 max инвентаря.
+- Treasure Hunter (10 S-grade items) → +1% к luck постоянно.
+- Veteran Worker (1000 часов) → +5% к зарплате (стек с earnings_boost).
+
+**Тесты:** unlock триггерит bonus, бонус виден в status_bar, save/load preserves.
+
+##### 4.62.3. Seals + Titles (мета-триумфы) `[L / S / todo (blocked by 4.62.1)]`
+
+**Закрыл все триумфы категории → получил титул** (косметика).
+
+- `state.title: Optional[str]` — выбранный титул (из unlocked).
+- Меню Triumphs: подсекция «Titles» — список доступных, выбор активного.
+- Display: status_bar строка «Вы находитесь в локации» расширяется до «<титул> в локации X» если title != None. Web: badge рядом с user.
+- Список (MVP, 6 категорий → 6 титулов): Marathoner / Adventurer / Treasure Hunter / Athlete / Hard Worker / Veteran.
+
+**Тесты:** все tiers категории unlock → seal triggers, title в state.
+
+##### 4.62.4. Pinned / Tracked triumphs `[L / S / todo (blocked by 4.62.1)]`
+
+**Заменяет custom Goals из 4.44.** Игрок выбирает 1-3 триумфа для приоритетного показа.
+
+- `state.pinned_triumphs: list[str]` (cap = 3).
+- UI: в меню Triumphs — кнопка `📌 Pin / Unpin` на каждом триумфе.
+- Display: pinned триумфы видны крупнее в начале меню; опционально — секция в status_bar или Home location.
+- При unlock pinned-триумфа toast становится более заметным.
+
+**Тесты:** pin / unpin, cap=3, persistence.
+
+##### 4.62.5. Hidden / Secret triumphs `[L / S / todo (defer, опционально)]`
+
+**Triumphs которые видны только после unlock'а** — для surprise discovery. Defer до конца MVP.
+
+- `TRIUMPHS[id]['hidden'] = True` — в меню показывается как `???` с count `0/?`.
+- При unlock — visible с full name.
+
+#### Открытые вопросы (для дизайн-сессии при реализации)
+
+1. **Triggering**: event-driven через `log_event` (естественно, 24 типа events уже есть) **vs** polling каждый тик. **Рекомендация:** event-driven, polling fallback только для счётчиков-агрегатов где нет events (например `state.steps.total_used`).
+
+2. **Persistence schema**: `dict[str, dict]` с `tier + unlocked_at[tier→datetime]` (rich) **vs** просто `dict[str, int]` (id → max_tier). **Рекомендация:** rich — нужен timestamp для display «unlocked: 15.05.2026», для history-интеграции и для future stats.
+
+3. **Visibility в MVP**: все триумфы видны со счётчиком прогресса (Destiny default) **vs** mix с hidden (surprise) **vs** все hidden до первого tier'а. **Рекомендация:** все видны в MVP, hidden — отдельная 4.62.5.
+
+4. **Уведомления при unlock**: только toast в CLI / persistent badge в status_bar «🏆 New triumph unlocked!» если есть unclaimed / только в меню. **Рекомендация:** toast + badge (badge clears после захода в меню).
+
+5. **Score points**: фиксированный (10 за tier 1 / 25 / 50 / 100 / 250 для 5 ступеней) **vs** scale by category (Boss-категории дают больше) **vs** scale by difficulty triumph'а. **Рекомендация:** фиксированный в MVP, scale в V2 после получения feedback.
+
+6. **Catalog size в MVP**: 20 / 30 / 50 триумфов в первой версии? И **точный список**. **Рекомендация:** 25-30 (5 на категорию × 6 категорий), чтобы было достаточно контента и не перегружено.
+
+7. **Bonus стратегия**: бонус только на капстоуне категории / на каждом tier'е / на отдельных fancy-триумфах. **Рекомендация:** капстоуны (закрыл всю категорию = power-up).
+
+8. **Title display**: всегда видимый в status_bar (показывает активный титул) **vs** только в меню Profile **vs** опционально (игрок включает в settings). **Рекомендация:** всегда видимый — даёт ценность косметике, мотивирует закрывать категории.
+
+9. **Связь Titles ↔ Seal completeness**: что если в будущем добавим триумф в категорию которая у игрока уже Seal'нута — отзывать титул до закрытия нового? **Рекомендация:** **не отзывать** (locked-in эффект, fair) — иначе игрок будет демотивирован.
+
+10. **Web mirror**: нужно ли сразу для MVP? **Рекомендация:** **CLI-only для MVP** (как Кузница 4.59), web — follow-up задача после стабилизации каталога. Pin / Title display проще делать когда формат финален.
+
+**Effort всей зонтичной 4.62: L** — большая система с UI, контентным дизайном (каталог 25+ триумфов), интеграцией в существующие event hooks, опциональной integration с 4.58. Реализация поэтапная — каждая подзадача — отдельный коммит.
+
+**Зависимость:**
+- `4.62.0 Infra` — blocked by nothing, начинать можно с этого.
+- `4.62.1 MVP catalog` — blocked by 4.62.0.
+- `4.62.2 Bonus integration` — blocked by 4.62.1; **временные бонусы** блокируются также 4.58.
+- `4.62.3 Seals + Titles` — blocked by 4.62.1.
+- `4.62.4 Pinned` — blocked by 4.62.1.
+- `4.62.5 Hidden` — defer, опционально.
+
+**Приоритет Low** — система мотивирующая, но не критичная для core gameplay. Реализация — когда появится свободный bandwidth между основными механиками.
 
 ---
 
