@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 66 ключей legacy save format."""
+    """to_dict() возвращает все 67 ключей legacy save format (66 + last_modified)."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -355,6 +355,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         # Bank (4.49.0.0 / 4.49.2.1)
         'bank_deposit_amount', 'bank_deposit_last_interest_ts',
         'bank_loan_amount', 'bank_loan_last_interest_ts',
+        # 4.54.1 — Optimistic concurrency
+        'last_modified',
     }
     assert set(d.keys()) == expected_keys
 
@@ -413,3 +415,97 @@ def test_legacy_save_without_pending_drop_defaults_to_none():
     del d['pending_drop']  # имитируем legacy save до 0.2.4c
     s2 = GameState.from_dict(d)
     assert s2.pending_drop is None
+
+
+# ----- 4.54.1: Optimistic concurrency timestamp + snapshot -----
+
+def test_last_modified_default_is_zero():
+    """Новый default-state имеет last_modified=0.0 (никогда не сохранялся)."""
+    s = GameState.default_new_game()
+    assert s.last_modified == 0.0
+
+
+def test_last_modified_round_trip():
+    """last_modified переживает to_dict → from_dict без потерь."""
+    s1 = GameState.default_new_game()
+    s1.last_modified = 1234567890.123
+    d = s1.to_dict()
+    assert d['last_modified'] == 1234567890.123
+    s2 = GameState.from_dict(d)
+    assert s2.last_modified == 1234567890.123
+
+
+def test_legacy_save_without_last_modified_defaults_to_zero():
+    """4.54.1 — старый сейв без last_modified — поле получает default 0.0.
+    Это позволяет первому save_safe пройти проверку (0.0 ≤ current = 0.0)."""
+    s1 = GameState.default_new_game()
+    d = s1.to_dict()
+    del d['last_modified']  # legacy save до 4.54
+    s2 = GameState.from_dict(d)
+    assert s2.last_modified == 0.0
+
+
+def test_last_loaded_snapshot_default_is_none():
+    """Без явного take_snapshot() — snapshot пустой (None)."""
+    s = GameState.default_new_game()
+    assert s.last_loaded_snapshot is None
+
+
+def test_last_loaded_snapshot_not_in_to_dict():
+    """4.54.1 — snapshot НЕ сериализуется (runtime-only)."""
+    s = GameState.default_new_game()
+    s.take_snapshot()
+    d = s.to_dict()
+    assert 'last_loaded_snapshot' not in d
+
+
+def test_take_snapshot_captures_current_state():
+    """take_snapshot() сохраняет deep-copy текущего to_dict()."""
+    s = GameState.default_new_game()
+    s.money = 123.45
+    s.gym.stamina = 5
+
+    s.take_snapshot()
+
+    assert s.last_loaded_snapshot is not None
+    assert s.last_loaded_snapshot['money'] == 123.45
+    assert s.last_loaded_snapshot['stamina'] == 5
+
+
+def test_take_snapshot_is_deep_copy_not_reference():
+    """Snapshot должен быть deep copy — мутации live state НЕ должны менять snapshot."""
+    s = GameState.default_new_game()
+    s.inventory.append({'item_type': ['ring'], 'grade': ['a-grade'], 'quality': [80]})
+    s.take_snapshot()
+
+    # Мутируем live state ПОСЛЕ snapshot'а
+    s.inventory.append({'item_type': ['helmet'], 'grade': ['s-grade'], 'quality': [50]})
+    s.money = 9999
+    s.inventory[0]['quality'][0] = 1  # мутируем item-dict, который был в snapshot
+
+    # Snapshot должен остаться в исходном виде
+    assert len(s.last_loaded_snapshot['inventory']) == 1
+    assert s.last_loaded_snapshot['inventory'][0]['quality'][0] == 80
+    assert s.last_loaded_snapshot['money'] == 0
+
+
+def test_two_states_compare_equal_regardless_of_snapshot():
+    """4.54.1 — last_loaded_snapshot НЕ участвует в __eq__ (compare=False).
+    Две одинаковые state'ы с разными snapshot'ами должны быть equal."""
+    s1 = GameState.default_new_game()
+    s2 = GameState.default_new_game()
+    s1.take_snapshot()
+    # s2 без snapshot'а
+    assert s1 == s2
+
+
+def test_update_from_dict_propagates_last_modified():
+    """update_from_dict подтягивает last_modified из fresh dict."""
+    s = GameState.default_new_game()
+    assert s.last_modified == 0.0
+
+    fresh_dict = GameState.default_new_game().to_dict()
+    fresh_dict['last_modified'] = 9999.99
+
+    s.update_from_dict(fresh_dict)
+    assert s.last_modified == 9999.99

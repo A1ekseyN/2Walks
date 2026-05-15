@@ -190,10 +190,42 @@ class GameState:
     # base price). Round-trip через flat-key 'pending_drop' (None для legacy).
     pending_drop: Optional[dict] = None
 
+    # 4.54.1 — Optimistic concurrency через timestamp. `last_modified` —
+    # Unix-ts момента последнего успешного save в Sheets; round-trip'ится
+    # как обычное поле. На load в Sheets отсутствующий ключ → default 0.0
+    # (legacy saves до 4.54). При save_safe (4.54.2) выставляется к
+    # `time.time()` перед записью. См. секцию 4.54 в TASKS.md.
+    last_modified: float = 0.0
+
+    # 4.54.1 — Snapshot для diff на STALE. Deep-copy `to_dict()` после
+    # успешного load или save — отражает «последнюю синхронизированную с
+    # Sheets версию» state'а. Используется `sync_diff.diff_states()` чтобы
+    # показать игроку «что изменилось на сервере с момента моего load'а».
+    # **Runtime-only** — НЕ сериализуется (`to_dict` его не пишет), НЕ
+    # участвует в __eq__ / __repr__. None пока snapshot не взят.
+    last_loaded_snapshot: Optional[dict] = field(
+        default=None, repr=False, compare=False
+    )
+
     @classmethod
     def default_new_game(cls) -> "GameState":
         """Дефолтное состояние нового персонажа (energy=50, money=0, location=home)."""
         return cls()
+
+    def take_snapshot(self) -> None:
+        """Сохраняет deep-copy текущего state в `last_loaded_snapshot`.
+
+        Вызывается после: (а) успешного load из Sheets/CSV (init_game_state /
+        update_from_dict), (б) успешного save (save_safe → OK). Snapshot —
+        точка отсчёта для diff'а на STALE: «что изменилось на сервере с
+        момента моей последней синхронизации».
+
+        Deep copy обязателен — `to_dict()` возвращает references на nested
+        списки (inventory) и dicts (equipment.head), их нельзя shallow-copy
+        иначе snapshot будет «двигаться» с мутациями self.
+        """
+        import copy
+        self.last_loaded_snapshot = copy.deepcopy(self.to_dict())
 
     @classmethod
     def from_dict(cls, d: dict) -> "GameState":
@@ -321,6 +353,9 @@ class GameState:
             inventory=list(d.get('inventory') or []),
             # 4.50.1 — Pending drop. None для сейвов до 0.2.4c, dict иначе.
             pending_drop=d.get('pending_drop') or None,
+            # 4.54.1 — Optimistic concurrency timestamp. Default 0.0 для legacy
+            # сейвов до 4.54 — первый save_safe запишет реальный time.time().
+            last_modified=float(d.get('last_modified') or 0.0),
         )
 
     def update_from_dict(self, d: dict) -> "GameState":
@@ -348,6 +383,11 @@ class GameState:
         self.bank = new.bank
         self.inventory = new.inventory
         self.pending_drop = new.pending_drop
+        # 4.54.1 — last_modified подхватывается из свежего load'а Sheets.
+        # last_loaded_snapshot обновлять здесь нельзя — caller (try_reload_state
+        # или init_game_state) должен явно вызвать take_snapshot() после того
+        # как все post-load fixups сделаны.
+        self.last_modified = new.last_modified
         return self
 
     def to_dict(self) -> dict:
@@ -461,4 +501,8 @@ class GameState:
             'bank_deposit_last_interest_ts': self.bank.deposit_last_interest_ts,
             'bank_loan_amount': self.bank.loan_amount,
             'bank_loan_last_interest_ts': self.bank.loan_last_interest_ts,
+
+            # 4.54.1 — Optimistic concurrency timestamp (round-trip с Sheets).
+            # `last_loaded_snapshot` НЕ сериализуется — runtime-only diff helper.
+            'last_modified': self.last_modified,
         }

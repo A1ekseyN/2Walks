@@ -79,6 +79,11 @@ def try_reload_state() -> ReloadStatus:
             if game.state.date_last_enter != old_date:
                 # Фактический rollover произошёл — синкаем свежий state.
                 persist_state_to_cloud()
+            # 4.54.1 — Snapshot для optimistic concurrency. Берётся ПОСЛЕ
+            # update_from_dict + max-merge + rollover detect/persist, чтобы
+            # отражать «вот state который мы считаем synced с Sheets». diff
+            # на STALE сравнивает fresh Sheets vs этот snapshot.
+            game.state.take_snapshot()
             status = ReloadStatus(ok=True, at=datetime.now())
         except Exception as e:
             status = ReloadStatus(ok=False, at=datetime.now(), error=str(e))

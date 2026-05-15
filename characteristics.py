@@ -72,6 +72,12 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # не увидит ввод через web, если game_state лист ещё не обновлён.
     apply_steps_log_max_merge(s)
 
+    # 4.54.1 — Snapshot для optimistic concurrency. Берётся ПОСЛЕ всех
+    # post-load fixups (timestamp_last_enter / loc / energy_max / max-merge)
+    # чтобы snapshot отражал точно тот state, который мы считаем «synced с
+    # Sheets». Diff на STALE сравнит fresh Sheets vs этот snapshot.
+    s.take_snapshot()
+
     game.state = s
     return game.state
 
