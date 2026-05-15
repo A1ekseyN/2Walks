@@ -161,6 +161,96 @@ def _build_work_vacancies(state) -> list:
     return vacancies
 
 
+# 4.54.6 — Sentinel marker для STALE-конфликта. Validators возвращают это
+# вместо обычной ошибки, endpoint'ы детектят и рендерят stale-fragment с
+# auto-reload через 2 сек. Сама строка никогда не показывается игроку —
+# чисто internal signal.
+STALE_MARKER = "__STALE__"
+
+
+def _persist_and_handle_stale(endpoint: str = "") -> Optional[str]:
+    """4.54.6 — wraps persist_state_to_cloud, на STALE возвращает brief diff.
+
+    Returns:
+    - None — OK, продолжаем обычный flow.
+    - brief diff string — STALE, caller возвращает stale-fragment.
+
+    Логирует `log_event('sync_conflict', source='web', diff=..., endpoint=...)`.
+    """
+    status = persist_state_to_cloud()
+    if status != "STALE":
+        return None
+    # Build brief diff для toast.
+    from google_sheets_db import GameStateRepo
+    from sync_diff import diff_states, format_diff_brief, has_changes
+    try:
+        fresh = GameStateRepo().load()
+    except Exception:  # noqa: BLE001
+        fresh = {}
+    snapshot = game.state.last_loaded_snapshot or {} if game.state else {}
+    diff = diff_states(snapshot, fresh)
+    brief = format_diff_brief(diff) if has_changes(diff) else "состояние обновилось"
+    from history import log_event
+    log_event('sync_conflict', source='web', diff=brief, endpoint=endpoint)
+    return brief
+
+
+def _stale_response() -> HTMLResponse:
+    """4.54.6 — HTML fragment для HTMX swap при STALE.
+
+    Самостоятельно вычисляет brief diff (вне зависимости от того кто и где
+    обнаружил STALE) — fresh load Sheets vs `state.last_loaded_snapshot`,
+    через `sync_diff.format_diff_brief`. Содержит toast с diff'ом и JS-
+    таймером `window.location.reload()` через 2 сек.
+
+    Используется всеми web mutation endpoint'ами при STALE_MARKER от
+    validator'ов. Double-load неэффективен (validator уже загружал для
+    log_event), но STALE — rare event, оптимизация не критична.
+    """
+    from google_sheets_db import GameStateRepo
+    from sync_diff import diff_states, format_diff_brief, has_changes
+    try:
+        fresh = GameStateRepo().load()
+    except Exception:  # noqa: BLE001
+        fresh = {}
+    snapshot = game.state.last_loaded_snapshot or {} if game.state else {}
+    diff = diff_states(snapshot, fresh)
+    brief = format_diff_brief(diff) if has_changes(diff) else "состояние обновилось"
+    html = (
+        f'<div id="status-bar" class="stale-toast" '
+        f'style="padding:1rem; background:#ffd2d2; '
+        f'border:2px solid #d33; border-radius:.5rem; '
+        f'color:#600; font-weight:bold;">'
+        f'⚠️ Состояние обновлено извне: {brief}. Перезагружаю...'
+        f'</div>'
+        f'<script>setTimeout(function(){{window.location.reload();}}, 2000);</script>'
+    )
+    return HTMLResponse(html)
+
+
+def _stale_json_response() -> JSONResponse:
+    """4.54.6 — JSON-вариант STALE response для API endpoint'ов.
+
+    Возвращает 409 Conflict с brief diff. JSON-клиенты (curl / iPhone Shortcut)
+    интерпретируют stale=true как «попробуйте позже» — ретрай не делаем
+    автоматически, чтобы не залить serverr.
+    """
+    from google_sheets_db import GameStateRepo
+    from sync_diff import diff_states, format_diff_brief, has_changes
+    try:
+        fresh = GameStateRepo().load()
+    except Exception:  # noqa: BLE001
+        fresh = {}
+    snapshot = game.state.last_loaded_snapshot or {} if game.state else {}
+    diff = diff_states(snapshot, fresh)
+    brief = format_diff_brief(diff) if has_changes(diff) else "состояние обновилось"
+    return JSONResponse(
+        {"ok": False, "stale": True, "diff": brief,
+         "error": "External state update detected — reload required."},
+        status_code=409,
+    )
+
+
 def _validate_and_apply_work(state, work_type: str, hours: int) -> Optional[str]:
     """Валидирует work_type/hours, применяет смену через Work.check_requirements
     + Wear_Equipped_Items.decrease_durability. На успехе синкает state в
@@ -187,7 +277,10 @@ def _validate_and_apply_work(state, work_type: str, hours: int) -> Optional[str]
     Wear_Equipped_Items(state).decrease_durability(hours * req['steps'])
     # Persist: state.work теперь active=True, но без записи в Sheets/CSV
     # игрок потеряет смену при рестарте uvicorn'а или при reload через 4.54.0.
-    persist_state_to_cloud()
+    # 4.54.6 — STALE marker propagation для optimistic concurrency.
+    stale = _persist_and_handle_stale(endpoint='work')
+    if stale:
+        return STALE_MARKER
     return None
 
 
@@ -220,7 +313,9 @@ def _validate_and_apply_skill_allocation(state, skill: str) -> Optional[str]:
     # 4.6 — log_event распределения очка навыка через web.
     from history import log_event
     log_event('skill_alloc', skill=skill, new_level=new_level)
-    persist_state_to_cloud()
+    stale = _persist_and_handle_stale(endpoint='skill_alloc')
+    if stale:
+        return STALE_MARKER
     return None
 
 
@@ -462,7 +557,9 @@ def _validate_and_apply_training(state, skill_name: str) -> Optional[str]:
     skill_training = Skill_Training(state=state, name=skill_name)
     skill_training.start_skill_training()
     Wear_Equipped_Items(state).decrease_durability(steps_needed)
-    persist_state_to_cloud()
+    stale = _persist_and_handle_stale(endpoint='gym_start')
+    if stale:
+        return STALE_MARKER
     return None
 
 
@@ -1007,6 +1104,9 @@ async def web_work_start(request: Request,
         )
     else:
         err = _validate_and_apply_work(state, work_type, hours)
+        # 4.54.6 — STALE → специальный fragment с auto-reload.
+        if err == STALE_MARKER:
+            return _stale_response()
         context = _dashboard_context(request, work_error=err)
     return templates.TemplateResponse(request, "_status_fragment.html", context)
 
@@ -1025,6 +1125,8 @@ async def web_work_add_hours(request: Request, hours: int = Form(...)):
         )
     else:
         err = _validate_and_apply_work(state, state.work.work_type, hours)
+        if err == STALE_MARKER:
+            return _stale_response()
         context = _dashboard_context(request, work_error=err)
     return templates.TemplateResponse(request, "_status_fragment.html", context)
 
@@ -1046,6 +1148,8 @@ async def api_work_start(payload: WorkStartRequest):
         )
 
     err = _validate_and_apply_work(state, payload.work_type, payload.hours)
+    if err == STALE_MARKER:
+        return _stale_json_response()
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "work": _work_state_snapshot(state)})
@@ -1065,6 +1169,8 @@ async def api_work_add_hours(payload: WorkAddHoursRequest):
         )
 
     err = _validate_and_apply_work(state, state.work.work_type, payload.hours)
+    if err == STALE_MARKER:
+        return _stale_json_response()
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "work": _work_state_snapshot(state)})
@@ -1107,6 +1213,8 @@ async def web_level_allocate(request: Request, skill: str = Form(...)):
         raise HTTPException(status_code=503, detail="state not initialized")
 
     err = _validate_and_apply_skill_allocation(state, skill)
+    if err == STALE_MARKER:
+        return _stale_response()
     context = _dashboard_context(request, skill_error=err)
     return templates.TemplateResponse(request, "_status_fragment.html", context)
 
@@ -1119,6 +1227,8 @@ async def api_level_allocate(payload: SkillAllocateRequest):
         return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
 
     err = _validate_and_apply_skill_allocation(state, payload.skill)
+    if err == STALE_MARKER:
+        return _stale_json_response()
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "char_level": _char_level_snapshot(state)})
@@ -1160,6 +1270,8 @@ async def web_gym_start(request: Request, skill_name: str = Form(...)):
         raise HTTPException(status_code=503, detail="state not initialized")
 
     err = _validate_and_apply_training(state, skill_name)
+    if err == STALE_MARKER:
+        return _stale_response()
     context = _dashboard_context(request, gym_error=err)
     return templates.TemplateResponse(request, "_status_fragment.html", context)
 
@@ -1179,6 +1291,8 @@ async def api_gym_start(payload: GymStartRequest):
         )
 
     err = _validate_and_apply_training(state, payload.skill_name)
+    if err == STALE_MARKER:
+        return _stale_json_response()
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "training": _training_snapshot(state)})
@@ -1207,7 +1321,9 @@ def _validate_and_apply_drop_sell_existing(state, index: int) -> Optional[str]:
         return f"Неверный индекс предмета: {index} (инвентарь: {len(state.inventory)} предметов)."
     from inventory import _resolve_pending_drop_sell_existing
     _resolve_pending_drop_sell_existing(state, index)
-    persist_state_to_cloud()
+    stale = _persist_and_handle_stale(endpoint='drop_sell_existing')
+    if stale:
+        return STALE_MARKER
     return None
 
 
@@ -1220,7 +1336,9 @@ def _validate_and_apply_drop_sell_new(state) -> Optional[str]:
         return "Нет активной находки для resolve."
     from inventory import _resolve_pending_drop_sell_new
     _resolve_pending_drop_sell_new(state)
-    persist_state_to_cloud()
+    stale = _persist_and_handle_stale(endpoint='drop_sell_new')
+    if stale:
+        return STALE_MARKER
     return None
 
 
@@ -1232,6 +1350,8 @@ async def web_drop_sell_existing(request: Request, index: int = Form(...)):
         raise HTTPException(status_code=503, detail="state not initialized")
 
     err = _validate_and_apply_drop_sell_existing(state, index)
+    if err == STALE_MARKER:
+        return _stale_response()
     context = _dashboard_context(request, drop_error=err)
     return templates.TemplateResponse(request, "_status_fragment.html", context)
 
@@ -1244,6 +1364,8 @@ async def web_drop_sell_new(request: Request):
         raise HTTPException(status_code=503, detail="state not initialized")
 
     err = _validate_and_apply_drop_sell_new(state)
+    if err == STALE_MARKER:
+        return _stale_response()
     context = _dashboard_context(request, drop_error=err)
     return templates.TemplateResponse(request, "_status_fragment.html", context)
 
@@ -1287,6 +1409,8 @@ async def api_drop_sell_existing(payload: DropSellExistingRequest):
         return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
 
     err = _validate_and_apply_drop_sell_existing(state, payload.index)
+    if err == STALE_MARKER:
+        return _stale_json_response()
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({
@@ -1305,6 +1429,8 @@ async def api_drop_sell_new():
         return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
 
     err = _validate_and_apply_drop_sell_new(state)
+    if err == STALE_MARKER:
+        return _stale_json_response()
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({

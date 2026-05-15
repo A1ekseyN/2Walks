@@ -46,20 +46,25 @@ def patch_sheets_load(monkeypatch):
     monkeypatch.setattr(GameStateRepo, "load_meta", lambda self: 0.0)
     monkeypatch.setattr(StepsLogRepo, "for_day", fake_for_day)
     # 4.54.4 — save_characteristic теперь возвращает "OK"/"STALE" и сам делает
-    # Sheets через save_safe. Мокаем её на «прозрачный no-op CSV + tracked
-    # GameStateRepo.save»: вызывает save (autouse-мокнутый) чтобы тесты которые
-    # отслеживают saved_to_sheets продолжали работать через новую цепочку
-    # (persist_state_to_cloud → save_characteristic → GameStateRepo.save).
+    # Sheets через save_safe. Мокаем её через GameStateRepo.save_safe (а не
+    # save напрямую) — это позволяет тестам 4.54.6 переопределять save_safe
+    # для симуляции STALE и видеть полный flow STALE-обработки.
+    # save_safe сам внутри вызывает self.save() на OK — поэтому tracking через
+    # saved_to_sheets (которые мокают `save`) продолжает работать.
     def fake_save_characteristic():
-        if game.state is not None:
-            try:
-                GameStateRepo().save(game.state.to_dict())
-            except Exception as e:  # noqa: BLE001
-                # 4.54.4 — реальный save_characteristic graceful-катчит Sheets
-                # network errors (CSV-only fallback). Тесту нужно то же поведение
-                # чтобы test_web_work_persists_even_if_sheets_save_fails работал.
-                print(f"[save] Sheets sync failed (CSV-only fallback): {e}")
-        return "OK"
+        if game.state is None:
+            return "OK"
+        try:
+            status = GameStateRepo().save_safe(
+                game.state.to_dict(),
+                expected_last_modified=game.state.last_modified,
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[save] Sheets sync failed (CSV-only fallback): {e}")
+            return "OK"
+        if status == "OK":
+            game.state.take_snapshot()
+        return status
     import characteristics as _ch
     import work as _wm
     monkeypatch.setattr(_ch, "save_characteristic", fake_save_characteristic)
@@ -2943,3 +2948,108 @@ def test_auto_collect_fires_in_dashboard_when_room_freed():
     assert state.pending_drop is None
     assert len(state.inventory) == 11
     assert 'id="pending-drop"' not in response.text
+
+
+# ----- 4.54.6 — Web STALE response (Form + JSON) -----
+
+def test_web_work_start_returns_stale_fragment_on_concurrent_save(monkeypatch):
+    """POST /web/work/start при save_safe STALE → HTML fragment с auto-reload скриптом."""
+    from google_sheets_db import GameStateRepo
+
+    # Mock save_safe → STALE (concurrent write detected).
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+    # И load для diff в _stale_response.
+    # autouse fixture уже мокает load для returning {} dict.
+
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.post("/web/work/start", data={"work_type": "watchman", "hours": "1"})
+
+    assert response.status_code == 200
+    assert 'stale-toast' in response.text
+    assert 'Перезагружаю' in response.text
+    assert 'window.location.reload' in response.text
+
+
+def test_api_work_start_returns_409_with_stale_flag(monkeypatch):
+    """POST /api/work/start при STALE → 409 + {ok: False, stale: True, diff}."""
+    from google_sheets_db import GameStateRepo
+
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        response = client.post("/api/work/start", json={"work_type": "watchman", "hours": 1})
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["stale"] is True
+    assert "diff" in payload
+
+
+def test_web_gym_start_returns_stale_fragment(monkeypatch):
+    """POST /web/gym/start при STALE → stale fragment."""
+    from google_sheets_db import GameStateRepo
+
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+
+    state = GameState.default_new_game()
+    state.steps.today = 5000
+    state.steps.can_use = 5000
+    state.energy = 50
+    state.money = 1000.0
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/web/gym/start", data={"skill_name": "stamina"})
+
+    assert response.status_code == 200
+    assert 'stale-toast' in response.text
+
+
+def test_web_level_allocate_returns_stale_fragment(monkeypatch):
+    """POST /web/level/allocate при STALE → stale fragment."""
+    from google_sheets_db import GameStateRepo
+
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+
+    state = GameState.default_new_game()
+    state.char_level.up_skills = 1
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.post("/web/level/allocate", data={"skill": "stamina"})
+
+    assert response.status_code == 200
+    assert 'stale-toast' in response.text
+
+
+def test_stale_response_logs_sync_conflict_event(monkeypatch):
+    """STALE-flow логирует event sync_conflict с source='web' через log_event."""
+    from google_sheets_db import GameStateRepo
+    import history
+
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+
+    events = []
+
+    def capture_event(event_type, **payload):
+        events.append((event_type, payload))
+
+    monkeypatch.setattr(history, "log_event", capture_event)
+
+    _setup_state(_state_for_work())
+    with TestClient(app) as client:
+        client.post("/web/work/start", data={"work_type": "watchman", "hours": "1"})
+
+    sync_events = [e for e in events if e[0] == 'sync_conflict']
+    assert len(sync_events) >= 1
+    payload = sync_events[0][1]
+    assert payload.get('source') == 'web'
+    assert payload.get('endpoint') == 'work'

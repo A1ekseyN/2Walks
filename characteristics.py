@@ -184,6 +184,105 @@ DATE_KEYS = [
 ]
 
 
+def handle_stale_prompt() -> Literal["reload", "force", "cancel"]:
+    """4.54.5 — Интерактивный STALE-prompt для CLI.
+
+    Загружает fresh Sheets state, вычисляет diff vs `state.last_loaded_snapshot`
+    (через `sync_diff.diff_states`), показывает detailed список изменений и
+    предлагает 3 опции:
+
+    - **r / reload** — `init_game_state(state=None)` re-init из Sheets,
+      потеряешь свои несохранённые мутации. Snapshot обновится.
+    - **f / force** — двойной confirm prompt, потом `save_characteristic_force()`
+      перепишет Sheets своими данными, потеряешь серверные изменения.
+    - **c / cancel** — продолжить без save, prompt появится снова при
+      следующем save attempt.
+
+    Логирует `log_event('sync_conflict', source='cli', diff, choice)`.
+
+    Возвращает выбор игрока ('reload' / 'force' / 'cancel') — caller сам
+    решает что делать после (steps_log append / exit / continue).
+
+    Импортируется в `game.py:_sync_to_cloud` при `status == "STALE"`.
+    """
+    if game.state is None:
+        return "cancel"  # safety guard
+
+    # Load fresh для diff.
+    from google_sheets_db import GameStateRepo
+    from sync_diff import diff_states, format_diff_brief, format_diff_cli, has_changes
+
+    try:
+        fresh = GameStateRepo().load()
+    except Exception as e:  # noqa: BLE001
+        print(f'\n⚠️ Не удалось загрузить fresh state для diff: {e}')
+        print('Sheets недоступен — повторите попытку save позже.')
+        return "cancel"
+
+    snapshot = game.state.last_loaded_snapshot or {}
+    diff = diff_states(snapshot, fresh)
+
+    print('\n' + '=' * 60)
+    print('⚠️  STALE — состояние на Sheets изменилось извне (web сервер / другой CLI).')
+    print('=' * 60)
+    if has_changes(diff):
+        print(format_diff_cli(diff))
+    else:
+        print('(diff пустой — возможно, race condition без явных изменений)')
+    print('=' * 60)
+
+    from history import log_event
+    diff_summary = format_diff_brief(diff)
+
+    # Loop retry на невалиде.
+    while True:
+        choice = input(
+            '\n[r] Reload — потерять свои несохранённые изменения, подтянуть свежее\n'
+            '[f] Force  — перезаписать сервер (потеряешь изменения выше)\n'
+            '[c] Cancel — продолжить без save, prompt появится снова\n'
+            '>>> '
+        ).strip().lower()
+
+        if choice in ('r', 'reload'):
+            print('\n🔄 Reload...')
+            game.state = None  # сброс container'а
+            init_game_state()  # re-init из Sheets + snapshot
+            log_event('sync_conflict', source='cli', diff=diff_summary, choice='reload')
+            print('✅ State пересинхронизирован с Sheets.')
+            return "reload"
+
+        if choice in ('f', 'force'):
+            confirm = input(
+                '\n⚠️ Force overwrite перезапишет ВСЕ изменения с сервера выше своими данными.\n'
+                'Уверен? Введи `yes` для подтверждения: '
+            ).strip().lower()
+            if confirm != 'yes':
+                print('Force отменён, возврат к меню выбора.')
+                continue
+            # Force save_safe с expected=None — bypass check.
+            from google_sheets_db import GameStateRepo as _Repo
+            state_dict = game.state.to_dict()
+            try:
+                _Repo().save_safe(state_dict, expected_last_modified=None)
+            except Exception as e:  # noqa: BLE001
+                print(f'\n❌ Force save failed: {e}')
+                log_event('sync_conflict', source='cli', diff=diff_summary,
+                          choice='force', result='failed', error=str(e))
+                return "cancel"
+            game.state.last_modified = state_dict.get('last_modified', game.state.last_modified)
+            game.state.take_snapshot()
+            log_event('sync_conflict', source='cli', diff=diff_summary, choice='force')
+            print('✅ Force save прошёл. Серверные изменения перезаписаны.')
+            return "force"
+
+        if choice in ('c', 'cancel', ''):
+            log_event('sync_conflict', source='cli', diff=diff_summary, choice='cancel')
+            print('Save отменён.')
+            return "cancel"
+
+        print('Неверный выбор. Введи r / f / c.')
+
+
 def save_characteristic() -> Literal["OK", "STALE"]:
     """Save state: Sheets save_safe + локальный CSV (offline fallback).
 

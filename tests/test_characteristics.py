@@ -170,6 +170,193 @@ def test_save_characteristic_returns_stale_no_state_mutation(monkeypatch, tmp_pa
     assert not csv_path.exists(), 'CSV не должен писаться на STALE'
 
 
+# ----- 4.54.5: handle_stale_prompt CLI flow -----
+
+def test_handle_stale_prompt_cancel(monkeypatch, capsys):
+    """Cancel — без мутаций state'а, log_event sync_conflict зафиксирован."""
+    from characteristics import handle_stale_prompt
+    import google_sheets_db
+    import history
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    s.last_modified = 100.0
+    init_game_state(s)
+    s.take_snapshot()
+
+    # Mock fresh load: новый money + новый last_modified.
+    fresh = s.to_dict()
+    fresh['money'] = 1500.0
+    fresh['last_modified'] = 200.0
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "load", lambda self: fresh)
+
+    events = []
+    monkeypatch.setattr(history, "log_event",
+                        lambda evt_type, **payload: events.append((evt_type, payload)))
+
+    monkeypatch.setattr('builtins.input', lambda *a, **k: 'c')
+
+    choice = handle_stale_prompt()
+
+    assert choice == 'cancel'
+    assert game.state.last_modified == 100.0  # без мутации
+    # log_event sync_conflict записан с choice='cancel'.
+    sync_events = [e for e in events if e[0] == 'sync_conflict']
+    assert len(sync_events) == 1
+    assert sync_events[0][1].get('choice') == 'cancel'
+
+    out = capsys.readouterr().out
+    assert '💰' in out  # diff показывает money change
+    assert 'STALE' in out
+
+
+def test_handle_stale_prompt_reload(monkeypatch):
+    """Reload — re-init из Sheets, state синкан с свежими данными."""
+    from characteristics import handle_stale_prompt
+    import google_sheets_db
+    import history
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    s.last_modified = 100.0
+    s.money = 100.0
+    init_game_state(s)
+    s.take_snapshot()
+
+    # Mock fresh: новый state с +600$.
+    fresh = s.to_dict()
+    fresh['money'] = 700.0
+    fresh['last_modified'] = 200.0
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "load", lambda self: fresh)
+
+    events = []
+    monkeypatch.setattr(history, "log_event",
+                        lambda evt_type, **payload: events.append((evt_type, payload)))
+
+    monkeypatch.setattr('builtins.input', lambda *a, **k: 'r')
+
+    choice = handle_stale_prompt()
+
+    assert choice == 'reload'
+    # State синкнут с fresh.
+    assert game.state.money == 700.0
+    assert game.state.last_modified == 200.0
+
+
+def test_handle_stale_prompt_force_with_double_confirm(monkeypatch, capsys):
+    """Force — двойной confirm prompt → save_safe с expected=None (bypass)."""
+    from characteristics import handle_stale_prompt
+    import google_sheets_db
+    import history
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    s.last_modified = 100.0
+    s.money = 500.0
+    init_game_state(s)
+    s.take_snapshot()
+
+    fresh = s.to_dict()
+    fresh['money'] = 1000.0  # сервер изменил
+    fresh['last_modified'] = 200.0
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "load", lambda self: fresh)
+
+    save_safe_calls = []
+
+    def fake_save_safe(self, sd, expected_last_modified):
+        save_safe_calls.append(expected_last_modified)
+        sd['last_modified'] = 999.0
+        return "OK"
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe", fake_save_safe)
+
+    events = []
+    monkeypatch.setattr(history, "log_event",
+                        lambda evt_type, **payload: events.append((evt_type, payload)))
+
+    # f → yes (двойной confirm).
+    inputs = iter(['f', 'yes'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    choice = handle_stale_prompt()
+
+    assert choice == 'force'
+    # save_safe вызван с expected=None (Force bypass).
+    assert save_safe_calls == [None]
+    # State синкан с force-результатом.
+    assert game.state.money == 500.0  # моё значение, не серверное
+    assert game.state.last_modified == 999.0
+
+
+def test_handle_stale_prompt_force_aborted_on_no_confirm(monkeypatch):
+    """Force confirm `no` — возврат в loop, повторный выбор."""
+    from characteristics import handle_stale_prompt
+    import google_sheets_db
+    import history
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    s.last_modified = 100.0
+    init_game_state(s)
+    s.take_snapshot()
+
+    fresh = s.to_dict()
+    fresh['last_modified'] = 200.0
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "load", lambda self: fresh)
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "OK")
+    monkeypatch.setattr(history, "log_event", lambda *a, **k: None)
+
+    # f → no (отмена force) → c (cancel).
+    inputs = iter(['f', 'no', 'c'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    choice = handle_stale_prompt()
+
+    assert choice == 'cancel'
+
+
+def test_handle_stale_prompt_invalid_choice_loops(monkeypatch):
+    """Невалидный ввод → повтор prompt'а."""
+    from characteristics import handle_stale_prompt
+    import google_sheets_db
+    import history
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    init_game_state(s)
+    s.take_snapshot()
+
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "load", lambda self: s.to_dict())
+    monkeypatch.setattr(history, "log_event", lambda *a, **k: None)
+
+    inputs = iter(['xyz', 'q', 'c'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    choice = handle_stale_prompt()
+    assert choice == 'cancel'
+
+
+def test_handle_stale_prompt_load_failed_returns_cancel(monkeypatch, capsys):
+    """Sheets load fail → возврат cancel без prompt'а."""
+    from characteristics import handle_stale_prompt
+    import google_sheets_db
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    init_game_state(s)
+    s.take_snapshot()
+
+    def failing_load(self):
+        raise RuntimeError("Network down")
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "load", failing_load)
+
+    choice = handle_stale_prompt()
+    assert choice == 'cancel'
+
+    out = capsys.readouterr().out
+    assert 'Не удалось загрузить' in out
+
+
 def test_save_characteristic_network_error_returns_ok(monkeypatch, tmp_path, capsys):
     """Sheets network error → CSV-only fallback, return "OK" + warning в лог."""
     from characteristics import save_characteristic

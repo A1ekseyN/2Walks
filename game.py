@@ -9,6 +9,7 @@ from colorama import init
 
 from characteristics import (
     game,
+    handle_stale_prompt,
     init_game_state,
     save_characteristic,
 )
@@ -70,25 +71,33 @@ def play():
 
                 4.54.4 — `save_characteristic()` теперь сам делает CSV+Sheets через
                 save_safe (optimistic concurrency). Возвращает "OK"/"STALE".
-                Прежний явный `GameStateRepo().save(...)` удалён — он дублировал
-                Sheets write и не имел STALE-проверки.
 
-                На "STALE" steps_log append пропускается — нет смысла дублировать
-                stale-запись (max-merge всё равно вернёт максимум при следующем
-                load'е, но чище без шума).
-
-                CLI STALE prompt (Reload/Force/Cancel) — задача 4.54.5; пока
-                выводим короткий warning, caller (save_game_local_and_cloud /
-                save_and_exit) решает что делать.
+                4.54.5 — на STALE вызывается `handle_stale_prompt()` с интерактивным
+                Reload/Force/Cancel. После Force/Reload — повторный attempt:
+                Force перезаписал Sheets (state синкан), Reload re-init'нул state.
+                Cancel — возвращаем "STALE" вверх (caller сам решает что делать).
                 """
                 status = save_characteristic()
                 if status == "STALE":
-                    print('\n⚠️ Save aborted — Sheets изменён внешне (web на сервере / другой CLI). '
-                          'Полная STALE-обработка с diff/Reload/Force — в 4.54.5.')
-                    return status
-                # Append текущего snapshot шагов в steps_log с источником 'manual'
-                # (CLI — единственный канал ввода в этой задаче; web/auto канал
-                # будет писать сам в 4.48.2 / 4.13).
+                    choice = handle_stale_prompt()
+                    if choice == 'reload':
+                        # Reload синкнул state с Sheets, но нашего save'а так и не
+                        # произошло. Игрок может попробовать снова — но steps_log
+                        # append не делаем (новые шаги уже потеряны, останутся
+                        # только те что в Sheets).
+                        return "STALE"
+                    if choice == 'force':
+                        # Force уже записал Sheets и обновил snapshot.
+                        # steps_log append — для consistency с обычным OK flow.
+                        StepsLogRepo().append(
+                            ts=datetime.now().timestamp(),
+                            steps=state.steps.today,
+                            source='manual',
+                        )
+                        return "OK"
+                    # cancel — возвращаем STALE наверх.
+                    return "STALE"
+                # OK — обычный append в steps_log.
                 StepsLogRepo().append(
                     ts=datetime.now().timestamp(),
                     steps=state.steps.today,
@@ -102,9 +111,11 @@ def play():
             def save_and_exit():
                 status = _sync_to_cloud()
                 if status == "STALE":
-                    # Пока 4.54.5 не реализован — НЕ выходим, чтобы игрок не потерял
-                    # незасейвленный прогресс. Полное «Reload/Force/Cancel» — следующая
-                    # подзадача; здесь просто оставляем игрока в main loop с warning'ом.
+                    # На STALE НЕ выходим — игрок ещё не разрешил конфликт
+                    # (выбрал Cancel или Reload без последующего save). Лучше
+                    # оставить в main loop, чтобы он мог попробовать снова
+                    # или явно `q` ещё раз после Reload.
+                    print('Save не выполнен. Вернись в меню и попробуй снова.')
                     return
                 print('🚪 Спасибо за игру. До встречи.')
                 sys.exit()
