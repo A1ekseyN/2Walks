@@ -4093,6 +4093,121 @@ TRIUMPHS = {
 
 ---
 
+### 4.63. Equipment Auto-Optimizer + Presets (зонтичная) `[M / M / todo (18.05.2026)]`
+
+**Контекст / проблема:** некоторые операции требуют resource'ов выше того, что игрок может выдать в текущем loadout'е. Пример: Stamina lvl 19 = 95 эн / Stamina lvl 23 = 115 эн при energy_max=65. Игрок физически не может тренировать дальше пока не наденет equipment с +energy_max бонусом. Сейчас это требует ~7 ручных команд (unwear × 3-4 + wear × 3-4), даже если все нужные предметы есть в инвентаре. Аналогичная ситуация перед Adventure'ом (хочется max luck для дропа) и перед Work (хочется max stamina для большего числа часов).
+
+**Решение:** две связанные фичи поверх существующих `equipment._equip_from_inventory` / `_unequip`:
+
+1. **Auto-Optimizer** — single command «оптимизируй под X», сканирует equipment + inventory, выбирает лучшие предметы по слотам, применяет swap. Reactive, под текущую цель.
+2. **Equipment Presets** — игрок сохраняет именованные loadout'ы вручную, переключается одной командой. Manual, под долгосрочные стратегии.
+
+Эти фичи не конкурируют — оптимизатор для quick fixes, presets для повторяющихся стратегий.
+
+#### Зафиксированные дизайн-решения (18.05.2026)
+
+| # | Вопрос | Решение |
+|---|---|---|
+| 1 | Optimizer: одна characteristic или весовая комбинация | **Одна characteristic за раз** (stamina / energy_max / speed_skill / luck_skill). Простота и явность выбора. Balanced setup — через presets. |
+| 2 | Порядок реализации | **Optimizer → Presets → Web.** Phase 1 решает заявленную проблему быстро; Phase 2 — когда у игрока появятся осознанные стратегии; Phase 3 — web mirror. |
+| 3 | Lost item в preset (продан / сломан / улучшен в Кузнице) | **Skip missing slot + warning.** На apply: если предмет из preset больше не найден в equip+inventory — слот остаётся пустым, в конце print `⚠ N слотов пропущено: <slot1, slot2> (предметы отсутствуют)`. Не ломается, не пытается подобрать замену. |
+| 4 | Characteristic base для optimizer | **4 базовых экип-бонуса: `stamina`, `energy_max`, `speed_skill`, `luck_skill`.** Те что реально встречаются на equipment items. Без `energy_regen` (V2 после 4.57) / `sell value` / `avg quality` (out of scope). |
+| 5 | Identity для preset items | По reference / position в inventory snapshot'е на момент save (через `is`-comparison или index). На apply сравнивается по `(item_name, item_type, grade, bonus value)` — если найден идентичный → match. |
+| 6 | Inventory full при apply optimizer | Net-zero для swap'ов внутри одного слота, но при reshuffle между слотами может быть transient overflow. Решение: apply делает all unwear → all wear, на промежуточной фазе все 7 слотов в инвентаре. Capacity check **перед началом**: если `len(inventory) + currently_equipped_count > capacity` → reject с понятным сообщением. |
+| 7 | Сравнение quality vs bonus | Optimizer выбирает по **bonus** (характеристика), не quality. Quality влияет только на price (текущий 0.2.4o); если в 4.61 появится реальный quality effect — пересмотреть. |
+| 8 | Сохранение pending_drop при apply | Auto-optimizer **не трогает** state.pending_drop. Resolve pending — отдельный flow (inventory_menu prompt). |
+
+#### Архитектурный план
+
+**Pure helpers (новый файл `loadout.py` или extend `equipment.py`):**
+
+```python
+def find_optimal_loadout(state, characteristic: str) -> dict[str, dict | None]:
+    """Для каждого слота — лучший item по characteristic из equipped + inventory.
+
+    Returns: dict slot_name → item (or None если для этого слота нет ни одного
+    предмета с этой characteristic во всём pool'е).
+    """
+
+def preview_loadout_diff(state, target: dict[str, dict | None]) -> list[tuple[str, dict | None, dict | None]]:
+    """Diff текущего и target — для confirmation prompt.
+
+    Returns: list of (slot_name, old_item, new_item) только для изменившихся слотов.
+    """
+
+def apply_loadout(state, target: dict[str, dict | None]) -> tuple[bool, list[str]]:
+    """Атомарно: unwear все changed slots → wear target.
+
+    Returns: (success, warnings). Warnings — список пропущенных слотов
+    (для presets с lost items). Capacity-check перед началом.
+    """
+```
+
+**State extension (только для Phase 2 Presets):**
+
+```python
+# state.py
+equipment_presets: dict[str, dict[str, dict]] = field(default_factory=dict)
+# Key: preset name (e.g., "training", "adventure").
+# Value: dict slot_name → item snapshot (на момент save).
+```
+
+Round-trip через flat-key `'equipment_presets'` в Sheets (JSON-сериализация как для inventory).
+
+#### 4.63.1. Auto-Optimizer для CLI `[H / S / todo]`
+
+**Объём:**
+- Pure helpers `find_optimal_loadout` / `preview_loadout_diff` / `apply_loadout` в `loadout.py` (новый файл) или extend `equipment.py`.
+- CLI integration: Equipment menu → новый пункт «Оптимизировать loadout» → выбор characteristic (1-4) → preview + confirm → apply.
+- log_event'ы: `'loadout_optimized'` с payload `{characteristic, slots_changed, total_bonus_before, total_bonus_after}`.
+- Тесты: pure helpers (corner cases: пустой инвентарь, не для всех слотов есть items, swap внутри слота не меняется), UI flow (cancel / apply / capacity check).
+
+**Эффорт:** **S** (~2-3 часа, ~5 коммитов).
+
+**Прецеденты:** pattern apply (atomic mutation + log_event + persist) как в `equipment._equip_from_inventory`.
+
+#### 4.63.2. Equipment Presets для CLI `[M / M / todo (blocked by 4.63.1)]`
+
+**Объём:**
+- State: `state.equipment_presets: dict` + round-trip flat-key.
+- Pure helpers `save_preset(state, name)` / `load_preset(state, name)` / `delete_preset(state, name)` / `list_presets(state)`.
+- CLI integration: Equipment menu → «Управление пресетами» → submenu (1. Save current / 2. Load / 3. Delete / 4. List).
+- Apply переиспользует `apply_loadout` из 4.63.1 (с warnings для lost items).
+- log_event'ы: `'preset_saved'`, `'preset_applied'`, `'preset_deleted'`.
+- Тесты: round-trip persist, save/load consistency, lost item handling (skip + warning), apply переиспользует тестовое покрытие из 4.63.1.
+
+**Эффорт:** **M** (~3-4 часа, ~5 коммитов). Больше нового state + CRUD UI.
+
+**Открытое:** именование (фиксированные `training`/`adventure`/`default` или user-defined). Решение откладывается до начала работы — может быть user-defined проще (одно поле input vs hardcoded list).
+
+#### 4.63.3. Web UI для optimizer + presets `[M / S / todo (blocked by 4.63.1, 4.63.2, 4.48.6)]`
+
+**Объём:**
+- В Equipment блоке `_status_fragment.html` — новая sub-секция «🎯 Loadout»:
+  - Optimizer: dropdown с 4 characteristics + кнопка «Оптимизировать» (`hx-confirm` с preview diff).
+  - Presets: список с кнопками «Apply» / «Delete» + кнопка «Save current as…» (form input для имени).
+- Endpoints (mirror CLI):
+  - `POST /web/loadout/optimize` (Form: characteristic) + `POST /api/loadout/optimize` (JSON).
+  - `POST /web/preset/save` + `/load` + `/delete` + `POST /api/preset/*` (mirror).
+- Blocked by **4.48.6** — нужны базовые wear/unwear endpoints как фундамент (atomic apply через них).
+
+**Эффорт:** **S** (~1-2 часа после 4.63.1 + 4.63.2 + 4.48.6).
+
+#### Связи с другими задачами
+
+- **4.48.6** Web: Inventory + Equipment — фундамент для 4.63.3. Phase 1 + 2 (CLI) не зависят.
+- **4.61** Поломка предметов — если quality начнёт влиять на bonus, optimizer должен учитывать quality. Пересмотр когда 4.61 будет реализован.
+- **4.57** Equipment energy_regen V2 — добавит 5-ю characteristic, optimizer тривиально расширится.
+- **history.jsonl** — `loadout_optimized` / `preset_applied` events могут стать ценным data point для будущей балансировки (показывает, как часто игрок переодевается).
+
+#### Watch / Risks
+
+- **Sort stability при equal bonus.** Если два предмета дают одинаковый bonus в одном слоте — что выбрать? Решение: сохранить текущий equipped если он среди optimal (no-op swap), иначе первый из inventory по item_name. Документировать.
+- **Ring slots ambiguity.** `ring` item-type может занять `ring_1` или `ring_2`. Optimizer должен корректно мэппить два кольца в два слота (не дублировать одно).
+- **State.last_modified bump.** Apply optimizer = mutation → bump → может вызвать STALE в параллельных CLI/web. Это OK, по дизайну 4.54.
+
+---
+
 Ниже — идеи без официальных номеров. Если решим брать — выделим в формальные task'и.
 
 1. **Bulk Action** — открывает возможность запускать несколько активностей подряд одной командой (например, "5 раз walk_easy за раз"). Сложнее в реализации, требует UI-поддержки. Не навык в строгом смысле — скорее QoL-фича.
