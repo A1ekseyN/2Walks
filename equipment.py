@@ -2,6 +2,9 @@
 
 Чистая логика (`_equip_from_inventory`, `_unequip`) выделена для тестируемости —
 UI-обёртки в Equipment.* остаются с input/print.
+
+Auto-Optimizer (4.63.1) — отдельный модуль `loadout.py`, UI handler здесь
+(`Equipment.optimize_loadout_menu`).
 """
 
 from typing import Optional
@@ -129,6 +132,7 @@ class Equipment:
         else:
             print('6. Ступни:            Нет обуви')
 
+        print('\n7. 🎯 Оптимизировать loadout (auto-equip)')
         print('0. Назад')
         Equipment.equipment_change(self, state)
 
@@ -147,6 +151,9 @@ class Equipment:
             if ask in slot_map:
                 item_name, item_type, item_slot = slot_map[ask]
                 Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
+                return
+            if ask == '7':
+                Equipment.optimize_loadout_menu(self, state)
                 return
             if ask == '0':
                 return
@@ -232,3 +239,144 @@ class Equipment:
         cap = backpack_capacity(state)
         print(f'\nВ инвентаре находится {len(state.inventory)}/{cap} предметов: ')
         inventory_view(state)
+
+    # ----- 4.63.1 Auto-Optimizer (CLI menu) -----
+
+    # Human-friendly labels для 4 optimizable characteristics. Порядок здесь
+    # = порядок отображения в menu (1-4).
+    _OPT_CHAR_DISPLAY: tuple[tuple[str, str, str], ...] = (
+        ('stamina',     '🏃', 'Stamina'),
+        ('energy_max',  '🔋', 'Energy Max'),
+        ('speed_skill', '⚡', 'Speed'),
+        ('luck',        '🍀', 'Luck'),
+    )
+
+    # Slot labels для отображения diff'а — match'ат equipment_view.
+    _SLOT_LABELS: dict[str, str] = {
+        'head':       'Голова           ',
+        'neck':       'Шея              ',
+        'torso':      'Торс             ',
+        'finger_01':  'Палец лев. руки  ',
+        'finger_02':  'Палец прав. руки ',
+        'legs':       'Ноги             ',
+        'foots':      'Ступни           ',
+    }
+
+    def optimize_loadout_menu(self, state: GameState) -> None:
+        """4.63.1 — UI handler для Auto-Optimizer.
+
+        Flow: выбор characteristic (1-4) → preview diff → confirm `yes` →
+        apply. Persist НЕ делается (следует существующему equipment pattern:
+        wear/unwear тоже не зовут save_characteristic — игрок жмёт `s`).
+        """
+        from loadout import (
+            apply_loadout,
+            find_optimal_loadout,
+            preview_loadout_diff,
+            total_bonus,
+        )
+
+        print('\n--- 🎯 Auto-Optimizer экипировки ---')
+        print('Под какую characteristic оптимизировать?')
+        for i, (_char, icon, label) in enumerate(Equipment._OPT_CHAR_DISPLAY, start=1):
+            print(f'{i}. {icon} {label}')
+        print('0. Назад')
+
+        while True:
+            ask = input('>>> ').strip()
+            if ask == '0':
+                return
+            if ask in {'1', '2', '3', '4'}:
+                char, icon, label = Equipment._OPT_CHAR_DISPLAY[int(ask) - 1]
+                Equipment._optimize_for_characteristic(state, char, icon, label)
+                return
+            print('Неверный выбор. Введи 1-4 или 0.')
+
+    @staticmethod
+    def _optimize_for_characteristic(state: GameState, characteristic: str,
+                                      icon: str, label: str) -> None:
+        """Compute optimal, show diff, confirm, apply."""
+        from history import log_event
+        from loadout import (
+            apply_loadout,
+            find_optimal_loadout,
+            preview_loadout_diff,
+            total_bonus,
+        )
+
+        bonus_before = total_bonus(state, characteristic)
+        target = find_optimal_loadout(state, characteristic)
+        diff = preview_loadout_diff(state, target)
+
+        if not diff:
+            print(f'\n✅ Текущий loadout уже оптимален для {icon} {label} '
+                  f'(+{bonus_before}). Изменения не нужны.')
+            return
+
+        # Preview: показать какие слоты меняются.
+        print(f'\nОптимизация под {icon} {label}:')
+        for slot, old_item, new_item in diff:
+            slot_label = Equipment._SLOT_LABELS.get(slot, slot)
+            old_str = Equipment._format_item_short(old_item, characteristic)
+            new_str = Equipment._format_item_short(new_item, characteristic)
+            print(f'  {slot_label} : {old_str}  →  {new_str}')
+
+        # Compute bonus_after (рассчитываем «как было бы после apply»).
+        bonus_after = sum(
+            (new_item.get('bonus', [0])[0] if new_item is not None
+             and (new_item.get('characteristic') or [None])[0] == characteristic
+             else 0)
+            for slot, _old, new_item in diff
+        )
+        # Добавить bonus из неизменившихся слотов (где new == old).
+        for slot in Equipment._SLOT_LABELS:
+            cur = getattr(state.equipment, slot)
+            if any(s == slot for s, _, _ in diff):
+                continue  # уже учтён в bonus_after
+            if cur is not None and (cur.get('characteristic') or [None])[0] == characteristic:
+                bonus_after += cur.get('bonus', [0])[0]
+
+        print(f'\nИтого: {icon} {label} был +{bonus_before}, станет +{bonus_after} '
+              f'(дельта: {bonus_after - bonus_before:+d}).')
+
+        confirm = input('\nПрименить? (yes/no): ').strip().lower()
+        if confirm not in ('yes', 'y', 'да', 'д'):
+            print('Отменено. Loadout не изменён.')
+            return
+
+        success, warnings = apply_loadout(state, target)
+        if not success:
+            print('\n❌ Не удалось применить:')
+            for w in warnings:
+                print(f'  - {w}')
+            return
+
+        print(f'\n✅ Loadout применён. {icon} {label}: +{total_bonus(state, characteristic)}.')
+        for w in warnings:
+            print(f'⚠ {w}')
+
+        log_event('loadout_optimized',
+                  characteristic=characteristic,
+                  slots_changed=len(diff),
+                  bonus_before=bonus_before,
+                  bonus_after=total_bonus(state, characteristic),
+                  warnings_count=len(warnings))
+
+    @staticmethod
+    def _format_item_short(item: Optional[dict], characteristic: str) -> str:
+        """Однострочное описание item для diff'а: 'helmet a (+8)' или '(пусто)'."""
+        if item is None:
+            return '(пусто)'
+        item_type = (item.get('item_type') or ['?'])[0]
+        grade = (item.get('grade') or ['?'])[0]
+        # Bonus для искомой characteristic; если item не имеет её — bonus=0
+        # (но он попал в target — значит имеет).
+        chars = item.get('characteristic') or []
+        bonuses = item.get('bonus') or []
+        bonus_val = 0
+        try:
+            idx = chars.index(characteristic)
+            bonus_val = bonuses[idx]
+        except (ValueError, IndexError):
+            pass
+        return f'{item_type} {grade} (+{bonus_val})'
