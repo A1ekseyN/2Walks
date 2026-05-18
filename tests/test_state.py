@@ -340,6 +340,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'working_start', 'working_end',
         # Inventory
         'inventory', 'pending_drop',
+        # 4.63.2 — Equipment presets (именованные loadout'ы)
+        'equipment_presets',
         # Equipment
         'equipment_head', 'equipment_neck', 'equipment_torso',
         'equipment_finger_01', 'equipment_finger_02',

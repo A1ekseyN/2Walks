@@ -179,6 +179,125 @@ def total_bonus(state: GameState, characteristic: str) -> int:
     return total
 
 
+# ---------------------------------------------------------------------------
+# 4.63.2 — Equipment Presets (именованные loadout'ы)
+# ---------------------------------------------------------------------------
+
+def _snapshot_current_equipment(state: GameState) -> dict[str, Optional[dict]]:
+    """Deep-copy текущих equipment слотов для сохранения в preset.
+
+    Items хранятся как dict-копии (не reference) — preset переживает
+    последующую продажу original item'а в инвентаре. На apply matching
+    выполняется по полям, не по identity (см. `_match_preset_item`).
+    """
+    import copy
+    snapshot: dict[str, Optional[dict]] = {}
+    for slot in ('head', 'neck', 'torso', 'finger_01', 'finger_02', 'legs', 'foots'):
+        item = getattr(state.equipment, slot)
+        snapshot[slot] = copy.deepcopy(item) if item is not None else None
+    return snapshot
+
+
+def _match_preset_item(state: GameState, snapshot_item: dict) -> Optional[dict]:
+    """Найти в текущем pool (equipment + inventory) item, который matches
+    snapshot из preset'а.
+
+    Identity-критерии (все должны совпасть): item_name, item_type, grade,
+    characteristic[0], bonus[0]. Quality и price — НЕ учитываются (могут
+    меняться от Repair / wear).
+
+    Returns: matching item (current reference) или None если не найден
+    (lost item — продан / crafted / etc.).
+    """
+    def _key(item: dict) -> tuple:
+        name = (item.get('item_name') or [None])[0]
+        itype = (item.get('item_type') or [None])[0]
+        grade = (item.get('grade') or [None])[0]
+        char = (item.get('characteristic') or [None])[0]
+        bonus = (item.get('bonus') or [None])[0]
+        return (name, itype, grade, char, bonus)
+
+    target_key = _key(snapshot_item)
+    for current in _collect_pool(state):
+        if _key(current) == target_key:
+            return current
+    return None
+
+
+def save_preset(state: GameState, name: str) -> tuple[bool, str]:
+    """Сохранить текущую экипировку как preset с заданным именем.
+
+    Перезаписывает существующий preset с тем же именем (caller-side
+    должен решить про confirmation prompt).
+
+    Returns: (success, message). Success=False — невалидное имя.
+    """
+    name = name.strip()
+    if not name:
+        return False, 'Имя preset не может быть пустым.'
+    snapshot = _snapshot_current_equipment(state)
+    state.equipment_presets[name] = snapshot
+    return True, f'Preset "{name}" сохранён ({sum(1 for v in snapshot.values() if v is not None)} слотов).'
+
+
+def delete_preset(state: GameState, name: str) -> tuple[bool, str]:
+    """Удалить preset по имени.
+
+    Returns: (success, message). Success=False — preset не найден.
+    """
+    if name not in state.equipment_presets:
+        return False, f'Preset "{name}" не найден.'
+    del state.equipment_presets[name]
+    return True, f'Preset "{name}" удалён.'
+
+
+def list_presets(state: GameState) -> list[tuple[str, dict[str, Optional[dict]]]]:
+    """Список всех preset'ов как (name, snapshot) — отсортирован по name.
+
+    UI слой решает как отображать (имя + summary bonuses + slot count и т.д.).
+    """
+    return sorted(state.equipment_presets.items(), key=lambda kv: kv[0].lower())
+
+
+def resolve_preset_to_loadout(
+    state: GameState, name: str,
+) -> tuple[Optional[dict[str, Optional[dict]]], list[str]]:
+    """Конвертировать preset (snapshot items) → target dict для apply_loadout
+    (refs на текущие items в equipment+inventory).
+
+    Каждый slot в preset'е резолвится через `_match_preset_item`:
+    - found → target[slot] = current matching item (готов к apply_loadout)
+    - not found → warning «slot: lost item», target[slot] = current equipped
+      (keep-current semantics — не снимать на отсутствие preset item'а).
+    - preset_item is None → target[slot] = None (preset явно указал «слот пуст»).
+
+    Returns: (target | None, warnings). None target если preset не существует.
+    """
+    if name not in state.equipment_presets:
+        return None, [f'Preset "{name}" не найден.']
+    preset = state.equipment_presets[name]
+    target: dict[str, Optional[dict]] = {}
+    warnings: list[str] = []
+    for slot, snapshot_item in preset.items():
+        if snapshot_item is None:
+            target[slot] = None
+            continue
+        matched = _match_preset_item(state, snapshot_item)
+        if matched is None:
+            item_desc = f'{(snapshot_item.get("item_type") or ["?"])[0]} ' \
+                        f'{(snapshot_item.get("grade") or ["?"])[0]} ' \
+                        f'(+{(snapshot_item.get("bonus") or [0])[0]} ' \
+                        f'{(snapshot_item.get("characteristic") or ["?"])[0]})'
+            warnings.append(
+                f'Слот {slot}: предмет из preset не найден '
+                f'({item_desc}) — оставляю current.'
+            )
+            target[slot] = getattr(state.equipment, slot)
+        else:
+            target[slot] = matched
+    return target, warnings
+
+
 def apply_loadout(
     state: GameState,
     target: dict[str, Optional[dict]],

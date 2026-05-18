@@ -190,6 +190,15 @@ class GameState:
     # base price). Round-trip через flat-key 'pending_drop' (None для legacy).
     pending_drop: Optional[dict] = None
 
+    # 4.63.2 — Equipment Presets. Игрок сохраняет именованные loadout'ы и
+    # переключается одной командой. Phase 2 зонтичной 4.63.
+    # Structure: dict[preset_name, dict[slot_attr, item_snapshot | None]].
+    # Snapshot — копия item-dict на момент save. На apply ищем matching item
+    # в текущем equipment+inventory по identity (item_name + item_type + grade
+    # + characteristic + bonus). Lost items (продал/crafted) → skip + warning.
+    # Round-trip через flat-key 'equipment_presets' ({} для legacy сейвов).
+    equipment_presets: dict[str, dict[str, Optional[dict]]] = field(default_factory=dict)
+
     # 4.54.1 — Optimistic concurrency через timestamp. `last_modified` —
     # Unix-ts момента последнего успешного save в Sheets; round-trip'ится
     # как обычное поле. На load в Sheets отсутствующий ключ → default 0.0
@@ -353,6 +362,8 @@ class GameState:
             inventory=list(d.get('inventory') or []),
             # 4.50.1 — Pending drop. None для сейвов до 0.2.4c, dict иначе.
             pending_drop=d.get('pending_drop') or None,
+            # 4.63.2 — Equipment presets. {} для legacy сейвов до 0.2.4r.
+            equipment_presets=dict(d.get('equipment_presets') or {}),
             # 4.54.1 — Optimistic concurrency timestamp. Default 0.0 для legacy
             # сейвов до 4.54 — первый save_safe запишет реальный time.time().
             last_modified=float(d.get('last_modified') or 0.0),
@@ -383,6 +394,7 @@ class GameState:
         self.bank = new.bank
         self.inventory = new.inventory
         self.pending_drop = new.pending_drop
+        self.equipment_presets = new.equipment_presets
         # 4.54.1 — last_modified подхватывается из свежего load'а Sheets.
         # last_loaded_snapshot обновлять здесь нельзя — caller (try_reload_state
         # или init_game_state) должен явно вызвать take_snapshot() после того
@@ -471,6 +483,9 @@ class GameState:
             # активной находки на resolve. Сериализуется как dict (item-формат)
             # или None — round-trip-симметрично с from_dict.
             'pending_drop': self.pending_drop,
+            # 4.63.2 — Equipment presets (именованные loadout'ы). Пустой dict
+            # для новых игроков; legacy сейвы до 0.2.4r тоже грузятся в {}.
+            'equipment_presets': self.equipment_presets,
 
             # Equipment
             'equipment_head': self.equipment.head,

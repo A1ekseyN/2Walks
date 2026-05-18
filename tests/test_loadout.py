@@ -512,6 +512,340 @@ def test_optimize_menu_invalid_input_retries(monkeypatch, capsys):
     assert out.count('Неверный выбор') == 2
 
 
+# ---------------------------------------------------------------------------
+# 4.63.2 — Equipment Presets (pure helpers)
+# ---------------------------------------------------------------------------
+
+from loadout import (  # noqa: E402
+    _match_preset_item,
+    _snapshot_current_equipment,
+    delete_preset,
+    list_presets,
+    resolve_preset_to_loadout,
+    save_preset,
+)
+
+
+def test_snapshot_current_equipment_copies_all_seven_slots():
+    helmet = _make_item(item_type='helmet', characteristic='stamina', bonus=5)
+    s = _state_with_items(equipment={'head': helmet})
+    snapshot = _snapshot_current_equipment(s)
+    assert set(snapshot.keys()) == {'head', 'neck', 'torso', 'finger_01',
+                                     'finger_02', 'legs', 'foots'}
+    # Deep copy: меняем snapshot, original не страдает.
+    snapshot['head']['bonus'][0] = 999
+    assert helmet['bonus'][0] == 5  # original unchanged
+
+
+def test_snapshot_current_equipment_empty_state_returns_all_none():
+    s = _state_with_items()
+    snapshot = _snapshot_current_equipment(s)
+    assert all(v is None for v in snapshot.values())
+
+
+def test_save_preset_stores_snapshot():
+    item = _make_item(characteristic='stamina', bonus=5)
+    s = _state_with_items(equipment={'head': item})
+    success, msg = save_preset(s, 'training')
+    assert success is True
+    assert 'сохранён' in msg
+    assert 'training' in s.equipment_presets
+    assert s.equipment_presets['training']['head'] is not item  # deep copy
+    assert s.equipment_presets['training']['head']['bonus'] == [5]
+
+
+def test_save_preset_rejects_empty_name():
+    s = _state_with_items()
+    success, msg = save_preset(s, '   ')  # whitespace-only
+    assert success is False
+    assert 'не может быть пустым' in msg
+    assert s.equipment_presets == {}
+
+
+def test_save_preset_overwrites_existing():
+    s = _state_with_items(equipment={'head': _make_item(bonus=3)})
+    save_preset(s, 'p1')
+    # Меняем equipment, перезаписываем preset.
+    s.equipment.head = _make_item(bonus=10)
+    save_preset(s, 'p1')
+    assert s.equipment_presets['p1']['head']['bonus'] == [10]
+
+
+def test_save_preset_strips_name():
+    s = _state_with_items()
+    save_preset(s, '  training  ')
+    assert 'training' in s.equipment_presets  # без пробелов
+
+
+def test_delete_preset_removes_entry():
+    s = _state_with_items()
+    save_preset(s, 'p1')
+    success, msg = delete_preset(s, 'p1')
+    assert success is True
+    assert 'p1' not in s.equipment_presets
+
+
+def test_delete_preset_returns_false_if_not_found():
+    s = _state_with_items()
+    success, msg = delete_preset(s, 'missing')
+    assert success is False
+    assert 'не найден' in msg
+
+
+def test_list_presets_returns_sorted_pairs():
+    s = _state_with_items()
+    save_preset(s, 'zebra')
+    save_preset(s, 'alpha')
+    save_preset(s, 'mango')
+    result = list_presets(s)
+    names = [name for name, _ in result]
+    assert names == ['alpha', 'mango', 'zebra']  # sorted case-insensitive
+
+
+def test_list_presets_empty_state_returns_empty_list():
+    s = _state_with_items()
+    assert list_presets(s) == []
+
+
+def test_match_preset_item_finds_by_identity_fields():
+    """Match по item_name + item_type + grade + characteristic[0] + bonus[0]."""
+    item = _make_item(item_name='helm', item_type='helmet', grade='a-grade',
+                      characteristic='stamina', bonus=5, quality=80.0)
+    s = _state_with_items(inventory=[item])
+    # Snapshot с теми же identity-fields но другим quality.
+    snapshot = _make_item(item_name='helm', item_type='helmet', grade='a-grade',
+                          characteristic='stamina', bonus=5, quality=40.0)
+    matched = _match_preset_item(s, snapshot)
+    assert matched is item  # quality differs, но identity-fields match
+
+
+def test_match_preset_item_returns_none_if_not_found():
+    s = _state_with_items()
+    snapshot = _make_item()
+    assert _match_preset_item(s, snapshot) is None
+
+
+def test_match_preset_item_does_not_match_different_bonus():
+    """Same name/type/grade но разный bonus — не match (это разные items по нашей логике)."""
+    item = _make_item(bonus=5)
+    s = _state_with_items(inventory=[item])
+    snapshot = _make_item(bonus=10)
+    assert _match_preset_item(s, snapshot) is None
+
+
+def test_resolve_preset_to_loadout_full_match():
+    """Все items preset'а найдены в pool → target собран, warnings пустые."""
+    helmet = _make_item(item_name='h', item_type='helmet', bonus=8)
+    shoes = _make_item(item_name='s', item_type='shoes', bonus=5)
+    s = _state_with_items(equipment={'head': helmet}, inventory=[shoes])
+    save_preset(s, 'p1')  # snapshot: head=helmet, foots=None, ...
+    # Меняем preset вручную чтобы он указал shoes в foots.
+    s.equipment_presets['p1']['foots'] = {
+        'item_name': ['s'], 'item_type': ['shoes'], 'grade': ['c-grade'],
+        'characteristic': ['stamina'], 'bonus': [5], 'quality': [80.0], 'price': [50],
+    }
+    target, warnings = resolve_preset_to_loadout(s, 'p1')
+    assert target['head'] is helmet
+    assert target['foots'] is shoes
+    assert warnings == []
+
+
+def test_resolve_preset_to_loadout_lost_item_warning_keeps_current():
+    """Item из preset'а не найден в pool → warning + keep current в этом слоте."""
+    current_helmet = _make_item(item_name='current', item_type='helmet', bonus=3)
+    s = _state_with_items(equipment={'head': current_helmet})
+    # Preset указывает ДРУГОЙ helmet (не существующий в pool).
+    s.equipment_presets['p1'] = {
+        'head': {'item_name': ['lost'], 'item_type': ['helmet'], 'grade': ['s-grade'],
+                 'characteristic': ['stamina'], 'bonus': [99], 'quality': [100], 'price': [200]},
+        'neck': None, 'torso': None, 'finger_01': None, 'finger_02': None,
+        'legs': None, 'foots': None,
+    }
+    target, warnings = resolve_preset_to_loadout(s, 'p1')
+    assert len(warnings) == 1
+    assert 'lost' in warnings[0] or 'не найден' in warnings[0]
+    assert target['head'] is current_helmet  # keep current, не lost
+    assert target['neck'] is None  # preset явно None
+
+
+def test_resolve_preset_to_loadout_unknown_preset_returns_none():
+    s = _state_with_items()
+    target, warnings = resolve_preset_to_loadout(s, 'missing')
+    assert target is None
+    assert len(warnings) == 1
+    assert 'не найден' in warnings[0]
+
+
+# ---------------------------------------------------------------------------
+# 4.63.2 — Equipment Presets (UI handler)
+# ---------------------------------------------------------------------------
+
+def test_preset_menu_save_then_exit(monkeypatch, capsys):
+    """Save preset с именем 'p1' → exit."""
+    s = _state_with_items(equipment={'head': _make_item(bonus=5)})
+    inputs = iter(['s', 'p1', '0'])  # save / name / exit
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    assert 'p1' in s.equipment_presets
+    out = capsys.readouterr().out
+    assert 'сохранён' in out
+
+
+def test_preset_menu_save_overwrite_confirm(monkeypatch, capsys):
+    """Save с уже существующим именем → confirm → overwrite."""
+    s = _state_with_items(equipment={'head': _make_item(bonus=3)})
+    save_preset(s, 'p1')
+    # Меняем equipment, save с тем же именем.
+    s.equipment.head = _make_item(bonus=8)
+    inputs = iter(['s', 'p1', 'yes', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    assert s.equipment_presets['p1']['head']['bonus'] == [8]  # overwritten
+
+
+def test_preset_menu_save_overwrite_decline(monkeypatch, capsys):
+    """Save overwrite confirm = no → не перезаписывает."""
+    s = _state_with_items(equipment={'head': _make_item(bonus=3)})
+    save_preset(s, 'p1')
+    s.equipment.head = _make_item(bonus=8)
+    inputs = iter(['s', 'p1', 'no', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    assert s.equipment_presets['p1']['head']['bonus'] == [3]  # original
+
+
+def test_preset_menu_load_full_flow_with_log_event(monkeypatch, capsys):
+    """Save preset → swap equipment → load preset → confirm → apply + log_event."""
+    h1 = _make_item(item_name='h1', item_type='helmet',
+                    characteristic='stamina', bonus=5)
+    h2 = _make_item(item_name='h2', item_type='helmet',
+                    characteristic='energy_max', bonus=8)
+    s = _state_with_items(equipment={'head': h1}, inventory=[h2])
+    save_preset(s, 'stamina_load')
+    # Swap to h2.
+    s.equipment.head = h2
+    s.inventory = [h1]
+
+    events: list[tuple[str, dict]] = []
+    import history
+    monkeypatch.setattr(history, 'log_event',
+                        lambda evt_type, **payload: events.append((evt_type, payload)))
+
+    inputs = iter(['l', 'stamina_load', 'yes', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    # Должен снова h1 в head.
+    assert s.equipment.head is h1
+    # log_event preset_applied записан.
+    applied = [e for e in events if e[0] == 'preset_applied']
+    assert len(applied) == 1
+    assert applied[0][1]['name'] == 'stamina_load'
+    assert applied[0][1]['slots_changed'] == 1
+
+
+def test_preset_menu_load_unknown_preset_shows_message(monkeypatch, capsys):
+    s = _state_with_items()
+    save_preset(s, 'existing')
+    inputs = iter(['l', 'missing', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    out = capsys.readouterr().out
+    assert 'не найден' in out
+
+
+def test_preset_menu_load_no_changes_reports_already_applied(monkeypatch, capsys):
+    """Load preset идентичного current loadout → 'уже соответствует'."""
+    s = _state_with_items(equipment={'head': _make_item(bonus=5)})
+    save_preset(s, 'p1')
+    inputs = iter(['l', 'p1', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    out = capsys.readouterr().out
+    assert 'уже соответствует' in out
+
+
+def test_preset_menu_delete_confirm(monkeypatch, capsys):
+    """Delete preset с confirm 'yes' → удалён + log_event."""
+    s = _state_with_items()
+    save_preset(s, 'p1')
+
+    events: list[tuple[str, dict]] = []
+    import history
+    monkeypatch.setattr(history, 'log_event',
+                        lambda evt_type, **payload: events.append((evt_type, payload)))
+
+    inputs = iter(['d', 'p1', 'yes', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    assert 'p1' not in s.equipment_presets
+    deleted = [e for e in events if e[0] == 'preset_deleted']
+    assert len(deleted) == 1
+
+
+def test_preset_menu_delete_decline(monkeypatch, capsys):
+    """Delete preset с confirm 'no' → НЕ удалён."""
+    s = _state_with_items()
+    save_preset(s, 'p1')
+    inputs = iter(['d', 'p1', 'no', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    assert 'p1' in s.equipment_presets
+
+
+def test_preset_menu_invalid_input_loops(monkeypatch, capsys):
+    """Невалидный command в submenu → retry."""
+    s = _state_with_items()
+    inputs = iter(['x', '99', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Equipment.preset_menu(None, s)
+
+    out = capsys.readouterr().out
+    assert out.count('Неверный выбор') == 2
+
+
+def test_preset_menu_empty_state_shows_message(monkeypatch, capsys):
+    """Без preset'ов — UI печатает 'Пока нет сохранённых'."""
+    s = _state_with_items()
+    monkeypatch.setattr('builtins.input', lambda *a, **k: '0')
+
+    Equipment.preset_menu(None, s)
+
+    out = capsys.readouterr().out
+    assert 'нет сохранённых' in out.lower()
+
+
+def test_preset_round_trip_through_state_dict():
+    """Presets переживают save/load цикл через to_dict/from_dict."""
+    s = _state_with_items(equipment={
+        'head': _make_item(item_name='h', characteristic='stamina', bonus=5),
+    })
+    save_preset(s, 'training')
+
+    # Round-trip.
+    d = s.to_dict()
+    assert 'equipment_presets' in d
+    s2 = GameState.from_dict(d)
+    assert 'training' in s2.equipment_presets
+    assert s2.equipment_presets['training']['head']['bonus'] == [5]
+
+
 def test_optimize_menu_apply_failure_capacity_shows_warning(monkeypatch, capsys):
     """Capacity overflow при apply — warning, mutation не происходит."""
     equipped = _make_item(item_name='eq', item_type='helmet',

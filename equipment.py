@@ -133,6 +133,7 @@ class Equipment:
             print('6. Ступни:            Нет обуви')
 
         print('\n7. 🎯 Оптимизировать loadout (auto-equip)')
+        print('8. 💼 Управление preset\'ами экипировки')
         print('0. Назад')
         Equipment.equipment_change(self, state)
 
@@ -154,6 +155,9 @@ class Equipment:
                 return
             if ask == '7':
                 Equipment.optimize_loadout_menu(self, state)
+                return
+            if ask == '8':
+                Equipment.preset_menu(self, state)
                 return
             if ask == '0':
                 return
@@ -380,3 +384,194 @@ class Equipment:
         except (ValueError, IndexError):
             pass
         return f'{item_type} {grade} (+{bonus_val})'
+
+    # ----- 4.63.2 Equipment Presets (CLI menu) -----
+
+    def preset_menu(self, state: GameState) -> None:
+        """4.63.2 — UI handler для управления preset'ами.
+
+        Submenu: list + 4 действия (save / load / delete / back). Save
+        требует имя; overwrite уже существующего preset'а — с confirm.
+        Load показывает diff + confirm перед apply. Delete тоже с confirm.
+        """
+        from loadout import (
+            apply_loadout,
+            delete_preset,
+            list_presets,
+            preview_loadout_diff,
+            resolve_preset_to_loadout,
+            save_preset,
+        )
+
+        while True:
+            presets = list_presets(state)
+            print('\n--- 💼 Equipment Presets ---')
+            if not presets:
+                print('Пока нет сохранённых preset\'ов.')
+            else:
+                print(f'Сохранённых preset\'ов: {len(presets)}')
+                for i, (name, snapshot) in enumerate(presets, start=1):
+                    summary = Equipment._format_preset_summary(snapshot)
+                    print(f'  {i}. "{name}" — {summary}')
+
+            print('\ns. 💾 Сохранить текущую экипировку как preset')
+            print('l. 📥 Загрузить preset')
+            print('d. 🗑  Удалить preset')
+            print('0. Назад')
+
+            ask = input('>>> ').strip().lower()
+            if ask == '0':
+                return
+            if ask == 's':
+                Equipment._do_save_preset(state)
+                continue
+            if ask == 'l':
+                Equipment._do_load_preset(state)
+                continue
+            if ask == 'd':
+                Equipment._do_delete_preset(state)
+                continue
+            print('Неверный выбор. Введи s / l / d / 0.')
+
+    @staticmethod
+    def _format_preset_summary(snapshot: dict[str, Optional[dict]]) -> str:
+        """Однострочное summary preset'а: «5 слотов: 🏃+15 🔋+22 ⚡+5 🍀+3»."""
+        filled = sum(1 for v in snapshot.values() if v is not None)
+        # Суммы по 4 базовым characteristic.
+        totals = {'stamina': 0, 'energy_max': 0, 'speed_skill': 0, 'luck': 0}
+        for item in snapshot.values():
+            if item is None:
+                continue
+            chars = item.get('characteristic') or []
+            bonuses = item.get('bonus') or []
+            for char, bonus in zip(chars, bonuses):
+                if char in totals:
+                    totals[char] += int(bonus)
+        icons = {'stamina': '🏃', 'energy_max': '🔋',
+                 'speed_skill': '⚡', 'luck': '🍀'}
+        bonus_parts = [f'{icons[c]}+{v}' for c, v in totals.items() if v > 0]
+        bonus_str = ' '.join(bonus_parts) if bonus_parts else '(без бонусов)'
+        return f'{filled} слотов: {bonus_str}'
+
+    @staticmethod
+    def _do_save_preset(state: GameState) -> None:
+        """Save current equipment as named preset. Overwrite с confirm."""
+        from history import log_event
+        from loadout import save_preset
+
+        name = input('\nВведи имя preset\'а (или пусто для отмены): ').strip()
+        if not name:
+            print('Отменено.')
+            return
+        if name in state.equipment_presets:
+            confirm = input(f'Preset "{name}" уже существует. Перезаписать? (yes/no): ').strip().lower()
+            if confirm not in ('yes', 'y', 'да', 'д'):
+                print('Отменено. Существующий preset не изменён.')
+                return
+        success, message = save_preset(state, name)
+        print(message)
+        if success:
+            log_event('preset_saved',
+                      name=name,
+                      slots_filled=sum(1 for v in state.equipment_presets[name].values()
+                                        if v is not None))
+
+    @staticmethod
+    def _do_load_preset(state: GameState) -> None:
+        """Load preset → preview diff → confirm → apply."""
+        from history import log_event
+        from loadout import (
+            apply_loadout,
+            preview_loadout_diff,
+            resolve_preset_to_loadout,
+        )
+
+        if not state.equipment_presets:
+            print('Нет сохранённых preset\'ов.')
+            return
+        name = input('Введи имя preset\'а для загрузки (или пусто для отмены): ').strip()
+        if not name:
+            print('Отменено.')
+            return
+
+        target, resolve_warnings = resolve_preset_to_loadout(state, name)
+        if target is None:
+            # Preset не найден — resolve_warnings содержит сообщение.
+            for w in resolve_warnings:
+                print(w)
+            return
+
+        # Show resolve warnings (lost items) сразу — игрок должен знать что
+        # часть preset'а недоступна ДО confirm.
+        for w in resolve_warnings:
+            print(f'⚠ {w}')
+
+        diff = preview_loadout_diff(state, target)
+        if not diff:
+            print(f'\n✅ Текущая экипировка уже соответствует preset "{name}". Изменения не нужны.')
+            return
+
+        print(f'\nИзменения при загрузке preset "{name}":')
+        for slot, old_item, new_item in diff:
+            slot_label = Equipment._SLOT_LABELS.get(slot, slot)
+            old_str = Equipment._format_item_for_preset_diff(old_item)
+            new_str = Equipment._format_item_for_preset_diff(new_item)
+            print(f'  {slot_label} : {old_str}  →  {new_str}')
+
+        confirm = input('\nПрименить preset? (yes/no): ').strip().lower()
+        if confirm not in ('yes', 'y', 'да', 'д'):
+            print('Отменено. Loadout не изменён.')
+            return
+
+        success, apply_warnings = apply_loadout(state, target)
+        if not success:
+            print('\n❌ Не удалось применить:')
+            for w in apply_warnings:
+                print(f'  - {w}')
+            return
+
+        print(f'\n✅ Preset "{name}" применён. Изменено слотов: {len(diff)}.')
+        for w in apply_warnings:
+            print(f'⚠ {w}')
+
+        log_event('preset_applied',
+                  name=name,
+                  slots_changed=len(diff),
+                  lost_items_count=len(resolve_warnings),
+                  apply_warnings_count=len(apply_warnings))
+
+    @staticmethod
+    def _do_delete_preset(state: GameState) -> None:
+        """Delete preset by name с confirm."""
+        from history import log_event
+        from loadout import delete_preset
+
+        if not state.equipment_presets:
+            print('Нет сохранённых preset\'ов.')
+            return
+        name = input('Введи имя preset\'а для удаления (или пусто для отмены): ').strip()
+        if not name:
+            print('Отменено.')
+            return
+        if name not in state.equipment_presets:
+            print(f'Preset "{name}" не найден.')
+            return
+        confirm = input(f'Удалить preset "{name}"? (yes/no): ').strip().lower()
+        if confirm not in ('yes', 'y', 'да', 'д'):
+            print('Отменено.')
+            return
+        success, message = delete_preset(state, name)
+        print(message)
+        if success:
+            log_event('preset_deleted', name=name)
+
+    @staticmethod
+    def _format_item_for_preset_diff(item: Optional[dict]) -> str:
+        """Описание item для diff'а в preset load: 'helmet a (+8 stamina)' или '(пусто)'."""
+        if item is None:
+            return '(пусто)'
+        item_type = (item.get('item_type') or ['?'])[0]
+        grade = (item.get('grade') or ['?'])[0]
+        char = (item.get('characteristic') or ['?'])[0]
+        bonus = (item.get('bonus') or [0])[0]
+        return f'{item_type} {grade} (+{bonus} {char})'
