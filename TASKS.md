@@ -2241,9 +2241,26 @@ uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 
 **Note:** CLI (`python game.py`) и web (`uvicorn web.main:app`) — отдельные процессы, у каждого свой `game.state`. В MVP запускаем что-то одно. Sync — задача 4.54.
 
-#### 4.48.0.1. Deploy FastAPI на сервер `[H / S / todo (разблокирована 15.05.2026 завершением 4.54)]`
+#### 4.48.0.1. Deploy FastAPI на сервер `[H / S / done (18.05.2026)]`
 
 **Цель (15.05.2026):** локальный Ubuntu-сервер крутит web 24/7. Доступ только из домашней сети (`http://server-ip:8008`), без публичного интернета / без TLS / без auth. Игрок открывает вкладку с iPhone / MacBook / любого устройства и играет (вводит шаги, стартует смены, прокачивает скиллы). CLI на ноутбуке остаётся как secondary debug-инструмент — concurrent usage защищён через 4.54 optimistic concurrency (STALE prompt в CLI / auto-reload toast в web).
+
+**Реализовано (18.05.2026):**
+
+- **Сервер:** Ubuntu 24.04 на домашнем PC (Gigabyte H61M-DS2H, hostname `aleksey-H61M-DS2H`, пользователь `aleksey`). Уже был использован для проекта convertme (gunicorn на :8000 + cloudflared tunnel) — 2Walks занял непересекающийся порт :8008.
+- **IP:** 192.168.0.155 (по факту deploy'а), доступ также через mDNS `aleksey-H61M-DS2H.local:8008` (avahi-daemon на Ubuntu даёт Bonjour-resolution из коробки, работает с MacBook/iPhone).
+- **Путь:** `/home/aleksey/2Walks/` (clone из GitHub), `.venv/` рядом, credentials в `~/2Walks/credentials/` (scp с MacBook'а, gitignored).
+- **systemd:** `/etc/systemd/system/2walks.service` с `Restart=on-failure`, `RestartSec=5`, `User=aleksey`, `WorkingDirectory=/home/aleksey/2Walks`, `ExecStart=.venv/bin/uvicorn web.main:app --host 0.0.0.0 --port 8008`. Enable + start — Active: running. Auto-start на reboot настроен.
+- **Firewall:** `sudo ufw allow 8008/tcp` (ufw был active с :22/:8000/Nginx Full уже разрешёнными — :8008 пришлось добавить отдельно).
+- **Smoke-test (live verification, 15:01-15:02 EEST):** MacBook (192.168.0.218) GET / → 200 OK; iPhone (192.168.0.132) GET / → 200 OK; iPhone POST /web/steps → 200 OK (полный mutation цикл через сервер работает, persist в Sheets подтверждён).
+- **Updates workflow:** `ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && sudo systemctl status 2walks"` — одна команда с MacBook'а.
+- **Логи:** `sudo journalctl -u 2walks -f` (реал-тайм) или `-n 50 --no-pager` (последние 50 строк). Видны GET / POST с client IP, Sheets timings, ошибки.
+- **Документация:** добавлен раздел «Production: web 24/7 на Ubuntu-сервере» в `docs/local_setup.md`. CLAUDE.md обновлён — «Secondary (planned)» → «Secondary (deployed on home Ubuntu server, 0.2.4p / 18.05.2026)».
+
+**Pending follow-up (не блокер):**
+- **DHCP reservation** в роутере для 192.168.0.155 — иначе IP может переназначиться через несколько дней. Делается в админке роутера, не через терминал. (mDNS URL `aleksey-H61M-DS2H.local` будет работать даже если IP сменится — fallback).
+- **Bake-test 1-2 дня** — играть обычно через web на сервере + occasional CLI на MacBook. По итогам `ssh ... "grep '\"sync_conflict\"' ~/2Walks/history.jsonl | wc -l"` — если редко, всё ОК. Если часто (>5/день) — повод вернуть auto-retry в save_safe (см. follow-up в 4.54.8).
+- **Convenience aliases на MacBook** (`2walks-deploy`, `2walks-logs`, `2walks-status`) — опционально, добавлять по запросу.
 
 **Блокер снят (15.05.2026):** 4.54 завершена, optimistic concurrency защищает данные при одновременной работе CLI ↔ web. Старого риска тихого overwrite'а больше нет.
 

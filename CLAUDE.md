@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 2Walks is a step-counter RPG written in Python. Real-world steps (entered manually via the `+` command) fuel in-game actions: training at the Gym, Work shifts, Adventures with item drops, deposits / loans at the Bank, etc. Comments and UI text are primarily in Russian. The project targets desktop (Mac); an Android/Kivy build existed historically but was removed — see `git log` before 2026-04-24 if you need to resurrect any of it. A Google Fit auto-sync existed historically but was removed on 2026-04-27 (task 4.16); iPhone Shortcut pipeline (4.13) is currently отложено — entry will be via CLI / Web / API (task 4.48.2 `POST /api/steps`).
 
-**Primary interface:** CLI (`game.py`). **Secondary (planned):** Web interface via FastAPI backend on a VPS (task 4.48 — incremental rollout). CLI remains the primary path; web is supplementary and grows feature-by-feature. Single source of truth for both — Google Sheets.
+**Primary interface:** CLI (`game.py`). **Secondary (deployed 18.05.2026):** Web interface via FastAPI backend on home Ubuntu server (task 4.48.0.1 done; `aleksey-H61M-DS2H` через mDNS / 192.168.0.155, systemd unit `2walks.service`, доступ из домашней сети `http://192.168.0.155:8008` или `http://aleksey-H61M-DS2H.local:8008`). CLI остаётся primary path для геймплея + debug — concurrent usage с web защищён через 4.54 optimistic concurrency. Web растёт feature-by-feature, single source of truth для обоих — Google Sheets. Updates на сервере: `ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks"`. См. `docs/local_setup.md` раздел «Production: web 24/7».
 
 ## Entry points
 

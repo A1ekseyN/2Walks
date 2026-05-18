@@ -125,6 +125,84 @@ CLI и web — **отдельные процессы**, у каждого сво
 
 ---
 
+## Production: web 24/7 на Ubuntu-сервере
+
+С 18.05.2026 (задача 4.48.0.1) web развёрнут на домашнем Ubuntu-сервере и работает 24/7 через systemd. Локальный `uvicorn --reload` на MacBook'е больше не нужен для обычной игры — открываешь URL с iPhone / MacBook / любого устройства в той же Wi-Fi сети.
+
+### URL для доступа
+
+- По IP: <http://192.168.0.155:8008/>
+- По mDNS hostname: <http://aleksey-H61M-DS2H.local:8008/> (резолвится автоматически на macOS / iOS через Bonjour, удобный fallback если IP сменится)
+
+Bookmark оба URL'а в Safari на iPhone + браузере MacBook'а.
+
+### Управление сервисом (на сервере через SSH)
+
+```bash
+ssh aleksey@192.168.0.155
+
+# Статус.
+sudo systemctl status 2walks
+
+# Логи реал-тайм (Ctrl+C для выхода).
+sudo journalctl -u 2walks -f
+
+# Последние 50 строк логов.
+sudo journalctl -u 2walks -n 50 --no-pager
+
+# Restart (например, после правки конфига или ручного git pull).
+sudo systemctl restart 2walks
+
+# Stop / start (если нужно временно освободить порт для тестов).
+sudo systemctl stop 2walks
+sudo systemctl start 2walks
+```
+
+### Workflow обновлений (с MacBook'а в одну команду)
+
+```bash
+ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && sudo systemctl status 2walks"
+```
+
+`sudo` попросит пароль один раз. Если в обновлении не было новых зависимостей — `pip install` отрабатывает за секунду (все packages already satisfied). Downtime ~2-3 секунды, для single-user'а невидимо.
+
+### Опциональные алиасы на MacBook'е
+
+Чтобы не печатать длинную команду — добавь в `~/.zshrc`:
+
+```bash
+alias 2walks-deploy='ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && sudo systemctl status 2walks"'
+alias 2walks-logs='ssh aleksey@192.168.0.155 "sudo journalctl -u 2walks -n 50 --no-pager"'
+alias 2walks-status='ssh aleksey@192.168.0.155 "sudo systemctl status 2walks --no-pager"'
+```
+
+После `source ~/.zshrc` доступны: `2walks-deploy` / `2walks-logs` / `2walks-status`.
+
+### Локальный uvicorn vs сервер
+
+Локальный `uvicorn --reload` на MacBook'е остаётся полезным для:
+
+- Разработки новых фич (hot reload на изменение файлов)
+- Smoke-теста перед `git push` (увидеть свои изменения вживую до того как они уедут на сервер через `2walks-deploy`)
+
+Для обычной игры — production-сервер. Если запустишь оба одновременно (локальный uvicorn + production), они будут конкурировать за один state в Sheets — STALE prompt'ы будут срабатывать чаще (но защита 4.54 сработает). Лучше выбрать один в каждый момент.
+
+### CLI ↔ production-web concurrency
+
+Тот же дизайн что и для локального case (см. раздел «Concurrent CLI ↔ web — sync через optimistic timestamp» ниже). Сервер записывает `last_modified` в Sheets при mutation; CLI на MacBook'е на следующем `s` получает STALE-prompt с diff'ом если сервер успел сохранить позже. Reload (`r`) → re-init из Sheets → синхронизация.
+
+### Если что-то сломалось
+
+| Симптом | Куда смотреть |
+|---|---|
+| URL не открывается с MacBook/iPhone | `ssh aleksey@192.168.0.155 "sudo systemctl status 2walks"` — Active: failed? Лог `journalctl -u 2walks -n 50` покажет причину |
+| Web показывает «Cloud sync failed» | Sheets temporarily unavailable. Через минуту обычно восстанавливается. Проверь интернет на сервере: `ssh ... "curl -I https://google.com"` |
+| systemd сервис в `failed` | `journalctl -u 2walks -n 50 --no-pager` → чаще всего: credentials изменились / Sheets API revoked / диск переполнен. Fix → `sudo systemctl restart 2walks` |
+| После `git pull` web не подхватил изменения | Забыли `sudo systemctl restart 2walks`. uvicorn запущен БЕЗ `--reload` (намеренно, для стабильности production) |
+| Сервер перезагрузился — web недоступен | systemd unit `enabled` → auto-start должен сработать. Если нет: `ssh ... "sudo systemctl start 2walks"`. Сверить enable: `sudo systemctl is-enabled 2walks` → ожидаем `enabled` |
+
+---
+
 ## Concurrent CLI ↔ web — sync через optimistic timestamp
 
 С 0.2.4p (задача 4.54) можно безопасно держать оба процесса запущенными одновременно. Раньше последний `s` в CLI мог затереть прогресс web'а (или наоборот) — теперь каждый save проверяет «не обновил ли кто-то Sheets с момента моего load'а» и при конфликте даёт игроку выбрать что делать.
