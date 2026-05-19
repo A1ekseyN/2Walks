@@ -354,3 +354,51 @@ def test_format_money_typical_game_values():
     assert format_money(697.50) == "697.50"
     # Большая сумма.
     assert format_money(1_000_000) == "1,000,000.00"
+
+
+# =============================================================================
+# format_minutes(x) — plain-text human-readable форматирование минут
+# (без colorama, для web/HTML контекста). 4.48.3 polish (0.2.4s).
+# =============================================================================
+
+from functions_02 import format_minutes  # noqa: E402
+
+
+def test_format_minutes_under_hour():
+    assert format_minutes(5) == "5 мин."
+    assert format_minutes(60) == "60 мин."  # граница
+
+
+def test_format_minutes_hours_and_minutes():
+    """61-1439 мин → 'H ч. M мин.'"""
+    assert format_minutes(90) == "1 ч. 30 мин."
+    assert format_minutes(103) == "1 ч. 43 мин."  # пример из user'а (walk_hard)
+    assert format_minutes(120) == "2 ч. 0 мин."
+    assert format_minutes(1439) == "23 ч. 59 мин."
+
+
+def test_format_minutes_days_and_smaller():
+    """1440-43199 мин → 'D дн. H ч. M мин.'"""
+    assert format_minutes(1440) == "1 дн. 0 ч. 0 мин."
+    assert format_minutes(2890) == "2 дн. 0 ч. 10 мин."
+    assert format_minutes(6000) == "4 дн. 4 ч. 0 мин."
+
+
+def test_format_minutes_months():
+    """43200-525599 мин → 'MO мес. D дн. H ч. M мин.'"""
+    assert format_minutes(43200) == "1 мес. 0 дн. 0 ч. 0 мин."
+    assert format_minutes(50000) == "1 мес. 4 дн. 17 ч. 20 мин."
+
+
+def test_format_minutes_years():
+    """≥ 525600 мин → 'Y г. MO мес. D дн. H ч. M мин.'"""
+    assert format_minutes(525600) == "1 г. 0 мес. 0 дн. 0 ч. 0 мин."
+
+
+def test_format_minutes_no_colorama_codes():
+    """Plain text — никаких ANSI escape sequences (\\x1b[)."""
+    for x in [5, 90, 1500, 50000, 600000]:
+        result = format_minutes(x)
+        assert '\x1b' not in result
+        assert '[' not in result or 'мес.' in result  # square bracket только если их нет
+        assert result == result.encode('utf-8').decode('utf-8')  # pure str, no bytes

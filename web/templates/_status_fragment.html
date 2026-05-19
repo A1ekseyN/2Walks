@@ -2,6 +2,32 @@
    при первом GET /, при submit POST /web/steps (HTMX swap), и через GET /status
    (endpoint оставлен для будущих action endpoints / кнопки Refresh). #}
 
+{# 4.48.3 — «🎁 Находка» banner после авто-финализации приключения. Один
+   render: state.last_adventure_drop set'ится в _finalize_adventure_with_drop_capture,
+   очищается на любом успешном mutation (steps/work/gym/drop/skill_alloc). Banner
+   переживает F5 (drop_notification читается из runtime state), исчезает после
+   первого клика игрока. #}
+{% if drop_notification %}
+<section id="adventure-drop-notification" style="margin-bottom: 1rem;">
+    <article style="border-left: 4px solid var(--pico-color-green-500, #10b981); background: var(--pico-color-green-50, #f0fdf4);">
+        <header style="margin-bottom: 0.25rem;">
+            <strong>🎁 Из приключения выпало</strong>
+        </header>
+        <div class="stat-row">
+            <span>{{ (drop_notification.item_type|first)|title if drop_notification.item_type else '?' }}
+                  <em>{{ (drop_notification.grade|first) if drop_notification.grade else '?' }}</em></span>
+            <span>+{{ (drop_notification.bonus|first) if drop_notification.bonus else 0 }}
+                  {{ (drop_notification.characteristic|first)|title if drop_notification.characteristic else '?' }}</span>
+        </div>
+        <small style="color: var(--pico-muted-color);">
+            Quality: {{ "%.1f"|format((drop_notification.quality|first)|float) if drop_notification.quality else '?' }}
+            · Цена: {{ (drop_notification.price|first) if drop_notification.price else 0 }} $
+            · Любое действие закроет уведомление.
+        </small>
+    </article>
+</section>
+{% endif %}
+
 {# 4.50.2 — Pending drop banner. Показывается над всем остальным когда
    state.pending_drop != None (drop при полном инвентаре). 3 опции:
    sell-existing (кнопки в инвентаре ниже), sell-new, skip. #}
@@ -202,14 +228,79 @@
                 <progress data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}" value="{{ '%.2f' % adv_progress }}" max="100"></progress>
                 <small><span data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}">{{ '%.2f' % adv_progress }}</span> %{% if adv_progress >= 100 %} ✓ Завершено{% endif %}</small>
             {% endif %}
-            {% if adventure_finished %}
-                <br><small>Adventure finished — return to game (CLI) to claim drop. Завершение через web появится в задаче 4.48.3.</small>
-            {% endif %}
         </p>
         {% endif %}
     </article>
 </section>
 {% endif %}
+
+{# 4.48.3 — Adventure section: старт прогулки (если не активна) или
+   informational summary (если активна — таймер показывается в Active sessions
+   выше). Locked прогулки показаны greyed-out с unlock hint. Drop % считается
+   через drop.compute_grade_probabilities (учитывает current luck). #}
+<section id="adventure">
+    <details>
+        <summary>
+            🗺 <strong>Приключение</strong>
+            {%- if adventure_view.active %}
+                · {{ adventure_view.active_name.title() if adventure_view.active_name else '?' }}
+                <small>· идёт</small>
+            {%- else %}
+                <small>· выбери прогулку</small>
+            {%- endif %}
+        </summary>
+
+        {% if adventure_error %}
+        <small style="color: var(--pico-color-pumpkin-600, #b45309);">❌ {{ adventure_error }}</small>
+        {% endif %}
+
+        {% if adventure_view.active %}
+            <p style="margin-top: 0.5rem;">
+                <small>Приключение идёт. Прогресс и таймер — в блоке «⏱ Активные сессии» выше.</small>
+            </p>
+        {% else %}
+            {% for adv in adventure_view.adventures %}
+            <article style="padding: 0.5rem 0.75rem; margin: 0.5rem 0; {% if adv.locked %}opacity: 0.55;{% endif %}">
+                <div>
+                    <strong>{% if adv.locked %}🔒 {% endif %}{{ adv.label }}</strong>
+                </div>
+                {% if adv.locked %}
+                    <small class="equipment-empty">{{ adv.unlock_hint }}</small>
+                {% else %}
+                    <small>
+                        🏃 -{{ adv.cost_steps }} · 🔋 -{{ adv.cost_energy }} · 🕑 ~{{ format_minutes(adv.cost_time_min) }}
+                    </small>
+                    {% if adv.probabilities %}
+                    <br><small>
+                        Награда:
+                        {%- for grade, pct in adv.probabilities %}
+                            {{ grade }} [{{ pct }}]{% if not loop.last %},{% endif %}
+                        {%- endfor %}
+                    </small>
+                    {% endif %}
+                    {% if adv.can_afford %}
+                    <form hx-post="/web/adventure/start" hx-target="#status-bar" hx-swap="innerHTML"
+                          hx-disabled-elt="this"
+                          hx-confirm="Отправить персонажа в «{{ adv.label }}»? Спишется 🏃 {{ adv.cost_steps }} + 🔋 {{ adv.cost_energy }}, продлится ~{{ format_minutes(adv.cost_time_min) }}."
+                          style="margin: 0.25rem 0 0 0;">
+                        <input type="hidden" name="adv_name" value="{{ adv.name }}">
+                        <button type="submit" class="outline" style="margin: 0; text-align: center;">
+                            ▶ Старт
+                        </button>
+                    </form>
+                    {% else %}
+                    <br><small class="equipment-empty">
+                        — не хватает:
+                        {%- if adv.missing.steps > 0 %} 🏃 {{ adv.missing.steps }}{% endif %}
+                        {%- if adv.missing.energy > 0 %} 🔋 {{ adv.missing.energy }}{% endif %}
+                    </small>
+                    {% endif %}
+                {% endif %}
+            </article>
+            {% endfor %}
+        {% endif %}
+    </details>
+</section>
 
 {# Work — старт смены / добавить часы. Свёрнут по умолчанию (и когда работаешь,
    и когда нет) — игрок сам разворачивает блок при необходимости. #}

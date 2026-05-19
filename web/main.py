@@ -50,7 +50,7 @@ from equipment_bonus import (
     equipment_stamina_bonus,
 )
 from functions import bonus_percentage, energy_time_charge, save_game_date_last_enter, total_bonus_steps
-from functions_02 import format_hours, format_money
+from functions_02 import format_hours, format_minutes, format_money
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from google_sheets_db import StepsLogRepo
 from inventory import Wear_Equipped_Items
@@ -176,9 +176,15 @@ def _persist_and_handle_stale(endpoint: str = "") -> Optional[str]:
     - brief diff string — STALE, caller возвращает stale-fragment.
 
     Логирует `log_event('sync_conflict', source='web', diff=..., endpoint=...)`.
+
+    4.48.3 — На успешный persist сбрасывает `state.last_adventure_drop`
+    («🎁 Находка» banner). Реализует «исчезает после любого mutation» поведение.
     """
     status = persist_state_to_cloud()
     if status != "STALE":
+        # 4.48.3 — clear adventure drop notification на успешный mutation.
+        if game.state is not None:
+            game.state.last_adventure_drop = None
         return None
     # Build brief diff для toast.
     from google_sheets_db import GameStateRepo
@@ -610,6 +616,7 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["format_hours"] = format_hours
 templates.env.globals["format_money"] = format_money
+templates.env.globals["format_minutes"] = format_minutes
 
 
 @asynccontextmanager
@@ -708,6 +715,11 @@ def _apply_new_steps(steps_value: int, source: str = "web",
     from history import log_event
     log_event('steps_set', source=source, value=steps_value, previous=previous)
 
+    # 4.48.3 — clear «🎁 Находка» banner: steps submit это user-mutation,
+    # banner должен исчезнуть. Steps не идут через _persist_and_handle_stale
+    # (steps_log append-only, без save_safe) — clearing здесь explicit.
+    state.last_adventure_drop = None
+
     return StepsAppliedResult(
         applied=True,
         steps_today=state.steps.today,
@@ -721,7 +733,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        work_error: Optional[str] = None,
                        skill_error: Optional[str] = None,
                        gym_error: Optional[str] = None,
-                       drop_error: Optional[str] = None) -> dict:
+                       drop_error: Optional[str] = None,
+                       adventure_error: Optional[str] = None) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -777,9 +790,15 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # Auto-finalize работы по таймеру: каждый рендер dashboard'а / fragment'а
     # проверяет state.work.end и если время вышло — начисляет зарплату и
     # обнуляет смену. Так web-сценарий не требует отдельного "Claim"-клика
-    # (CLI делает то же самое в main loop'е). Аналогично появятся вызовы
-    # adventure_finalize в задаче 4.48.3.
+    # (CLI делает то же самое в main loop'е).
     work_check_done(state)
+
+    # 4.48.3 — Auto-finalize приключения по таймеру + захват дропа для
+    # «🎁 Находка» banner'а. Wrapper-helper детектит transition
+    # active=True→False через delta inventory/pending_drop и пишет item в
+    # state.last_adventure_drop (runtime-only). Banner живёт сквозь F5,
+    # очищается в _persist_and_handle_stale на любом успешном mutation.
+    _finalize_adventure_with_drop_capture(state)
 
     # 4.50.2 — Auto-collect pending drop если место освободилось (продажа
     # предмета / прокачка backpack_skill / снятие экипировки) с момента
@@ -937,6 +956,12 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # `active` = True если есть невыпавшая находка, `item` = parsed dict.
         "pending_drop_view": _build_pending_drop_view(state),
         "drop_error": drop_error,
+        # 4.48.3 — Adventure section: list прогулок (locked/unlocked + costs + drop %).
+        "adventure_view": _build_adventure_view(state),
+        "adventure_error": adventure_error,
+        # 4.48.3 — «🎁 Находка» banner: runtime-only state.last_adventure_drop.
+        # Set в _finalize_adventure_with_drop_capture, cleared на mutation.
+        "drop_notification": state.last_adventure_drop,
     }
 
 
@@ -1296,6 +1321,301 @@ async def api_gym_start(payload: GymStartRequest):
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "training": _training_snapshot(state)})
+
+
+# ============================================================================
+# 4.48.3 — Web: Adventure (старт прогулки + auto-finalize + drop notification)
+#
+# Дизайн (зафиксировано 19.05.2026):
+# - 7 прогулок с прогрессивной разблокировкой (3 прохождения предыдущего тира)
+# - Locked = greyed-out карточки с progress hint
+# - Drop probabilities через drop.compute_grade_probabilities (учитывает luck)
+# - Drop notification: «🎁 Находка» banner — runtime-only state.last_adventure_drop,
+#   set в _finalize_adventure_with_drop_capture (через delta inventory/pending),
+#   cleared на следующем успешном mutation (steps/work/gym/drop/skill_alloc).
+#   Banner переживает F5, исчезает после первого клика игрока.
+# - Auto-finalize: _finalize_adventure_with_drop_capture(state) в _dashboard_context
+#   (рядом с work_check_done / skill_training_check_done).
+# - One adventure at a time (как Work/Gym, гарантируется state.adventure.active flag).
+# ============================================================================
+
+
+# Human-friendly labels для UI. Порядок = порядок отображения в section.
+_ADVENTURE_DISPLAY: tuple[tuple[str, str], ...] = (
+    ('walk_easy',   'Прогулка вокруг озера'),
+    ('walk_normal', 'Прогулка по району'),
+    ('walk_hard',   'Прогулка в лес'),
+    ('walk_15k',    'Прогулка 15к шагов'),
+    ('walk_20k',    'Прогулка 20к шагов'),
+    ('walk_25k',    'Прогулка 25к шагов'),
+    ('walk_30k',    'Прогулка 30к шагов'),
+)
+
+# Unlock prerequisites: adv_name → (required_counter_key, required_count, prereq_label).
+# walk_easy всегда unlocked (no entry в dict).
+_ADVENTURE_UNLOCK: dict[str, tuple[str, int, str]] = {
+    'walk_normal': ('walk_easy', 3, 'Прогулка вокруг озера'),
+    'walk_hard':   ('walk_normal', 3, 'Прогулка по району'),
+    'walk_15k':    ('walk_hard', 3, 'Прогулка в лес'),
+    'walk_20k':    ('walk_15k', 3, 'Прогулка 15к шагов'),
+    'walk_25k':    ('walk_20k', 3, 'Прогулка 20к шагов'),
+    'walk_30k':    ('walk_25k', 3, 'Прогулка 25к шагов'),
+}
+
+# Human-readable labels для drop probability display. Полные формы вместо
+# одиночных букв — игроку понятнее «B-Grade [29%]» чем «B [29%]». Consistent
+# с CLI _format_reward output. Для S+ используется «S+ Grade» с пробелом
+# (визуально лучше чем «S+-Grade» c двойным дашем).
+_GRADE_LABELS: dict[str, str] = {
+    'c-grade':  'C-Grade',
+    'b-grade':  'B-Grade',
+    'a-grade':  'A-Grade',
+    's-grade':  'S-Grade',
+    's+grade':  'S+ Grade',
+}
+
+
+class AdventureStartRequest(BaseModel):
+    """Body для POST /api/adventure/start."""
+    adv_name: str = Field(..., description="walk_easy / walk_normal / ... / walk_30k")
+
+
+def _adventure_snapshot(state) -> dict:
+    """Минимальный snapshot state.adventure для JSON-ответа."""
+    a = state.adventure
+    return {
+        "active": a.active,
+        "name": a.name,
+        "start_ts": a.start_ts,
+        "end_ts": a.end_ts,
+    }
+
+
+def _build_adventure_view(state) -> dict:
+    """Pre-compute UI данные для Adventure-секции.
+
+    Returns dict:
+    - `active`: bool — активна ли прогулка сейчас (если да — меню стартов скрыто)
+    - `active_name`: str | None — для inline summary в details summary
+    - `adventures`: list[dict] — 7 элементов, каждый:
+        - name (key), label (human), locked (bool), unlock_hint (str|None),
+        - cost: {steps, energy, time_minutes}, can_afford (bool), missing dict,
+        - probabilities: list[(grade_label, percent_str)] — для отображения %
+    """
+    from adventure import Adventure
+    from adventure_data import adventure_data_table
+    from drop import compute_grade_probabilities
+
+    is_active = state.adventure.active
+    active_name = state.adventure.name if is_active else None
+
+    adv_helper = Adventure(adventure_data_table, state)
+
+    items: list[dict] = []
+    for name, label in _ADVENTURE_DISPLAY:
+        # Locked check.
+        locked = False
+        unlock_hint = None
+        if name in _ADVENTURE_UNLOCK:
+            prereq_key, prereq_count, prereq_label = _ADVENTURE_UNLOCK[name]
+            current_count = state.adventure.counters.get(prereq_key, 0)
+            if current_count < prereq_count:
+                locked = True
+                remaining = prereq_count - current_count
+                unlock_hint = f'Нужно ещё {remaining} прохождений «{prereq_label}»'
+
+        # Cost (адаптированный под move_opt + energy_opt skills).
+        adv_data = next(
+            (adv['data'] for adv in adv_helper.adventures.values() if adv['name'] == name),
+            None,
+        )
+        if adv_data is None:
+            # На случай отсутствия в adv_helper — skip.
+            continue
+        base_steps = adv_data['steps']
+        base_energy = adv_data['energy']
+        # Time — финальная длительность с учётом speed_skill bonus.
+        from skill_bonus import speed_skill_equipment_and_level_bonus
+        final_time_min = speed_skill_equipment_and_level_bonus(adv_data['time'], state)
+
+        can_afford = (
+            state.steps.can_use >= base_steps
+            and state.energy >= base_energy
+        )
+        missing = {
+            'steps': max(0, base_steps - state.steps.can_use),
+            'energy': max(0, base_energy - state.energy),
+        }
+
+        # Drop probabilities (учитывает current luck).
+        # Формат: list[(grade_label_human, percent_str)] для template.
+        # Skip 'nothing' и грейды с p<0.0001 — чтобы не показывать «C-Grade 0.00%».
+        # Labels — полные формы «X-Grade» / «S+ Grade» (consistent с CLI).
+        probs = compute_grade_probabilities(name, state)
+        prob_pairs: list[tuple[str, str]] = []
+        for grade, p in probs.items():
+            if grade == 'nothing' or p < 0.0001:
+                continue
+            label_human = _GRADE_LABELS.get(grade, grade.upper())
+            prob_pairs.append((label_human, f'{p * 100:.2f}%'))
+
+        items.append({
+            'name': name,
+            'label': label,
+            'locked': locked,
+            'unlock_hint': unlock_hint,
+            'cost_steps': base_steps,
+            'cost_energy': base_energy,
+            'cost_time_min': final_time_min,
+            'can_afford': can_afford,
+            'missing': missing,
+            'probabilities': prob_pairs,
+        })
+
+    return {
+        'active': is_active,
+        'active_name': active_name,
+        'adventures': items,
+    }
+
+
+def _finalize_adventure_with_drop_capture(state) -> None:
+    """Wrapper вокруг Adventure.adventure_check_done, который при transition
+    `active=True → False` (т.е. финализация на этом render'е) захватывает
+    дроп через delta inventory/pending_drop → пишет в state.last_adventure_drop.
+
+    Если active=False с самого начала — no-op (не сбрасывает существующий
+    notification — чтобы banner переживал F5 после finalize'а).
+
+    Если active=True но end_ts ещё не наступил — тоже no-op (CLI helper
+    напечатает «Персонаж находится в Приключении» но не финализирует —
+    нас интересует только финал).
+    """
+    if not state.adventure.active:
+        return
+    end_ts = state.adventure.end_ts
+    if end_ts is None or end_ts > datetime.now().timestamp():
+        return  # ещё не время
+
+    # Capture pre-state.
+    inv_len_before = len(state.inventory)
+    pending_before = state.pending_drop
+
+    # Делегируем существующему helper'у.
+    from adventure import Adventure
+    Adventure.adventure_check_done(self=None, state=state)
+
+    # Capture what dropped.
+    if len(state.inventory) > inv_len_before:
+        # Normal drop — last item.
+        state.last_adventure_drop = state.inventory[-1]
+    elif state.pending_drop is not None and pending_before is None:
+        # Full inventory → captured как pending.
+        state.last_adventure_drop = state.pending_drop
+    # else: no drop (либо roll missed, либо forced sale — для simplicity
+    # forced sale не показываем, money-delta видна в Stats).
+
+
+def _validate_and_apply_adventure(state, adv_name: str) -> Optional[str]:
+    """Валидирует adv_name (включая unlock), стартует через Adventure._enter_adventure
+    + decrease_durability. На успехе persist. Возвращает текст ошибки или None.
+
+    Используется двумя endpoint'ами (web/api start)."""
+    if state.adventure.active:
+        return 'Приключение уже идёт — дождись завершения текущего.'
+    # Validate adv_name.
+    valid_names = {name for name, _ in _ADVENTURE_DISPLAY}
+    if adv_name not in valid_names:
+        return f'Неизвестное приключение: {adv_name}'
+    # Check unlock.
+    if adv_name in _ADVENTURE_UNLOCK:
+        prereq_key, prereq_count, prereq_label = _ADVENTURE_UNLOCK[adv_name]
+        if state.adventure.counters.get(prereq_key, 0) < prereq_count:
+            remaining = prereq_count - state.adventure.counters.get(prereq_key, 0)
+            return f'Заблокировано: нужно ещё {remaining} прохождений «{prereq_label}»'
+
+    # Compute cost via adventure helper (учитывает move_opt + energy_opt skills).
+    from adventure import Adventure
+    from adventure_data import adventure_data_table
+    adv_helper = Adventure(adventure_data_table, state)
+    adv_data = next(
+        (adv['data'] for adv in adv_helper.adventures.values() if adv['name'] == adv_name),
+        None,
+    )
+    if adv_data is None:
+        return f'Ошибка получения данных приключения: {adv_name}'
+
+    # Pre-flight resources check.
+    if state.steps.can_use < adv_data['steps'] or state.energy < adv_data['energy']:
+        return (f'Не хватает ресурсов: нужно {adv_data["steps"]} 🏃 + '
+                f'{adv_data["energy"]} 🔋 (есть {state.steps.can_use} 🏃 + {state.energy} 🔋).')
+
+    # Final time с учётом speed_skill bonus.
+    from skill_bonus import speed_skill_equipment_and_level_bonus
+    final_time_min = speed_skill_equipment_and_level_bonus(adv_data['time'], state)
+
+    # Spend + start (через actions.try_spend + actions.start_adventure).
+    from actions import try_spend, start_adventure as actions_start_adventure
+    if not try_spend(state, steps=adv_data['steps'], energy=adv_data['energy']):
+        return 'Не удалось списать ресурсы (race condition?)'
+    now_ts = datetime.now().timestamp()
+    actions_start_adventure(
+        state,
+        name=adv_name,
+        start_ts=now_ts,
+        end_ts=now_ts + (final_time_min * 60),
+    )
+
+    # Износ экипировки — как в CLI Adventure._enter_adventure.
+    from inventory import Wear_Equipped_Items
+    Wear_Equipped_Items(state).decrease_durability(adv_data['steps'])
+
+    # log_event как в CLI.
+    from history import log_event
+    log_event('adventure_start', name=adv_name,
+              cost_steps=adv_data['steps'], cost_energy=adv_data['energy'],
+              duration_minutes=final_time_min)
+
+    stale = _persist_and_handle_stale(endpoint='adventure_start')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+@app.post("/web/adventure/start", response_class=HTMLResponse)
+async def web_adventure_start(request: Request, adv_name: str = Form(...)):
+    """Form-data старт приключения. Возвращает обновлённый _status_fragment.html."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+
+    err = _validate_and_apply_adventure(state, adv_name)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, adventure_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/api/adventure/start")
+async def api_adventure_start(payload: AdventureStartRequest):
+    """JSON старт приключения."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+
+    if state.adventure.active:
+        return JSONResponse(
+            {"ok": False, "error": "Adventure already active.",
+             "adventure": _adventure_snapshot(state)},
+            status_code=409,
+        )
+
+    err = _validate_and_apply_adventure(state, payload.adv_name)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "adventure": _adventure_snapshot(state)})
 
 
 # ===== 4.50.2 — Pending drop resolve (web) =====

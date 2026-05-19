@@ -86,11 +86,26 @@ http://192.168.0.201:8008
 
 ### Endpoints
 
+**GET (read-only):**
 - `GET /` — dashboard (статус, активные сессии, инвентарь, экипировка). При заходе/F5 подтягивает свежий state из Sheets.
 - `GET /healthz` — `{"status": "ok", "state_loaded": true, "version": "..."}`.
-- `GET /status` — HTML-фрагмент того же контента, что dashboard (без `<html>` обёртки). Используется будущими action endpoints / кнопкой Refresh. Авто-полинг отключён в 0.2.0j; цифры обновляются при F5 / submit формы. Таймеры активных сессий идут на JS без серверных запросов.
-- `POST /api/steps` (JSON) — ввод шагов через API. Body: `{"steps": int, "ts"?: float, "source"?: str}`. Применяет max-merge: значение должно быть строго больше текущего `state.steps.today`. Возвращает `{ok, applied, steps_today, steps_can_use, logged}` или 422/503 при ошибке.
-- `POST /web/steps` (form-data) — то же, но для HTMX-формы на dashboard'е. Возвращает HTML-фрагмент.
+- `GET /status` — HTML-фрагмент того же контента, что dashboard (без `<html>` обёртки). Используется HTMX swap при mutation. Авто-полинг отключён в 0.2.0j; цифры обновляются при F5 / submit формы. Таймеры активных сессий идут на JS без серверных запросов.
+
+**POST mutations** — каждое действие имеет **пару endpoint'ов**: `/web/*` (Form-data, возвращает HTML-фрагмент для HTMX swap) и `/api/*` (JSON через Pydantic, возвращает `{ok, ...}` или `{ok: false, error}` со статусами 422 / 409 / 503):
+
+| Endpoint | Body | Назначение |
+|---|---|---|
+| `POST /api/steps` / `POST /web/steps` | `{steps: int}` | Ввод шагов (max-merge, > текущего today). |
+| `POST /api/work/start` / `POST /web/work/start` | `{work_type, hours}` | Начать смену (1-8 ч, 4 вакансии). |
+| `POST /api/work/add_hours` / `POST /web/work/add_hours` | `{hours}` | Добавить часы к активной смене. |
+| `POST /api/gym/start` / `POST /web/gym/start` | `{skill_name}` | Прокачка Gym-навыка. |
+| `POST /api/level/allocate` / `POST /web/level/allocate` | `{skill}` | Распределить очко уровня (после level-up). |
+| `POST /api/adventure/start` / `POST /web/adventure/start` | `{adv_name}` | **Стартовать прогулку (4.48.3, 0.2.4s).** Auto-finalize при таймере, drop-banner. |
+| `POST /api/drop/sell_existing` / `POST /web/drop/sell_existing` | `{index}` | Pending drop resolve: продать item инвентаря + положить находку. |
+| `POST /api/drop/sell_new` / `POST /web/drop/sell_new` | `{}` | Pending drop resolve: продать находку. |
+| `POST /web/drop/skip` | `{}` (Form only) | Pending drop resolve: отложить. |
+
+**Concurrent safety (4.54, 0.2.4p):** все mutation endpoint'ы проходят через `_persist_and_handle_stale()` — на STALE отвечают 409 (api) или HTML-фрагмент с auto-reload script (web). См. раздел «Concurrent CLI ↔ web» ниже.
 
 **Пример curl для /api/steps:**
 
@@ -100,16 +115,30 @@ curl -X POST http://127.0.0.1:8008/api/steps \
   -d '{"steps": 12500}'
 ```
 
+**Пример curl для /api/adventure/start:**
+
+```bash
+curl -X POST http://127.0.0.1:8008/api/adventure/start \
+  -H "Content-Type: application/json" \
+  -d '{"adv_name": "walk_easy"}'
+```
+
 **Ввод через web-форму:** на dashboard'е кликни на блок `🏃 Steps` — раскроется форма с input. Введи актуальное число шагов с браслета, нажми "Применить".
 
 ### Layout dashboard'а (collapsible blocks)
 
-В постоянно видимой Stats-секции — только текущие цифры (Steps + form, Energy, Money, Level + progress). Три блока ниже свернуты по умолчанию — кликни на заголовок чтобы раскрыть:
-- **📈 Бонусы** — детализация бонусов Steps (stamina/equipment/daily/level + всего и процент) и Energy, плюс `Total used` за всё время.
-- **🧥 Экипировка (N/7)** — заголовок показывает количество надетых из 7 слотов и ненулевые бонусы (стандартный Pico.css collapsible). Внутри — список по слотам.
-- **🎒 Инвентарь (N)** — заголовок показывает количество предметов. Внутри — отсортированный список.
+В постоянно видимой Stats-секции — только текущие цифры (Steps + form, Energy, Money, Level + progress). Под ней — `⏱ Активные сессии` блок (показывается только если что-то активно). Дальше collapsible-блоки действий и просмотра, свёрнутые по умолчанию:
 
-После submit формы шагов блоки сбрасываются в свёрнутое состояние (HTMX swap перерисовывает фрагмент).
+- **🏭 Работа** — стартовать смену (вакансия + часы) или добавить часы к активной (4.48.5).
+- **🗺 Приключение** — 7 прогулок с прогрессивной разблокировкой, drop probabilities и стартом (4.48.3, 0.2.4s). Locked прогулки — greyed-out с unlock hint.
+- **🏋 Спортзал** — прокачка Gym-навыков (4.48.4).
+- **📈 Бонусы** — детализация Steps/Energy bonuses + Total used.
+- **🧥 Экипировка (N/7)** — список по слотам + ненулевые бонусы в summary.
+- **🎒 Инвентарь (N/cap)** — отсортированный список предметов.
+
+При active `pending_drop` (рюкзак полон в момент дропа) — баннер сверху с 3 опциями resolve (4.50.2). После авто-финализации приключения с дропом — «🎁 Находка» banner (4.48.3) переживает F5, исчезает после любого mutation.
+
+После submit формы блоки сбрасываются в свёрнутое состояние (HTMX swap перерисовывает фрагмент).
 
 ### Cross-channel input
 

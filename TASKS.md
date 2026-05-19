@@ -2527,12 +2527,22 @@ sudo systemctl status 2walks    # verify
 - Тесты на конкретный placeholder text — фрагильно, при i18n / переформулировках сразу ломается, ценности мало.
 - `<small>` подсказку рядом с формой — placeholder достаточно. Если на узких мобильных текст обрежется и станет проблемой UX — отдельная задача.
 
-#### 4.48.3. Web: Adventure `[H / M / todo (blocked by 4.48.1)]`
+#### 4.48.3. Web: Adventure `[H / M / done (19.05.2026, 0.2.4s)]`
 
 - `GET /adventure` — список доступных прогулок + прогресс разблокировки (синергия с 4.34).
 - `POST /api/adventure/start` — старт прогулки + списание ресурсов.
 - Локальный countdown до завершения, прогресс-бар.
 - Auto-finalize при истечении таймера (детектится в polling, дроп показывается).
+
+**Реализовано (19.05.2026, 0.2.4s):**
+- Меню старта = новая `<section id="adventure">` в `_status_fragment.html` (между Work и Gym). 7 прогулок с прогрессивной разблокировкой (3 прохождения предыдущего тира); locked — greyed-out + 🔒 + unlock hint, unlocked — cost + probabilities (`compute_grade_probabilities` с current luck) + Start button (`hx-confirm`) или disabled c «не хватает». Active state — informational summary без кнопок.
+- Endpoints: `POST /web/adventure/start` (Form, fragment swap) + `POST /api/adventure/start` (JSON, `AdventureStartRequest`). STALE 409 на concurrent save.
+- `_validate_and_apply_adventure`: already-active / unknown / locked / insufficient checks → try_spend → actions.start_adventure → decrease_durability → log_event → persist.
+- Auto-finalize через `_finalize_adventure_with_drop_capture(state)` в `_dashboard_context` рядом с work_check_done.
+- **Drop notification mechanism**: новое runtime-only `state.last_adventure_drop` (НЕ сериализуется, как `last_loaded_snapshot`). Finalize wrapper детектит transition через delta inventory/pending_drop и пишет item. Banner («🎁 Из приключения выпало», зелёный) переживает F5, очищается на любом успешном mutation (через `_persist_and_handle_stale` и явный clear в `_apply_new_steps`).
+- Тесты: 28 новых в `tests/test_web_main.py` (view helper 7, validate 5, web POST 2, api POST 4, finalize 4, banner 4, section render 3) + 2 существующих обновлены (старое «claim drop in CLI» поведение убрано). 859 passed total, mypy 0 issues.
+- **Polish после feedback'а игрока (тот же день, 0.2.4s):** (1) cost time из сырых минут переведён на human-readable формат через новый `functions_02.format_minutes(x)` — plain-text близнец `time(x)` без colorama (Jinja global). «🕑 ~103 мин» → «🕑 ~1 ч. 43 мин.», то же в hx-confirm. 6 новых тестов. (2) Grade labels раскрыты с одиночных букв на полные формы через `_GRADE_LABELS` constant (`c-grade → C-Grade`, ..., `s+grade → S+ Grade` с пробелом, consistent с CLI). «B [28.86%]» → «B-Grade [28.86%]». 2 новых теста. После polish — 867 passed, mypy 0 issues.
+- **Web feature parity с CLI достигнута** для геймплейных активностей. Остались только Inventory/Equipment mutations (4.48.6) и Shop (4.48.7 — blocked by 4.7) + Банк (4.48.9 — готов к работе).
 
 #### 4.48.4. Web: Gym `[H / M / done (0.2.1e)]`
 

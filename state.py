@@ -216,6 +216,17 @@ class GameState:
         default=None, repr=False, compare=False
     )
 
+    # 4.48.3 — Web notification: последний выпавший из приключения item для
+    # «🎁 Находка» banner'а в web dashboard. Set в web wrapper'е вокруг
+    # `adventure_check_done` (захватывает дельту inventory/pending_drop),
+    # cleared на следующем успешном mutation (steps/work/gym/etc) после
+    # persist. Banner таким образом переживает F5, исчезает после
+    # первого осмысленного действия игрока. **Runtime-only** — НЕ
+    # сериализуется. CLI не использует (там drop печатается через print).
+    last_adventure_drop: Optional[dict] = field(
+        default=None, repr=False, compare=False
+    )
+
     @classmethod
     def default_new_game(cls) -> "GameState":
         """Дефолтное состояние нового персонажа (energy=50, money=0, location=home)."""

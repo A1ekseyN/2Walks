@@ -67,6 +67,48 @@ def time(x: int) -> str:
             f'{_color(h)} ч. {_color(m)} мин.')
 
 
+def format_minutes(x: int) -> str:
+    """Plain-text версия `time(x)` без colorama — для web template'ов
+    (HTML / Jinja). Та же логика разбивки на units (мин / ч / дн / мес / г),
+    но без ANSI escape sequences.
+
+    Принимает количество **минут**, возвращает обычную строку.
+
+    Примеры:
+        format_minutes(45)    → "45 мин."
+        format_minutes(103)   → "1 ч. 43 мин."
+        format_minutes(1500)  → "1 дн. 1 ч. 0 мин."
+        format_minutes(50000) → "1 мес. 4 дн. 17 ч. 20 мин."
+
+    Зарегистрировано как Jinja global в web/main.py (4.48.3 polish, 0.2.4s) —
+    используется в Adventure section'е для отображения cost_time_min
+    («🕑 ~103 мин» → «🕑 ~1 ч. 43 мин.»).
+    """
+    if x <= 60:
+        return f'{x} мин.'
+
+    if x < _MIN_PER_DAY:
+        h, m = divmod(x, _MIN_PER_HOUR)
+        return f'{h} ч. {m} мин.'
+
+    if x < _MIN_PER_MONTH:
+        d, rest = divmod(x, _MIN_PER_DAY)
+        h, m = divmod(rest, _MIN_PER_HOUR)
+        return f'{d} дн. {h} ч. {m} мин.'
+
+    if x < _MIN_PER_YEAR:
+        mo, rest = divmod(x, _MIN_PER_MONTH)
+        d, rest = divmod(rest, _MIN_PER_DAY)
+        h, m = divmod(rest, _MIN_PER_HOUR)
+        return f'{mo} мес. {d} дн. {h} ч. {m} мин.'
+
+    y, rest = divmod(x, _MIN_PER_YEAR)
+    mo, rest = divmod(rest, _MIN_PER_MONTH)
+    d, rest = divmod(rest, _MIN_PER_DAY)
+    h, m = divmod(rest, _MIN_PER_HOUR)
+    return f'{y} г. {mo} мес. {d} дн. {h} ч. {m} мин.'
+
+
 # Константы длительности (секунды) для format_timedelta.
 _YEAR_S = 365 * 24 * 3600
 _MONTH_S = 30 * 24 * 3600

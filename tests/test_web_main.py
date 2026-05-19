@@ -300,8 +300,10 @@ def test_active_adventure_in_progress_shows_timer():
     assert "Adventure finished" not in body
 
 
-def test_finished_adventure_shows_warning_not_timer():
-    """end_ts < now — приключение фактически закончилось, но не финализировано."""
+def test_finished_adventure_auto_finalizes_on_render():
+    """4.48.3 — end_ts < now → render авто-финализирует приключение (active=False).
+    Старого «Adventure finished / claim drop in CLI» сообщения больше нет —
+    drop_notification banner (если был дроп) заменяет необходимость claim'а."""
     state = GameState.default_new_game()
     state.adventure.active = True
     state.adventure.name = "walk_15k"
@@ -310,9 +312,11 @@ def test_finished_adventure_shows_warning_not_timer():
     with TestClient(app) as client:
         response = client.get("/status")
     body = response.text
-    assert "Adventure finished" in body
-    # Таймер на adv не показывается, потому что ветка ушла в "finished"
-    # (training/work тоже не активны → data-end-ts отсутствует).
+    # State финализирован — adventure inactive.
+    assert state.adventure.active is False
+    # Старое сообщение «claim drop in CLI» убрано.
+    assert "claim drop" not in body
+    # Active session timer не показывается (нечему).
     assert "data-end-ts=" not in body
 
 
@@ -489,8 +493,10 @@ def test_finished_work_auto_finalized_in_dashboard_context():
     assert "✓ Завершено" not in body
 
 
-def test_finished_adventure_shows_progress_100_and_claim_warning():
-    """Adventure с end в прошлом → progress 100 + ✓ Завершено + warning о CLI claim."""
+def test_finished_adventure_finalized_no_progress_bar_remains():
+    """4.48.3 — Adventure с end в прошлом → авто-финализация → progress bar
+    исчезает (active=False, ветка active-sessions не рендерится). Старого
+    `value="100.00"` / «✓ Завершено» / «claim drop» сообщений больше нет."""
     state = GameState.default_new_game()
     state.adventure.active = True
     state.adventure.name = "walk_easy"
@@ -500,10 +506,12 @@ def test_finished_adventure_shows_progress_100_and_claim_warning():
     with TestClient(app) as client:
         response = client.get("/status")
     body = response.text
-    assert 'value="100.00"' in body
-    assert "✓ Завершено" in body
-    assert "Adventure finished" in body
-    assert "claim drop" in body
+    # State финализирован.
+    assert state.adventure.active is False
+    # Старые маркеры финализации убраны (заменены drop_notification banner'ом
+    # либо тихим финализом если не было дропа).
+    assert "claim drop" not in body
+    assert "Adventure finished" not in body
 
 
 def test_no_active_session_renders_no_progress_bars():
@@ -3053,3 +3061,424 @@ def test_stale_response_logs_sync_conflict_event(monkeypatch):
     payload = sync_events[0][1]
     assert payload.get('source') == 'web'
     assert payload.get('endpoint') == 'work'
+
+
+# ============================================================================
+# 4.48.3 — Web: Adventure (start endpoints + auto-finalize + drop notification)
+# ============================================================================
+
+
+def _state_for_adventure(can_use_steps=5000, energy=50):
+    """Helper: state с достаточными ресурсами для walk_easy."""
+    s = GameState.default_new_game()
+    s.steps.today = can_use_steps
+    s.steps.can_use = can_use_steps
+    s.energy = energy
+    s.date_last_enter = str(datetime.now().date())
+    return s
+
+
+# ----- _build_adventure_view (helper) -----
+
+def test_adventure_view_walk_easy_unlocked_by_default():
+    """walk_easy всегда unlocked (no unlock entry)."""
+    from web.main import _build_adventure_view
+    state = _state_for_adventure()
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    walk_easy = next(a for a in view['adventures'] if a['name'] == 'walk_easy')
+    assert walk_easy['locked'] is False
+    assert walk_easy['unlock_hint'] is None
+
+
+def test_adventure_view_walk_normal_locked_until_3_walk_easy():
+    """walk_normal locked пока не пройдёт walk_easy 3 раза."""
+    from web.main import _build_adventure_view
+    state = _state_for_adventure()
+    state.adventure.counters['walk_easy'] = 2  # недостаточно
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    walk_normal = next(a for a in view['adventures'] if a['name'] == 'walk_normal')
+    assert walk_normal['locked'] is True
+    assert 'Прогулка вокруг озера' in walk_normal['unlock_hint']
+    assert '1 прохож' in walk_normal['unlock_hint']  # 3 - 2 = 1 осталось
+
+
+def test_adventure_view_walk_normal_unlocked_after_3_walk_easy():
+    from web.main import _build_adventure_view
+    state = _state_for_adventure()
+    state.adventure.counters['walk_easy'] = 3
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    walk_normal = next(a for a in view['adventures'] if a['name'] == 'walk_normal')
+    assert walk_normal['locked'] is False
+
+
+def test_adventure_view_can_afford_reflects_resources():
+    from web.main import _build_adventure_view
+    state = _state_for_adventure(can_use_steps=5000, energy=50)
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    walk_easy = next(a for a in view['adventures'] if a['name'] == 'walk_easy')
+    assert walk_easy['can_afford'] is True
+
+
+def test_adventure_view_can_afford_false_when_insufficient_steps():
+    from web.main import _build_adventure_view
+    state = _state_for_adventure(can_use_steps=100, energy=50)
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    walk_easy = next(a for a in view['adventures'] if a['name'] == 'walk_easy')
+    assert walk_easy['can_afford'] is False
+    assert walk_easy['missing']['steps'] > 0
+
+
+def test_adventure_view_probabilities_contain_at_least_one_grade():
+    """compute_grade_probabilities → пары (grade, percent) для template."""
+    from web.main import _build_adventure_view
+    state = _state_for_adventure()
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    walk_easy = next(a for a in view['adventures'] if a['name'] == 'walk_easy')
+    assert len(walk_easy['probabilities']) >= 1
+    grade, pct = walk_easy['probabilities'][0]
+    assert '%' in pct
+
+
+def test_adventure_view_grade_labels_use_full_form():
+    """Drop labels — полные формы «X-Grade» / «S+ Grade», не одиночные буквы.
+    Игроку понятнее «B-Grade [29%]» чем «B [29%]» (4.48.3 polish после feedback)."""
+    from web.main import _build_adventure_view
+    state = _state_for_adventure()
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    # walk_easy → C-Grade присутствует.
+    walk_easy = next(a for a in view['adventures'] if a['name'] == 'walk_easy')
+    grade_labels = [g for g, _ in walk_easy['probabilities']]
+    assert 'C-Grade' in grade_labels
+    # walk_15k имеет тиры A/B/C/S — проверяем что несколько полных меток.
+    state.adventure.counters['walk_hard'] = 3  # unlock walk_15k
+    view = _build_adventure_view(state)
+    walk_15k = next(a for a in view['adventures'] if a['name'] == 'walk_15k')
+    walk_15k_labels = [g for g, _ in walk_15k['probabilities']]
+    # walk_15k drops include B и A as minimum.
+    assert any('-Grade' in g for g in walk_15k_labels)
+    # Никаких одиночных букв.
+    for g in walk_15k_labels:
+        assert len(g) > 1, f'Label «{g}» — single char, ожидалась полная форма'
+
+
+def test_adventure_view_s_plus_grade_uses_space_format():
+    """S+ → «S+ Grade» (с пробелом, не «S+-Grade» с двойным дашем)."""
+    from web.main import _GRADE_LABELS
+    assert _GRADE_LABELS['s+grade'] == 'S+ Grade'
+    assert _GRADE_LABELS['c-grade'] == 'C-Grade'
+    assert _GRADE_LABELS['b-grade'] == 'B-Grade'
+    assert _GRADE_LABELS['a-grade'] == 'A-Grade'
+    assert _GRADE_LABELS['s-grade'] == 'S-Grade'
+
+
+def test_adventure_view_active_flag_when_adventure_running():
+    from web.main import _build_adventure_view
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() + 600
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    assert view['active'] is True
+    assert view['active_name'] == 'walk_easy'
+
+
+# ----- _validate_and_apply_adventure -----
+
+def test_validate_apply_adventure_rejects_when_already_active():
+    from web.main import _validate_and_apply_adventure
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    _setup_state(state)
+    err = _validate_and_apply_adventure(state, 'walk_normal')
+    assert err is not None
+    assert 'уже идёт' in err
+
+
+def test_validate_apply_adventure_rejects_unknown_name():
+    from web.main import _validate_and_apply_adventure
+    state = _state_for_adventure()
+    _setup_state(state)
+    err = _validate_and_apply_adventure(state, 'walk_nonexistent')
+    assert err is not None
+    assert 'Неизвестное' in err
+
+
+def test_validate_apply_adventure_rejects_locked():
+    from web.main import _validate_and_apply_adventure
+    state = _state_for_adventure()
+    state.adventure.counters['walk_easy'] = 0
+    _setup_state(state)
+    err = _validate_and_apply_adventure(state, 'walk_normal')
+    assert err is not None
+    assert 'Заблокировано' in err
+
+
+def test_validate_apply_adventure_rejects_insufficient_resources():
+    from web.main import _validate_and_apply_adventure
+    state = _state_for_adventure(can_use_steps=10, energy=2)
+    _setup_state(state)
+    err = _validate_and_apply_adventure(state, 'walk_easy')
+    assert err is not None
+    assert 'Не хватает ресурсов' in err
+
+
+def test_validate_apply_adventure_success_sets_state():
+    from web.main import _validate_and_apply_adventure
+    state = _state_for_adventure()
+    _setup_state(state)
+    err = _validate_and_apply_adventure(state, 'walk_easy')
+    assert err is None
+    assert state.adventure.active is True
+    assert state.adventure.name == 'walk_easy'
+    assert state.adventure.end_ts is not None
+
+
+# ----- POST /web/adventure/start (Form) -----
+
+def test_web_adventure_start_form_success_returns_fragment():
+    state = _state_for_adventure()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/adventure/start", data={"adv_name": "walk_easy"})
+    assert response.status_code == 200
+    assert state.adventure.active is True
+    assert state.adventure.name == 'walk_easy'
+
+
+def test_web_adventure_start_form_locked_shows_error_in_body():
+    state = _state_for_adventure()
+    state.adventure.counters['walk_easy'] = 0
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/adventure/start", data={"adv_name": "walk_normal"})
+    assert response.status_code == 200
+    assert 'Заблокировано' in response.text
+    assert state.adventure.active is False
+
+
+# ----- POST /api/adventure/start (JSON) -----
+
+def test_api_adventure_start_json_success():
+    state = _state_for_adventure()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/adventure/start", json={"adv_name": "walk_easy"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['ok'] is True
+    assert payload['adventure']['active'] is True
+
+
+def test_api_adventure_start_json_already_active_returns_409():
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() + 600
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/adventure/start", json={"adv_name": "walk_normal"})
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload['ok'] is False
+
+
+def test_api_adventure_start_json_validation_error_returns_422():
+    state = _state_for_adventure(can_use_steps=10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/adventure/start", json={"adv_name": "walk_easy"})
+    assert response.status_code == 422
+    assert response.json()['ok'] is False
+
+
+def test_api_adventure_start_json_stale_returns_409(monkeypatch):
+    from google_sheets_db import GameStateRepo
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+    state = _state_for_adventure()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/adventure/start", json={"adv_name": "walk_easy"})
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload.get('stale') is True
+
+
+# ----- _finalize_adventure_with_drop_capture + drop_notification -----
+
+def test_finalize_does_nothing_when_adventure_not_active():
+    from web.main import _finalize_adventure_with_drop_capture
+    state = _state_for_adventure()
+    state.adventure.active = False
+    _setup_state(state)
+    _finalize_adventure_with_drop_capture(state)
+    assert state.last_adventure_drop is None
+
+
+def test_finalize_does_nothing_when_end_ts_in_future():
+    from web.main import _finalize_adventure_with_drop_capture
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() + 600
+    _setup_state(state)
+    _finalize_adventure_with_drop_capture(state)
+    assert state.adventure.active is True  # still active
+    assert state.last_adventure_drop is None
+
+
+def test_finalize_captures_dropped_item_when_inventory_grows(monkeypatch):
+    """adventure_check_done → Drop_Item.item_collect добавляет item в inventory →
+    finalize wrapper захватывает его в state.last_adventure_drop."""
+    from web.main import _finalize_adventure_with_drop_capture
+    from drop import Drop_Item
+
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() - 1
+    _setup_state(state)
+
+    test_item = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8],
+        'quality': [80.0], 'price': [50],
+    }
+    def fake_collect(self, hard, state):
+        state.inventory.append(test_item)
+    monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
+
+    _finalize_adventure_with_drop_capture(state)
+
+    assert state.adventure.active is False  # finalized
+    assert state.last_adventure_drop is test_item
+
+
+def test_finalize_captures_pending_drop_when_inventory_full(monkeypatch):
+    """Inventory полон → drop → pending_drop → finalize захватывает pending."""
+    from web.main import _finalize_adventure_with_drop_capture
+    from drop import Drop_Item
+
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() - 1
+    _setup_state(state)
+
+    pending_item = {
+        'item_name': ['ring'], 'item_type': ['ring'], 'grade': ['b-grade'],
+        'characteristic': ['luck'], 'bonus': [3],
+        'quality': [50.0], 'price': [20],
+    }
+    def fake_collect(self, hard, state):
+        state.pending_drop = pending_item
+    monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
+
+    _finalize_adventure_with_drop_capture(state)
+
+    assert state.last_adventure_drop is pending_item
+
+
+def test_drop_notification_banner_renders_when_set():
+    state = _state_for_adventure()
+    state.last_adventure_drop = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8],
+        'quality': [80.0], 'price': [50],
+    }
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '🎁' in body
+    assert 'Из приключения выпало' in body
+    assert 'Helmet' in body
+
+
+def test_drop_notification_banner_absent_when_none():
+    state = _state_for_adventure()
+    state.last_adventure_drop = None
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'Из приключения выпало' not in body
+
+
+def test_drop_notification_cleared_after_steps_mutation():
+    """Banner исчезает после первого успешного mutation (steps submit)."""
+    state = _state_for_adventure()
+    state.last_adventure_drop = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8],
+        'quality': [80.0], 'price': [50],
+    }
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/steps",
+                               data={"steps": str(state.steps.today + 100)})
+    assert state.last_adventure_drop is None
+    assert 'Из приключения выпало' not in response.text
+
+
+def test_drop_notification_cleared_after_work_mutation():
+    """Banner исчезает после mutation через _persist_and_handle_stale (work_start)."""
+    state = _state_for_adventure(can_use_steps=10000, energy=100)
+    state.last_adventure_drop = {
+        'item_name': ['ring'], 'item_type': ['ring'], 'grade': ['c-grade'],
+        'characteristic': ['luck'], 'bonus': [1],
+        'quality': [40.0], 'price': [10],
+    }
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/work/start",
+                               data={"work_type": "watchman", "hours": "1"})
+    assert state.last_adventure_drop is None
+    assert 'Из приключения выпало' not in response.text
+
+
+# ----- Adventure section rendering -----
+
+def test_adventure_section_shows_locked_with_hint():
+    state = _state_for_adventure()
+    state.adventure.counters['walk_easy'] = 0
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '🔒' in body
+    assert 'Прогулка вокруг озера' in body
+    assert 'Прогулка по району' in body
+
+
+def test_adventure_section_shows_start_button_for_unlocked_affordable():
+    state = _state_for_adventure(can_use_steps=5000, energy=50)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '▶ Старт' in body
+    assert 'walk_easy' in body
+
+
+def test_adventure_section_shows_summary_when_active():
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() + 600
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '▶ Старт' not in body
+    assert 'идёт' in body
+
