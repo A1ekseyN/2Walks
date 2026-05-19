@@ -104,6 +104,10 @@ http://192.168.0.201:8008
 | `POST /api/inventory/sell` / `POST /web/inventory/sell` | `{index}` | **Продать предмет из инвентаря (4.48.6, 0.2.4u).** Trader skill applied к цене. |
 | `POST /api/equipment/wear` / `POST /web/equipment/wear` | `{inventory_index, slot_attr?}` | **Надеть equipment (4.48.6, 0.2.4u).** `slot_attr` обязателен для ring (`finger_01`/`finger_02`), опционален для остальных (auto-pick из item_type). Auto-swap при занятом слоте. |
 | `POST /api/equipment/unwear` / `POST /web/equipment/unwear` | `{slot_attr}` | **Снять equipment (4.48.6, 0.2.4u).** 422 если `inventory_full` — сначала продай предмет. |
+| `POST /api/loadout/optimize` / `POST /web/loadout/optimize` | `{characteristic}` | **Auto-Optimizer loadout (4.63.3, 0.2.4v).** Web ещё имеет `/web/loadout/preview` для двухэтапного UX (preview → apply). |
+| `POST /api/preset/save` / `POST /web/preset/save` | `{name}` | **Save current equipment как preset (4.63.3, 0.2.4v).** |
+| `POST /api/preset/load` / `POST /web/preset/load` | `{name}` | **Apply preset (4.63.3, 0.2.4v).** Web ещё имеет `/web/preset/preview_load` для preview. |
+| `POST /api/preset/delete` / `POST /web/preset/delete` | `{name}` | **Удалить preset (4.63.3, 0.2.4v).** |
 | `POST /api/drop/sell_existing` / `POST /web/drop/sell_existing` | `{index}` | Pending drop resolve: продать item инвентаря + положить находку. |
 | `POST /api/drop/sell_new` / `POST /web/drop/sell_new` | `{}` | Pending drop resolve: продать находку. |
 | `POST /web/drop/skip` | `{}` (Form only) | Pending drop resolve: отложить. |
@@ -145,6 +149,7 @@ curl -X POST http://127.0.0.1:8008/api/equipment/wear \
 - **🏋 Спортзал** — прокачка Gym-навыков (4.48.4).
 - **📈 Бонусы** — детализация Steps/Energy bonuses + Total used.
 - **🧥 Экипировка (N/7)** — список по слотам + ненулевые бонусы в summary. На каждом занятом слоте — кнопка «🗑 Снять» (disabled с tooltip если `inventory_full`, чтобы предмет не потерялся). 4.48.6 (0.2.4u).
+- **🎯 Loadout** — Auto-Optimizer (выбор одной из 4 characteristics → Preview banner с diff и bonus before/after → Apply/Cancel) + Presets management (save current / preview load / load / delete). Двухэтапный preview-flow с защитой от stale state. 4.63.3 (0.2.4v) — закрывает зонтичную 4.63.
 - **🎒 Инвентарь (N/cap)** — отсортированный список предметов. **Sort dropdown** сверху (По типу / По grade / По цене / По бонусу) — server-side reorder через `<select onchange>`. На каждой строке — кнопка «💰 Продать (price$)» (с trader skill applied). Для equipment items дополнительно «🧥 Надеть» (auto-pick slot) или 2 кнопки «На палец 1» / «На палец 2» для ring (явный выбор). Auto-swap при занятом слоте — `hx-confirm` показывает что заменит. 4.48.6 (0.2.4u).
 
 При active `pending_drop` (рюкзак полон в момент дропа) — баннер сверху с 3 опциями resolve (4.50.2). После авто-финализации приключения с дропом — «🎁 Находка» banner (4.48.3) переживает F5, исчезает после любого mutation.

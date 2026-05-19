@@ -735,7 +735,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        gym_error: Optional[str] = None,
                        drop_error: Optional[str] = None,
                        adventure_error: Optional[str] = None,
-                       inventory_sort: str = 'default') -> dict:
+                       inventory_sort: str = 'default',
+                       loadout_error: Optional[str] = None) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -967,6 +968,12 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "inventory_view": _build_inventory_view(state, inventory_sort),
         "equipment_view": _build_equipment_view(state),
         "inventory_sort": inventory_sort,
+        # 4.63.3 — Loadout: optimizer + presets UI.
+        "loadout_view": _build_loadout_view(state),
+        "loadout_error": loadout_error,
+        # loadout_preview = None по дефолту; preview endpoints перезатирают
+        # это поле в context dict непосредственно перед рендером.
+        "loadout_preview": None,
     }
 
 
@@ -2000,6 +2007,437 @@ async def api_equipment_unwear(payload: EquipmentUnwearRequest):
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "inventory_size": len(state.inventory)})
+
+
+# ============================================================================
+# 4.63.3 — Web UI для Equipment Auto-Optimizer + Presets (Phase 3 зонтичной 4.63)
+#
+# Дизайн (зафиксировано 19.05.2026):
+# - Двухэтапный UX: Preview fragment → Apply. Preview-endpoint возвращает diff
+#   без мутации; Apply-endpoint re-вычисляет (idempotent) + применяет.
+# - Apply re-compute защищает от stale preview (если между preview и apply
+#   игрок продал item, optimizer выберет новую optimal config).
+# - Cancel = HTMX-get на /status (re-render фрагмент без preview context).
+# - Pure helpers (loadout.py) делают всю работу — endpoints тонкие обёртки.
+# - 6 web endpoints (loadout/preview + /optimize, preset/save + preview_load
+#   + load + delete) + 4 API endpoints (без preview).
+# - Loadout-banner-в-context pattern: loadout_preview = dict (если активен)
+#   или None. Template рендерит preview-карточку условно.
+# ============================================================================
+
+
+_OPTIMIZABLE_CHAR_DISPLAY: tuple[tuple[str, str, str], ...] = (
+    ('stamina',     '🏃',  'Stamina'),
+    ('energy_max',  '🔋',  'Energy Max'),
+    ('speed_skill', '⚡',  'Speed'),
+    ('luck',        '🍀',  'Luck'),
+)
+
+
+def _build_loadout_view(state) -> dict:
+    """Pre-compute UI данные для Loadout секции (4.63.3).
+
+    Returns dict:
+    - `characteristics`: list of dict per supported characteristic:
+        - key (stamina / energy_max / speed_skill / luck)
+        - icon (emoji), label (human)
+        - current_bonus (int — sum of equipment bonuses for this char)
+    - `presets`: list of dict per saved preset (sorted by name):
+        - name (str)
+        - slots_filled (int)
+        - bonuses: dict[char_key, int] — totals по 4 chars из preset snapshot
+    """
+    from loadout import total_bonus, list_presets
+
+    chars_view: list[dict] = []
+    for key, icon, label in _OPTIMIZABLE_CHAR_DISPLAY:
+        chars_view.append({
+            'key': key,
+            'icon': icon,
+            'label': label,
+            'current_bonus': total_bonus(state, key),
+        })
+
+    presets_view: list[dict] = []
+    for name, snapshot in list_presets(state):
+        slots_filled = sum(1 for v in snapshot.values() if v is not None)
+        bonuses: dict[str, int] = {k: 0 for k, _, _ in _OPTIMIZABLE_CHAR_DISPLAY}
+        for item in snapshot.values():
+            if item is None:
+                continue
+            chars = item.get('characteristic') or []
+            bons = item.get('bonus') or []
+            for c, b in zip(chars, bons):
+                if c in bonuses:
+                    bonuses[c] += int(b)
+        presets_view.append({
+            'name': name,
+            'slots_filled': slots_filled,
+            'bonuses': bonuses,
+        })
+
+    return {
+        'characteristics': chars_view,
+        'presets': presets_view,
+    }
+
+
+# Human-readable slot labels — match 4.48.6 _EQUIPMENT_SLOT_LABELS.
+def _slot_label(slot_attr: str) -> str:
+    return _EQUIPMENT_SLOT_LABELS.get(slot_attr, slot_attr)
+
+
+def _item_short(item: Optional[dict]) -> str:
+    """Однострочное описание item для diff: 'helmet a-grade (+8 stamina)' или '(пусто)'."""
+    if item is None:
+        return '(пусто)'
+    item_type = (item.get('item_type') or ['?'])[0]
+    grade = (item.get('grade') or ['?'])[0]
+    char = (item.get('characteristic') or ['?'])[0]
+    bonus = (item.get('bonus') or [0])[0]
+    return f'{item_type} {grade} (+{bonus} {char})'
+
+
+def _build_optimize_preview(state, characteristic: str) -> dict:
+    """Compute preview dict для optimize — БЕЗ мутации.
+
+    Returns dict (для template loadout_preview context):
+    - kind: 'optimize'
+    - subject_key: characteristic key (для apply form)
+    - subject_label: human (e.g., '🔋 Energy Max')
+    - diff_items: list[{slot_label, old_str, new_str}]
+    - bonus_before, bonus_after (int)
+    - warnings: list[str] — пустой для optimize (capacity check здесь не делаем)
+    - apply_endpoint: '/web/loadout/optimize'
+    """
+    from loadout import find_optimal_loadout, preview_loadout_diff, total_bonus
+
+    target = find_optimal_loadout(state, characteristic)
+    diff = preview_loadout_diff(state, target)
+    bonus_before = total_bonus(state, characteristic)
+
+    # Compute bonus_after — sum of bonuses for changed slots в target + неизменившиеся.
+    bonus_after = 0
+    changed_slots = {s for s, _, _ in diff}
+    for slot in _EQUIPMENT_SLOT_LABELS:
+        item = target.get(slot) if slot in changed_slots else getattr(state.equipment, slot)
+        if item is None:
+            continue
+        chars = item.get('characteristic') or []
+        bons = item.get('bonus') or []
+        for c, b in zip(chars, bons):
+            if c == characteristic:
+                bonus_after += int(b)
+
+    diff_items = [
+        {'slot_label': _slot_label(slot),
+         'old_str': _item_short(old),
+         'new_str': _item_short(new)}
+        for slot, old, new in diff
+    ]
+
+    label_for_subject = next(
+        (f'{icon} {label}' for k, icon, label in _OPTIMIZABLE_CHAR_DISPLAY if k == characteristic),
+        characteristic,
+    )
+
+    return {
+        'kind': 'optimize',
+        'subject_key': characteristic,
+        'subject_label': label_for_subject,
+        'diff_items': diff_items,
+        'bonus_before': bonus_before,
+        'bonus_after': bonus_after,
+        'warnings': [],
+        'apply_endpoint': '/web/loadout/optimize',
+    }
+
+
+def _build_preset_preview(state, name: str) -> Optional[dict]:
+    """Compute preview dict для load preset — БЕЗ мутации.
+
+    Returns dict как `_build_optimize_preview`, или None если preset не найден.
+    """
+    from loadout import preview_loadout_diff, resolve_preset_to_loadout
+
+    target, resolve_warnings = resolve_preset_to_loadout(state, name)
+    if target is None:
+        return None  # preset не найден
+
+    diff = preview_loadout_diff(state, target)
+    diff_items = [
+        {'slot_label': _slot_label(slot),
+         'old_str': _item_short(old),
+         'new_str': _item_short(new)}
+        for slot, old, new in diff
+    ]
+
+    return {
+        'kind': 'preset',
+        'subject_key': name,
+        'subject_label': f'💼 «{name}»',
+        'diff_items': diff_items,
+        'bonus_before': 0,  # для preset bonus before/after не показываем (multi-char)
+        'bonus_after': 0,
+        'slots_changed': len(diff),
+        'warnings': resolve_warnings,
+        'apply_endpoint': '/web/preset/load',
+    }
+
+
+def _validate_and_apply_optimize(state, characteristic: str) -> Optional[str]:
+    """Re-compute optimal loadout + apply. Returns error or None / STALE_MARKER."""
+    from loadout import (
+        OPTIMIZABLE_CHARACTERISTICS, apply_loadout, find_optimal_loadout,
+        total_bonus,
+    )
+    from history import log_event
+
+    if characteristic not in OPTIMIZABLE_CHARACTERISTICS:
+        return f'Неподдерживаемая characteristic: «{characteristic}».'
+
+    bonus_before = total_bonus(state, characteristic)
+    target = find_optimal_loadout(state, characteristic)
+    success, warnings = apply_loadout(state, target)
+    if not success:
+        # warnings содержит причину (capacity, no changes, etc.)
+        return warnings[0] if warnings else 'Не удалось применить loadout.'
+
+    log_event('loadout_optimized',
+              characteristic=characteristic,
+              slots_changed=len([w for w in warnings if w]),  # warnings = lost items count
+              bonus_before=bonus_before,
+              bonus_after=total_bonus(state, characteristic),
+              warnings_count=len(warnings))
+
+    stale = _persist_and_handle_stale(endpoint='loadout_optimize')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_save_preset(state, name: str) -> Optional[str]:
+    """Сохраняет current equipment как preset. Returns error or None / STALE_MARKER."""
+    from loadout import save_preset
+    from history import log_event
+
+    success, message = save_preset(state, name)
+    if not success:
+        return message
+    log_event('preset_saved',
+              name=name.strip(),
+              slots_filled=sum(1 for v in state.equipment_presets[name.strip()].values()
+                                if v is not None))
+    stale = _persist_and_handle_stale(endpoint='preset_save')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_load_preset(state, name: str) -> Optional[str]:
+    """Resolve preset → apply_loadout + persist. Returns error or None / STALE_MARKER."""
+    from loadout import apply_loadout, resolve_preset_to_loadout
+    from history import log_event
+
+    target, resolve_warnings = resolve_preset_to_loadout(state, name)
+    if target is None:
+        return f'Preset «{name}» не найден.'
+
+    success, apply_warnings = apply_loadout(state, target)
+    if not success:
+        return apply_warnings[0] if apply_warnings else 'Не удалось применить preset.'
+
+    # Count changed slots via len of diff (re-compute since apply_loadout не возвращает).
+    from loadout import preview_loadout_diff
+    # После apply diff будет пустым; для log используем len resolve_warnings + apply_warnings.
+    log_event('preset_applied',
+              name=name,
+              slots_changed=0,  # уже применено, не считаем — это лог факта
+              lost_items_count=len(resolve_warnings),
+              apply_warnings_count=len(apply_warnings))
+
+    stale = _persist_and_handle_stale(endpoint='preset_load')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_delete_preset(state, name: str) -> Optional[str]:
+    """Удаляет preset. Returns error or None / STALE_MARKER."""
+    from loadout import delete_preset
+    from history import log_event
+
+    success, message = delete_preset(state, name)
+    if not success:
+        return message
+    log_event('preset_deleted', name=name)
+    stale = _persist_and_handle_stale(endpoint='preset_delete')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+class LoadoutOptimizeRequest(BaseModel):
+    """Body для POST /api/loadout/optimize."""
+    characteristic: str = Field(..., description="stamina / energy_max / speed_skill / luck")
+
+
+class PresetSaveRequest(BaseModel):
+    """Body для POST /api/preset/save."""
+    name: str = Field(..., min_length=1, description="Имя preset'а (non-empty after strip)")
+
+
+class PresetLoadRequest(BaseModel):
+    """Body для POST /api/preset/load."""
+    name: str = Field(..., min_length=1)
+
+
+class PresetDeleteRequest(BaseModel):
+    """Body для POST /api/preset/delete."""
+    name: str = Field(..., min_length=1)
+
+
+# ----- Web endpoints (Form-data, HTMX swap fragment) -----
+
+@app.post("/web/loadout/preview", response_class=HTMLResponse)
+async def web_loadout_preview(request: Request, characteristic: str = Form(...)):
+    """Compute preview БЕЗ мутации, render fragment с preview banner."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    from loadout import OPTIMIZABLE_CHARACTERISTICS
+    if characteristic not in OPTIMIZABLE_CHARACTERISTICS:
+        context = _dashboard_context(request, loadout_error=f'Неподдерживаемая characteristic: «{characteristic}».')
+        return templates.TemplateResponse(request, "_status_fragment.html", context)
+    preview = _build_optimize_preview(state, characteristic)
+    context = _dashboard_context(request)
+    context['loadout_preview'] = preview
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/loadout/optimize", response_class=HTMLResponse)
+async def web_loadout_optimize(request: Request, characteristic: str = Form(...)):
+    """Apply optimization. Re-computes (idempotent) + applies."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_optimize(state, characteristic)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, loadout_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/preset/save", response_class=HTMLResponse)
+async def web_preset_save(request: Request, name: str = Form(...)):
+    """Save current equipment as preset с заданным именем."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_save_preset(state, name)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, loadout_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/preset/preview_load", response_class=HTMLResponse)
+async def web_preset_preview_load(request: Request, name: str = Form(...)):
+    """Compute preview load preset БЕЗ мутации."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    preview = _build_preset_preview(state, name)
+    if preview is None:
+        context = _dashboard_context(request, loadout_error=f'Preset «{name}» не найден.')
+        return templates.TemplateResponse(request, "_status_fragment.html", context)
+    context = _dashboard_context(request)
+    context['loadout_preview'] = preview
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/preset/load", response_class=HTMLResponse)
+async def web_preset_load(request: Request, name: str = Form(...)):
+    """Apply preset (re-resolve + apply)."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_load_preset(state, name)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, loadout_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/preset/delete", response_class=HTMLResponse)
+async def web_preset_delete(request: Request, name: str = Form(...)):
+    """Delete preset."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_delete_preset(state, name)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, loadout_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+# ----- JSON API endpoints (без preview — клиенты сами рассчитывают diff) -----
+
+@app.post("/api/loadout/optimize")
+async def api_loadout_optimize(payload: LoadoutOptimizeRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_optimize(state, payload.characteristic)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    from loadout import total_bonus
+    return JSONResponse({"ok": True,
+                         "characteristic": payload.characteristic,
+                         "bonus_after": total_bonus(state, payload.characteristic)})
+
+
+@app.post("/api/preset/save")
+async def api_preset_save(payload: PresetSaveRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_save_preset(state, payload.name)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "name": payload.name.strip(),
+                         "presets_count": len(state.equipment_presets)})
+
+
+@app.post("/api/preset/load")
+async def api_preset_load(payload: PresetLoadRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_load_preset(state, payload.name)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "name": payload.name})
+
+
+@app.post("/api/preset/delete")
+async def api_preset_delete(payload: PresetDeleteRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_delete_preset(state, payload.name)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "presets_count": len(state.equipment_presets)})
 
 
 # ===== 4.50.2 — Pending drop resolve (web) =====

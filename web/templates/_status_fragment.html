@@ -519,6 +519,149 @@
     </details>
 </section>
 
+{# 4.63.3 — Loadout: Auto-Optimizer + Presets. Двухэтапный UX:
+   1. Игрок выбирает characteristic / preset → POST /web/loadout/preview (или /preset/preview_load).
+   2. Сервер рендерит fragment с loadout_preview banner (внутри секции, под формой выбора).
+   3. Игрок: «✅ Применить» → /web/loadout/optimize (или /preset/load) ИЛИ «❌ Отмена» →
+      hx-get /status (re-render без preview).
+   Apply re-вычисляет (idempotent) — если между preview и apply state изменился,
+   apply использует свежий оптимум. #}
+<section id="loadout">
+    <details>
+        <summary>
+            🎯 <strong>Loadout</strong>
+            <small>· оптимизатор + presets ({{ loadout_view.presets|length }})</small>
+        </summary>
+
+        {% if loadout_error %}
+        <small style="color: var(--pico-color-pumpkin-600, #b45309);">❌ {{ loadout_error }}</small>
+        {% endif %}
+
+        {# Preview banner (4.63.3). Появляется когда loadout_preview != None. #}
+        {% if loadout_preview %}
+        <article style="border-left: 4px solid var(--pico-color-amber-500, #f59e0b); margin: 0.75rem 0;">
+            <header>
+                <strong>
+                    {% if loadout_preview.kind == 'optimize' %}🎯 Preview оптимизации под {{ loadout_preview.subject_label }}
+                    {% else %}📥 Preview загрузки preset {{ loadout_preview.subject_label }}{% endif %}
+                </strong>
+            </header>
+            {% if loadout_preview.diff_items %}
+                <p style="margin: 0.25rem 0;"><small>Изменится слотов: <strong>{{ loadout_preview.diff_items|length }}</strong></small></p>
+                <ul style="margin: 0.25rem 0 0.5rem 0; padding-left: 1.5rem; font-size: 0.85em;">
+                    {% for d in loadout_preview.diff_items %}
+                    <li><strong>{{ d.slot_label }}:</strong> {{ d.old_str }} → {{ d.new_str }}</li>
+                    {% endfor %}
+                </ul>
+                {% if loadout_preview.kind == 'optimize' %}
+                <p style="margin: 0.25rem 0;"><small>
+                    Бонус: <strong>+{{ loadout_preview.bonus_before }}</strong> → <strong>+{{ loadout_preview.bonus_after }}</strong>
+                    (дельта: <strong>{{ '%+d' % (loadout_preview.bonus_after - loadout_preview.bonus_before) }}</strong>)
+                </small></p>
+                {% endif %}
+            {% else %}
+                <p style="margin: 0.25rem 0;"><small>✅ Текущая экипировка уже оптимальна — изменения не требуются.</small></p>
+            {% endif %}
+
+            {% if loadout_preview.warnings %}
+            <div style="margin: 0.5rem 0; padding: 0.5rem; background: var(--pico-color-yellow-50, #fefce8); border-radius: 4px;">
+                {% for w in loadout_preview.warnings %}
+                <small style="display: block;">⚠ {{ w }}</small>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
+                {% if loadout_preview.diff_items %}
+                <form hx-post="{{ loadout_preview.apply_endpoint }}" hx-target="#status-bar" hx-swap="innerHTML"
+                      style="margin: 0;">
+                    {% if loadout_preview.kind == 'optimize' %}
+                    <input type="hidden" name="characteristic" value="{{ loadout_preview.subject_key }}">
+                    {% else %}
+                    <input type="hidden" name="name" value="{{ loadout_preview.subject_key }}">
+                    {% endif %}
+                    <button type="submit" style="margin: 0;">✅ Применить</button>
+                </form>
+                {% endif %}
+                <button class="secondary outline" hx-get="/status" hx-target="#status-bar" hx-swap="innerHTML"
+                        style="margin: 0;">❌ Отмена</button>
+            </div>
+        </article>
+        {% endif %}
+
+        {# Auto-Optimizer block. #}
+        <h6 style="margin: 0.75rem 0 0.25rem 0;">🎯 Auto-Optimizer</h6>
+        <form hx-post="/web/loadout/preview" hx-target="#status-bar" hx-swap="innerHTML"
+              style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0;">
+            <select name="characteristic"
+                    style="display: inline-block; width: auto; padding: 0.2rem 0.4rem; font-size: 0.85em; margin: 0;">
+                {% for c in loadout_view.characteristics %}
+                <option value="{{ c.key }}">{{ c.icon }} {{ c.label }} (текущий: +{{ c.current_bonus }})</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                🎯 Preview
+            </button>
+        </form>
+
+        {# Presets block. #}
+        <h6 style="margin: 0.75rem 0 0.25rem 0;">💼 Presets</h6>
+        {% if loadout_view.presets %}
+            {% for preset in loadout_view.presets %}
+            <article style="padding: 0.5rem 0.75rem; margin: 0.25rem 0;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span style="flex: 1;">
+                        <strong>{{ preset.name }}</strong>
+                        <small>· {{ preset.slots_filled }} слотов
+                        {%- for ch_key, ch_value in preset.bonuses.items() -%}
+                            {%- if ch_value > 0 %} ·
+                                {%- if ch_key == 'stamina' %} 🏃+{{ ch_value }}
+                                {%- elif ch_key == 'energy_max' %} 🔋+{{ ch_value }}
+                                {%- elif ch_key == 'speed_skill' %} ⚡+{{ ch_value }}
+                                {%- elif ch_key == 'luck' %} 🍀+{{ ch_value }}
+                                {%- endif %}
+                            {%- endif %}
+                        {%- endfor %}</small>
+                    </span>
+                    <form hx-post="/web/preset/preview_load" hx-target="#status-bar" hx-swap="innerHTML"
+                          style="margin: 0;">
+                        <input type="hidden" name="name" value="{{ preset.name }}">
+                        <button type="submit" class="outline"
+                                style="margin: 0; padding: 0.2rem 0.5rem; font-size: 0.8em;">
+                            📥 Preview Load
+                        </button>
+                    </form>
+                    <form hx-post="/web/preset/delete" hx-target="#status-bar" hx-swap="innerHTML"
+                          hx-confirm="Удалить preset «{{ preset.name }}»?"
+                          style="margin: 0;">
+                        <input type="hidden" name="name" value="{{ preset.name }}">
+                        <button type="submit" class="secondary outline"
+                                style="margin: 0; padding: 0.2rem 0.5rem; font-size: 0.8em;">
+                            🗑 Delete
+                        </button>
+                    </form>
+                </div>
+            </article>
+            {% endfor %}
+        {% else %}
+            <small class="equipment-empty">Пока нет сохранённых preset'ов.</small>
+        {% endif %}
+
+        {# Save current as preset — всегда видимая однострочная форма. #}
+        <form hx-post="/web/preset/save" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-confirm="Сохранить текущую экипировку как preset?"
+              style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+            <input type="text" name="name" placeholder="Имя preset'а..." required
+                   style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.85em;">
+            <button type="submit" class="outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                💾 Сохранить
+            </button>
+        </form>
+    </details>
+</section>
+
 <section id="inventory">
     {# 4.50.2 — auto-expand details при active pending, чтобы игрок видел список
        со sell-buttons без лишнего клика. Без pending — сворачиваем по умолчанию. #}

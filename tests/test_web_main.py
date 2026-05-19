@@ -3998,3 +3998,384 @@ def test_equipment_section_disables_unwear_when_inventory_full():
     assert 'disabled' in body
     assert 'Рюкзак полон' in body  # warning под кнопками
 
+
+# ============================================================================
+# 4.63.3 — Web UI для optimizer + presets (Phase 3 зонтичной 4.63)
+# ============================================================================
+
+
+# ----- _build_loadout_view -----
+
+def test_loadout_view_includes_four_characteristics():
+    from web.main import _build_loadout_view
+    state = GameState.default_new_game()
+    _setup_state(state)
+    view = _build_loadout_view(state)
+    keys = [c['key'] for c in view['characteristics']]
+    assert keys == ['stamina', 'energy_max', 'speed_skill', 'luck']
+
+
+def test_loadout_view_current_bonus_reflects_equipment():
+    """current_bonus = sum bonuses from equipment по characteristic."""
+    from web.main import _build_loadout_view
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(characteristic='stamina', bonus=8)
+    state.equipment.torso = _make_inv_item(item_type='t-shirt',
+                                            characteristic='stamina', bonus=5)
+    state.equipment.foots = _make_inv_item(item_type='shoes',
+                                            characteristic='luck', bonus=3)
+    _setup_state(state)
+    view = _build_loadout_view(state)
+    by_key = {c['key']: c for c in view['characteristics']}
+    assert by_key['stamina']['current_bonus'] == 13
+    assert by_key['luck']['current_bonus'] == 3
+    assert by_key['energy_max']['current_bonus'] == 0
+
+
+def test_loadout_view_empty_presets():
+    from web.main import _build_loadout_view
+    state = GameState.default_new_game()
+    _setup_state(state)
+    view = _build_loadout_view(state)
+    assert view['presets'] == []
+
+
+def test_loadout_view_presets_summary_with_bonuses():
+    from web.main import _build_loadout_view
+    from loadout import save_preset
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(characteristic='stamina', bonus=8)
+    state.equipment.torso = _make_inv_item(item_type='t-shirt',
+                                            characteristic='luck', bonus=4)
+    _setup_state(state)
+    save_preset(state, 'training')
+    view = _build_loadout_view(state)
+    assert len(view['presets']) == 1
+    preset = view['presets'][0]
+    assert preset['name'] == 'training'
+    assert preset['slots_filled'] == 2
+    assert preset['bonuses']['stamina'] == 8
+    assert preset['bonuses']['luck'] == 4
+
+
+# ----- _build_optimize_preview -----
+
+def test_optimize_preview_returns_diff_and_bonus_change():
+    from web.main import _build_optimize_preview
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet',
+                                            characteristic='energy_max', bonus=3)
+    state.inventory = [_make_inv_item(item_type='helmet',
+                                       characteristic='energy_max', bonus=10)]
+    _setup_state(state)
+    preview = _build_optimize_preview(state, 'energy_max')
+    assert preview['kind'] == 'optimize'
+    assert preview['subject_key'] == 'energy_max'
+    assert '🔋' in preview['subject_label']
+    # diff должен показывать замену head слота.
+    assert any('Голова' in d['slot_label'] for d in preview['diff_items'])
+    assert preview['bonus_before'] == 3
+    assert preview['bonus_after'] == 10
+
+
+def test_optimize_preview_empty_diff_when_optimal():
+    from web.main import _build_optimize_preview
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet',
+                                            characteristic='stamina', bonus=10)
+    _setup_state(state)
+    preview = _build_optimize_preview(state, 'stamina')
+    assert preview['diff_items'] == []
+    assert preview['bonus_before'] == preview['bonus_after']
+
+
+# ----- _build_preset_preview -----
+
+def test_preset_preview_returns_none_for_unknown_name():
+    from web.main import _build_preset_preview
+    state = GameState.default_new_game()
+    _setup_state(state)
+    assert _build_preset_preview(state, 'nonexistent') is None
+
+
+def test_preset_preview_includes_diff_and_warnings_for_lost_items():
+    from web.main import _build_preset_preview
+    state = GameState.default_new_game()
+    # Preset вручную — содержит item которого нет в pool.
+    state.equipment_presets['p1'] = {
+        'head': {'item_name': ['lost'], 'item_type': ['helmet'], 'grade': ['s-grade'],
+                 'characteristic': ['stamina'], 'bonus': [99], 'quality': [100], 'price': [200]},
+        'neck': None, 'torso': None, 'finger_01': None, 'finger_02': None,
+        'legs': None, 'foots': None,
+    }
+    _setup_state(state)
+    preview = _build_preset_preview(state, 'p1')
+    assert preview is not None
+    assert preview['kind'] == 'preset'
+    assert len(preview['warnings']) == 1  # lost item warning
+
+
+# ----- _validate_and_apply_optimize -----
+
+def test_validate_optimize_rejects_unknown_characteristic():
+    from web.main import _validate_and_apply_optimize
+    state = GameState.default_new_game()
+    _setup_state(state)
+    err = _validate_and_apply_optimize(state, 'unknown_char')
+    assert err is not None
+    assert 'Неподдерживаемая' in err
+
+
+def test_validate_optimize_applies_swap_from_inventory():
+    from web.main import _validate_and_apply_optimize
+    state = GameState.default_new_game()
+    # helmet item_type → попадает в head слот (ring item_type попал бы в finger_01/02).
+    weak = _make_inv_item(item_type='helmet', characteristic='stamina', bonus=3)
+    strong = _make_inv_item(item_type='helmet', characteristic='stamina', bonus=8)
+    state.equipment.head = weak
+    state.inventory = [strong]
+    _setup_state(state)
+    err = _validate_and_apply_optimize(state, 'stamina')
+    assert err is None
+    assert state.equipment.head is strong
+    assert weak in state.inventory
+
+
+# ----- _validate_and_apply_save_preset / load / delete -----
+
+def test_validate_save_preset_success():
+    from web.main import _validate_and_apply_save_preset
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(bonus=5)
+    _setup_state(state)
+    err = _validate_and_apply_save_preset(state, 'training')
+    assert err is None
+    assert 'training' in state.equipment_presets
+
+
+def test_validate_save_preset_rejects_empty_name():
+    from web.main import _validate_and_apply_save_preset
+    state = GameState.default_new_game()
+    _setup_state(state)
+    err = _validate_and_apply_save_preset(state, '   ')
+    assert err is not None
+
+
+def test_validate_load_preset_success():
+    from web.main import _validate_and_apply_save_preset, _validate_and_apply_load_preset
+    state = GameState.default_new_game()
+    h1 = _make_inv_item(characteristic='stamina', bonus=5)
+    h2 = _make_inv_item(characteristic='energy_max', bonus=8)
+    state.equipment.head = h1
+    state.inventory = [h2]
+    _setup_state(state)
+    _validate_and_apply_save_preset(state, 'stamina_load')
+    # Swap to h2.
+    state.equipment.head = h2
+    state.inventory = [h1]
+    # Load → back to h1.
+    err = _validate_and_apply_load_preset(state, 'stamina_load')
+    assert err is None
+    assert state.equipment.head is h1
+
+
+def test_validate_load_preset_unknown_name():
+    from web.main import _validate_and_apply_load_preset
+    state = GameState.default_new_game()
+    _setup_state(state)
+    err = _validate_and_apply_load_preset(state, 'missing')
+    assert err is not None
+    assert 'не найден' in err
+
+
+def test_validate_delete_preset_success():
+    from web.main import _validate_and_apply_save_preset, _validate_and_apply_delete_preset
+    state = GameState.default_new_game()
+    _setup_state(state)
+    _validate_and_apply_save_preset(state, 'p1')
+    err = _validate_and_apply_delete_preset(state, 'p1')
+    assert err is None
+    assert 'p1' not in state.equipment_presets
+
+
+# ----- POST /web/loadout/* + /web/preset/* -----
+
+def test_web_loadout_preview_returns_fragment_with_preview_banner():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(characteristic='energy_max', bonus=3)
+    state.inventory = [_make_inv_item(characteristic='energy_max', bonus=10)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/loadout/preview",
+                               data={"characteristic": "energy_max"})
+    assert response.status_code == 200
+    body = response.text
+    assert 'Preview оптимизации' in body
+    assert '✅ Применить' in body
+    assert '❌ Отмена' in body
+    # State не мутирован.
+    assert state.equipment.head['bonus'] == [3]
+
+
+def test_web_loadout_optimize_applies_mutation():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet',
+                                            characteristic='stamina', bonus=3)
+    state.inventory = [_make_inv_item(item_type='helmet',
+                                       characteristic='stamina', bonus=8)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/loadout/optimize",
+                               data={"characteristic": "stamina"})
+    assert response.status_code == 200
+    assert state.equipment.head['bonus'] == [8]
+
+
+def test_web_preset_save_creates_preset():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(bonus=5)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/preset/save",
+                               data={"name": "my_loadout"})
+    assert response.status_code == 200
+    assert 'my_loadout' in state.equipment_presets
+
+
+def test_web_preset_delete_removes_preset():
+    from loadout import save_preset
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(bonus=5)
+    _setup_state(state)
+    save_preset(state, 'p1')
+    with TestClient(app) as client:
+        response = client.post("/web/preset/delete",
+                               data={"name": "p1"})
+    assert response.status_code == 200
+    assert 'p1' not in state.equipment_presets
+
+
+# ----- POST /api/loadout/* + /api/preset/* -----
+
+def test_api_loadout_optimize_success():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet',
+                                            characteristic='energy_max', bonus=3)
+    state.inventory = [_make_inv_item(item_type='helmet',
+                                       characteristic='energy_max', bonus=10)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/loadout/optimize",
+                               json={"characteristic": "energy_max"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['ok'] is True
+    assert payload['characteristic'] == 'energy_max'
+    assert payload['bonus_after'] == 10
+
+
+def test_api_loadout_optimize_unknown_char_returns_422():
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/loadout/optimize",
+                               json={"characteristic": "unknown"})
+    assert response.status_code == 422
+
+
+def test_api_preset_save_success():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(bonus=5)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/preset/save",
+                               json={"name": "training"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['ok'] is True
+    assert payload['name'] == 'training'
+    assert payload['presets_count'] == 1
+
+
+def test_api_preset_load_unknown_returns_422():
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/preset/load",
+                               json={"name": "missing"})
+    assert response.status_code == 422
+
+
+def test_api_preset_delete_unknown_returns_422():
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/preset/delete",
+                               json={"name": "missing"})
+    assert response.status_code == 422
+
+
+# ----- STALE handling -----
+
+def test_api_loadout_optimize_stale_returns_409(monkeypatch):
+    from google_sheets_db import GameStateRepo
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet',
+                                            characteristic='stamina', bonus=3)
+    state.inventory = [_make_inv_item(item_type='helmet',
+                                       characteristic='stamina', bonus=8)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/loadout/optimize",
+                               json={"characteristic": "stamina"})
+    assert response.status_code == 409
+    assert response.json().get('stale') is True
+
+
+# ----- Section rendering -----
+
+def test_loadout_section_renders_characteristic_dropdown():
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'Auto-Optimizer' in body
+    assert 'Stamina' in body
+    assert 'Energy Max' in body
+
+
+def test_loadout_section_renders_save_preset_form():
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '💾 Сохранить' in body
+    assert '/web/preset/save' in body
+
+
+def test_loadout_section_shows_no_presets_message_when_empty():
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'нет сохранённых' in body.lower()
+
+
+def test_loadout_section_renders_preset_with_load_and_delete():
+    from loadout import save_preset
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(characteristic='stamina', bonus=8)
+    _setup_state(state)
+    save_preset(state, 'training')
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'training' in body
+    assert '📥 Preview Load' in body
+    assert '🗑 Delete' in body
+
