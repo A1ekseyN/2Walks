@@ -2369,7 +2369,8 @@ def test_gym_skills_use_nested_details():
         response = client.get("/status")
     body = response.text
     gym_pos = body.find('id="gym"')
-    next_section_pos = body.find('id="bonuses"', gym_pos)
+    # Следующая секция после Gym = Bank (с 0.2.4w / 4.48.9), затем Bonuses.
+    next_section_pos = body.find('id="bank"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
     # (после 0.2.4j / 4.22 — 20 навыков: + 3 energy_optimization_* после move_opt).
@@ -4378,4 +4379,390 @@ def test_loadout_section_renders_preset_with_load_and_delete():
     assert 'training' in body
     assert '📥 Preview Load' in body
     assert '🗑 Delete' in body
+
+
+# ============================================================================
+# 4.48.9 — Web: Банк (депозиты + кредиты)
+# ============================================================================
+
+
+def _state_for_bank(money=1000.0, banking=5, loan_capacity=10, loan_reduction=0):
+    """Helper: state с unlocked bank skills + money."""
+    s = GameState.default_new_game()
+    s.money = money
+    s.gym.banking_interest_rate = banking
+    s.gym.loan_capacity = loan_capacity
+    s.gym.loan_interest_reduction = loan_reduction
+    s.date_last_enter = str(datetime.now().date())
+    return s
+
+
+# ----- _build_bank_view -----
+
+def test_bank_view_locked_when_no_skills():
+    from web.main import _build_bank_view
+    state = GameState.default_new_game()  # banking=0, loan_capacity=0
+    _setup_state(state)
+    view = _build_bank_view(state)
+    assert view['can_open_deposit'] is False
+    assert view['can_take_loan'] is False
+    assert view['locked_reason'] is not None
+
+
+def test_bank_view_unlocked_when_skills_present():
+    from web.main import _build_bank_view
+    state = _state_for_bank()
+    _setup_state(state)
+    view = _build_bank_view(state)
+    assert view['can_open_deposit'] is True
+    assert view['can_take_loan'] is True
+    assert view['locked_reason'] is None
+
+
+def test_bank_view_rates_reflect_skills():
+    from web.main import _build_bank_view
+    state = _state_for_bank(banking=10, loan_reduction=20)
+    _setup_state(state)
+    view = _build_bank_view(state)
+    assert view['rate_deposit_pct'] == 10.0  # 0% base + 10/level
+    assert view['rate_loan_pct'] == 80.0  # 100% base - 20/level
+
+
+def test_bank_view_max_loan_amount():
+    """max_loan = loan_capacity * 100."""
+    from web.main import _build_bank_view
+    state = _state_for_bank(loan_capacity=7)
+    _setup_state(state)
+    view = _build_bank_view(state)
+    assert view['max_loan_amount'] == 700
+    assert view['loan_available'] == 700  # nothing borrowed
+
+
+# ----- _validate_and_apply_bank_op -----
+
+def test_bank_op_rejects_unknown_op():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank()
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'unknown_op', 100)
+    assert err is not None
+    assert 'Неизвестная' in err
+
+
+def test_bank_op_deposit_success_moves_money_to_deposit():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=500.0)
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'deposit', 200)
+    assert err is None
+    assert state.money == 300.0
+    assert state.bank.deposit_amount == 200
+
+
+def test_bank_op_deposit_rejects_when_skill_zero():
+    from web.main import _validate_and_apply_bank_op
+    state = GameState.default_new_game()
+    state.money = 500.0  # banking=0 still
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'deposit', 100)
+    assert err is not None
+    assert 'Banking Interest Rate' in err
+
+
+def test_bank_op_deposit_rejects_insufficient_money():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=50.0)
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'deposit', 100)
+    assert err is not None
+    assert 'Недостаточно денег' in err
+
+
+def test_bank_op_deposit_rejects_zero_amount():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank()
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'deposit', 0)
+    assert err is not None
+    assert 'положительной' in err
+
+
+def test_bank_op_deposit_all_moves_wallet_money():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=123.45)
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'deposit_all')
+    assert err is None
+    assert state.money == 0
+    assert state.bank.deposit_amount == 123.45
+
+
+def test_bank_op_deposit_all_rejects_empty_wallet():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=0.0)
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'deposit_all')
+    assert err is not None
+    assert 'пуст' in err
+
+
+def test_bank_op_withdraw_success():
+    import time as _time
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=0.0)
+    state.bank.deposit_amount = 500.0
+    state.bank.deposit_last_interest_ts = _time.time()  # ts=now → accrue=0
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'withdraw', 100)
+    assert err is None
+    assert state.money == 100.0
+
+
+def test_bank_op_withdraw_rejects_amount_too_large():
+    import time as _time
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=0.0)
+    state.bank.deposit_amount = 50.0
+    state.bank.deposit_last_interest_ts = _time.time()
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'withdraw', 100)
+    assert err is not None
+    assert 'больше доступного' in err
+
+
+def test_bank_op_withdraw_all_clears_deposit():
+    import time as _time
+    import pytest
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=0.0)
+    state.bank.deposit_amount = 250.0
+    state.bank.deposit_last_interest_ts = _time.time()
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'withdraw_all')
+    assert err is None
+    # μ-проценты могут добавиться за elapsed между ts и accrue.
+    assert state.money == pytest.approx(250.0, abs=0.01)
+    assert state.bank.deposit_amount == 0  # withdraw_all всегда чистит
+
+
+def test_bank_op_take_loan_success():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=0.0, loan_capacity=5)
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'take_loan', 300)
+    assert err is None
+    assert state.money == 300.0
+    assert state.bank.loan_amount == 300
+
+
+def test_bank_op_take_loan_rejects_when_no_capacity():
+    from web.main import _validate_and_apply_bank_op
+    state = GameState.default_new_game()  # loan_capacity=0
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'take_loan', 100)
+    assert err is not None
+    assert 'Loan Capacity' in err
+
+
+def test_bank_op_take_loan_rejects_when_exceeds_limit():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(loan_capacity=3)  # max=300
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'take_loan', 500)
+    assert err is not None
+    assert 'больше доступного лимита' in err
+
+
+def test_bank_op_repay_loan_success():
+    import time as _time
+    import pytest
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=500.0)
+    state.bank.loan_amount = 200.0
+    state.bank.loan_last_interest_ts = _time.time()
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'repay_loan', 100)
+    assert err is None
+    assert state.money == 400.0
+    # μ-проценты могут накопиться за elapsed между ts и accrue в _repay_loan.
+    assert state.bank.loan_amount == pytest.approx(100, abs=0.01)
+
+
+def test_bank_op_repay_all_clears_loan():
+    """repay_all с large money (без проблем с накопленными %% за elapsed)."""
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank(money=999_999.0)  # достаточно покрыть любые μ-проценты
+    state.bank.loan_amount = 200.0
+    # ts=now чтобы elapsed=0 → accrue=0.
+    import time as _time
+    state.bank.loan_last_interest_ts = _time.time()
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'repay_all')
+    assert err is None
+    assert state.bank.loan_amount == 0
+
+
+def test_bank_op_repay_rejects_no_loan():
+    from web.main import _validate_and_apply_bank_op
+    state = _state_for_bank()
+    _setup_state(state)
+    err = _validate_and_apply_bank_op(state, 'repay_loan', 100)
+    assert err is not None
+    assert 'Нет долга' in err
+
+
+# ----- POST /web/bank/* -----
+
+def test_web_bank_deposit_form_success():
+    """POST через TestClient → render → accrue_deposit добавляет μ-проценты,
+    поэтому asserts через `approx` (~1e-9 tolerance)."""
+    import pytest
+    state = _state_for_bank(money=500.0)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/bank/deposit", data={"amount": "200"})
+    assert response.status_code == 200
+    assert state.bank.deposit_amount == pytest.approx(200, abs=0.001)
+
+
+def test_web_bank_take_loan_form_success():
+    import pytest
+    state = _state_for_bank(money=0.0)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/bank/take_loan", data={"amount": "300"})
+    assert response.status_code == 200
+    assert state.bank.loan_amount == pytest.approx(300, abs=0.001)
+
+
+def test_web_bank_withdraw_all_form():
+    state = _state_for_bank(money=0.0)
+    state.bank.deposit_amount = 150.0
+    import time as _time
+    state.bank.deposit_last_interest_ts = _time.time()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/bank/withdraw_all")
+    assert response.status_code == 200
+    assert state.bank.deposit_amount == 0  # withdraw_all точно обнуляет
+    assert state.money >= 150.0  # μ-проценты могут добавиться, но не отнять
+
+
+# ----- POST /api/bank/* -----
+
+def test_api_bank_deposit_json_success():
+    state = _state_for_bank(money=500.0)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/bank/deposit", json={"amount": 200})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['ok'] is True
+    assert payload['money'] == 300.0
+    assert payload['deposit'] == 200
+
+
+def test_api_bank_take_loan_returns_money_loan_state():
+    state = _state_for_bank(money=0.0)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/bank/take_loan", json={"amount": 250})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['money'] == 250.0
+    assert payload['loan'] == 250
+
+
+def test_api_bank_deposit_insufficient_money_returns_422():
+    state = _state_for_bank(money=50.0)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/bank/deposit", json={"amount": 100})
+    assert response.status_code == 422
+
+
+def test_api_bank_deposit_zero_amount_returns_422():
+    """Pydantic gt=0 rejects 0."""
+    state = _state_for_bank()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/bank/deposit", json={"amount": 0})
+    assert response.status_code == 422
+
+
+def test_api_bank_repay_all_no_loan_returns_422():
+    state = _state_for_bank()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/bank/repay_all")
+    assert response.status_code == 422
+
+
+# ----- STALE handling -----
+
+def test_api_bank_deposit_stale_returns_409(monkeypatch):
+    from google_sheets_db import GameStateRepo
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+    state = _state_for_bank(money=500.0)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/bank/deposit", json={"amount": 100})
+    assert response.status_code == 409
+    assert response.json().get('stale') is True
+
+
+# ----- Section rendering -----
+
+def test_bank_section_renders_summary_for_locked_state():
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Locked state — summary с замочком + лозунгом про прокачку.
+    assert '🏦' in body
+    assert '🔒' in body
+
+
+def test_bank_section_renders_deposit_and_loan_blocks_when_unlocked():
+    state = _state_for_bank()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '💰 Депозит' in body
+    assert '💸 Кредит' in body
+    assert '/web/bank/deposit' in body
+    assert '/web/bank/take_loan' in body
+
+
+def test_bank_section_hides_withdraw_when_no_deposit():
+    """Withdraw кнопки не рендерятся когда депозит=0."""
+    state = _state_for_bank()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '/web/bank/withdraw' not in body
+
+
+def test_bank_section_hides_repay_when_no_loan():
+    state = _state_for_bank()
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '/web/bank/repay' not in body
+
+
+def test_bank_section_take_loan_hx_confirm_includes_rate():
+    """hx-confirm на take_loan должен показывать rate-инфо в тексте."""
+    state = _state_for_bank(loan_reduction=20)  # rate 80%
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'годовых' in body
+    assert '80.0%' in body or '80%' in body
 

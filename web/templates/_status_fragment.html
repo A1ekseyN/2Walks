@@ -438,6 +438,139 @@
     </details>
 </section>
 
+{# 4.48.9 — Bank: депозиты + кредиты. Симметрично CLI Bank menu (4.49).
+   Auto-accrue процентов происходит в _dashboard_context перед сборкой
+   bank_view — preview_deposit_amount/preview_loan_amount показывают
+   капитализированные значения. На mutation persist синкает state в Sheets. #}
+<section id="bank">
+    <details>
+        <summary>
+            🏦 <strong>Банк</strong>
+            {%- if bank_view.locked_reason %}
+                <small>· 🔒 {{ bank_view.locked_reason }}</small>
+            {%- else %}
+                <small>·
+                    {%- if bank_view.deposit > 0 %} 💰 {{ format_money(bank_view.deposit_accrued_preview) }} $ deposit{% endif %}
+                    {%- if bank_view.deposit > 0 and bank_view.loan > 0 %} ·{% endif %}
+                    {%- if bank_view.loan > 0 %} 💸 {{ format_money(bank_view.loan_accrued_preview) }} $ loan{% endif %}
+                    {%- if bank_view.deposit == 0 and bank_view.loan == 0 %} депозиты + кредиты{% endif %}
+                </small>
+            {%- endif %}
+        </summary>
+
+        {% if bank_error %}
+        <small style="color: var(--pico-color-pumpkin-600, #b45309);">❌ {{ bank_error }}</small>
+        {% endif %}
+
+        {# Депозит block. #}
+        <h6 style="margin: 0.75rem 0 0.25rem 0;">💰 Депозит</h6>
+        <p style="margin: 0.25rem 0;">
+            <small>
+                Текущий: <strong>{{ format_money(bank_view.deposit_accrued_preview) }} $</strong>
+                {%- if bank_view.deposit != bank_view.deposit_accrued_preview %}
+                    (накоплено: {{ format_money(bank_view.deposit_accrued_preview - bank_view.deposit) }} $)
+                {%- endif %}
+                · Ставка: {{ '%.1f' % bank_view.rate_deposit_pct }}% годовых
+            </small>
+        </p>
+
+        {% if bank_view.can_open_deposit %}
+        <form hx-post="/web/bank/deposit" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-confirm="Внести деньги на депозит?"
+              style="display: flex; gap: 0.5rem; margin: 0.25rem 0; flex-wrap: wrap;">
+            <input type="number" name="amount" min="1" placeholder="Сумма..." required
+                   style="flex: 1; min-width: 80px; padding: 0.25rem 0.5rem; font-size: 0.85em;">
+            <button type="submit" class="outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                💰 Внести
+            </button>
+        </form>
+        <form hx-post="/web/bank/deposit_all" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-confirm="Внести ВСЕ деньги ({{ format_money(state.money) }} $) на депозит?"
+              style="margin: 0.25rem 0;">
+            <button type="submit" class="secondary outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                💰 Внести всё ({{ format_money(state.money) }} $)
+            </button>
+        </form>
+        {% else %}
+        <small class="equipment-empty">🔒 Прокачай Banking Interest Rate в Спортзале чтобы открыть депозит.</small>
+        {% endif %}
+
+        {% if bank_view.can_withdraw %}
+        <form hx-post="/web/bank/withdraw" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-confirm="Снять сумму с депозита?"
+              style="display: flex; gap: 0.5rem; margin: 0.25rem 0; flex-wrap: wrap;">
+            <input type="number" name="amount" min="1" placeholder="Сумма..." required
+                   style="flex: 1; min-width: 80px; padding: 0.25rem 0.5rem; font-size: 0.85em;">
+            <button type="submit" class="outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                💸 Снять
+            </button>
+        </form>
+        <form hx-post="/web/bank/withdraw_all" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-confirm="Снять ВСЁ ({{ format_money(bank_view.deposit_accrued_preview) }} $) с депозита, включая копейки?"
+              style="margin: 0.25rem 0;">
+            <button type="submit" class="secondary outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                💸 Снять всё ({{ format_money(bank_view.deposit_accrued_preview) }} $)
+            </button>
+        </form>
+        {% endif %}
+
+        {# Кредит block. #}
+        <h6 style="margin: 0.75rem 0 0.25rem 0;">💸 Кредит</h6>
+        <p style="margin: 0.25rem 0;">
+            <small>
+                Текущий: <strong>{{ format_money(bank_view.loan_accrued_preview) }} $</strong>
+                {%- if bank_view.loan != bank_view.loan_accrued_preview %}
+                    (накоплено: {{ format_money(bank_view.loan_accrued_preview - bank_view.loan) }} $)
+                {%- endif %}
+                · Ставка: {{ '%.1f' % bank_view.rate_loan_pct }}% годовых
+                {%- if bank_view.max_loan_amount > 0 %}
+                    · Лимит: {{ bank_view.max_loan_amount }} $ (доступно: {{ bank_view.loan_available }} $)
+                {%- endif %}
+            </small>
+        </p>
+
+        {% if bank_view.can_take_loan %}
+        <form hx-post="/web/bank/take_loan" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-confirm="Взять кредит под {{ '%.1f' % bank_view.rate_loan_pct }}% годовых? Помни: проценты капают каждую секунду."
+              style="display: flex; gap: 0.5rem; margin: 0.25rem 0; flex-wrap: wrap;">
+            <input type="number" name="amount" min="1" max="{{ bank_view.loan_available }}" placeholder="Сумма..." required
+                   style="flex: 1; min-width: 80px; padding: 0.25rem 0.5rem; font-size: 0.85em;">
+            <button type="submit" class="outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                💸 Взять кредит
+            </button>
+        </form>
+        {% elif bank_view.max_loan_amount == 0 %}
+        <small class="equipment-empty">🔒 Прокачай Loan Capacity в Спортзале чтобы открыть кредитный лимит.</small>
+        {% endif %}
+
+        {% if bank_view.can_repay_loan %}
+        <form hx-post="/web/bank/repay_loan" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-confirm="Погасить часть долга?"
+              style="display: flex; gap: 0.5rem; margin: 0.25rem 0; flex-wrap: wrap;">
+            <input type="number" name="amount" min="1" placeholder="Сумма..." required
+                   style="flex: 1; min-width: 80px; padding: 0.25rem 0.5rem; font-size: 0.85em;">
+            <button type="submit" class="outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                💰 Погасить
+            </button>
+        </form>
+        <form hx-post="/web/bank/repay_all" hx-target="#status-bar" hx-swap="innerHTML"
+              hx-confirm="Погасить ВЕСЬ долг ({{ format_money(bank_view.loan_accrued_preview) }} $)?"
+              style="margin: 0.25rem 0;">
+            <button type="submit" class="secondary outline"
+                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                💰 Погасить весь долг ({{ format_money(bank_view.loan_accrued_preview) }} $)
+            </button>
+        </form>
+        {% endif %}
+    </details>
+</section>
+
 {# Бонусы Steps + Energy в свёрнутом блоке — детали редко нужны игроку. #}
 <section id="bonuses">
     <details>

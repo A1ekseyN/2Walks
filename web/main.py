@@ -736,7 +736,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        drop_error: Optional[str] = None,
                        adventure_error: Optional[str] = None,
                        inventory_sort: str = 'default',
-                       loadout_error: Optional[str] = None) -> dict:
+                       loadout_error: Optional[str] = None,
+                       bank_error: Optional[str] = None) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -801,6 +802,15 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # state.last_adventure_drop (runtime-only). Banner живёт сквозь F5,
     # очищается в _persist_and_handle_stale на любом успешном mutation.
     _finalize_adventure_with_drop_capture(state)
+
+    # 4.48.9 — Auto-accrue банковских процентов на каждом render. Симметрично
+    # CLI bank_menu (capitalize-on-change). preview_deposit_amount /
+    # preview_loan_amount в _build_bank_view учитывают capitalized state.
+    # Persist НЕ делается на render (как energy_time_charge) — следующая
+    # mutation подтянет snapshot. Idempotent при тут же повторном вызове.
+    from bank import accrue_deposit, accrue_loan
+    accrue_deposit(state)
+    accrue_loan(state)
 
     # 4.50.2 — Auto-collect pending drop если место освободилось (продажа
     # предмета / прокачка backpack_skill / снятие экипировки) с момента
@@ -974,6 +984,9 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # loadout_preview = None по дефолту; preview endpoints перезатирают
         # это поле в context dict непосредственно перед рендером.
         "loadout_preview": None,
+        # 4.48.9 — Bank: депозиты + кредиты UI.
+        "bank_view": _build_bank_view(state),
+        "bank_error": bank_error,
     }
 
 
@@ -2438,6 +2451,375 @@ async def api_preset_delete(payload: PresetDeleteRequest):
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "presets_count": len(state.equipment_presets)})
+
+
+# ============================================================================
+# 4.48.9 — Web: Банк (депозиты + кредиты)
+#
+# Дизайн (зафиксировано 19.05.2026):
+# - Single dispatcher `_validate_and_apply_bank_op(state, op_name, amount?)` —
+#   7 ops × all error paths в одном helper'е.
+# - Critical ops (take_loan / withdraw_all / repay_all) с hx-confirm; take_loan
+#   с rate-инфо в тексте confirm'а.
+# - Disabled buttons при gate-блокировке (skill=0).
+# - Auto-accrue в _dashboard_context (без persist на render — symmetric с
+#   energy_time_charge).
+# - Все pure helpers из bank.py (4.49) переиспользованы — endpoints тонкие
+#   обёртки.
+# ============================================================================
+
+
+# Bank op names — для dispatcher и для URL routes.
+_BANK_AMOUNT_OPS: frozenset[str] = frozenset({'deposit', 'withdraw', 'take_loan', 'repay_loan'})
+_BANK_ALL_OPS: frozenset[str] = frozenset({'deposit_all', 'withdraw_all', 'repay_all'})
+_BANK_ALL_VALID_OPS: frozenset[str] = _BANK_AMOUNT_OPS | _BANK_ALL_OPS
+
+
+def _build_bank_view(state) -> dict:
+    """Pre-compute UI данные для Bank секции.
+
+    Возвращает dict со всеми полями нужными template'у:
+    - deposit / loan (raw values from state.bank)
+    - deposit_accrued_preview / loan_accrued_preview (virtual с capitalized %)
+    - rate_deposit_pct / rate_loan_pct (current annual rates с учётом скиллов)
+    - max_loan_amount (loan_capacity × 100)
+    - can_open_deposit / can_withdraw / can_take_loan / can_repay_loan (gate flags)
+    - locked_reason (str | None — для summary при полной блокировке)
+    """
+    from bank import (
+        can_open_deposit, can_repay_loan, can_take_loan, can_withdraw,
+        current_deposit_rate_pct, current_loan_rate_pct, max_loan,
+        preview_deposit_amount, preview_loan_amount,
+    )
+
+    bank = state.bank
+    rate_deposit = current_deposit_rate_pct(state)
+    rate_loan = current_loan_rate_pct(state)
+    max_loan_v = max_loan(state)
+
+    can_dep = can_open_deposit(state)
+    can_wdr = can_withdraw(state)
+    can_loan = can_take_loan(state)
+    can_repay = can_repay_loan(state)
+
+    # locked_reason — для summary inline если игрок ещё не открыл банк.
+    if not can_dep and not can_loan and bank.deposit_amount == 0 and bank.loan_amount == 0:
+        locked_reason = 'прокачай Banking Interest Rate или Loan Capacity'
+    else:
+        locked_reason = None
+
+    return {
+        'deposit': bank.deposit_amount,
+        'deposit_accrued_preview': preview_deposit_amount(state),
+        'loan': bank.loan_amount,
+        'loan_accrued_preview': preview_loan_amount(state),
+        'rate_deposit_pct': rate_deposit,
+        'rate_loan_pct': rate_loan,
+        'max_loan_amount': max_loan_v,
+        'loan_available': max(0, max_loan_v - int(bank.loan_amount)),
+        'can_open_deposit': can_dep,
+        'can_withdraw': can_wdr,
+        'can_take_loan': can_loan,
+        'can_repay_loan': can_repay,
+        'locked_reason': locked_reason,
+    }
+
+
+def _validate_and_apply_bank_op(state, op_name: str,
+                                  amount: Optional[int] = None) -> Optional[str]:
+    """Единый dispatcher для 7 bank операций. Делегирует в bank.py pure helpers
+    + persist + STALE marker.
+
+    Returns:
+    - None — success.
+    - error string — validation failure (insufficient / locked / gate).
+    - STALE_MARKER — concurrent save detected, caller возвращает stale response.
+    """
+    from math import floor
+    from bank import (
+        _deposit, _deposit_all, _repay_loan, _repay_loan_all,
+        _take_loan, _withdraw, _withdraw_all,
+        can_open_deposit, can_repay_loan, can_take_loan, can_withdraw,
+        max_loan,
+    )
+
+    if op_name not in _BANK_ALL_VALID_OPS:
+        return f'Неизвестная операция: «{op_name}».'
+
+    # Pre-validate amount для amount-based ops.
+    if op_name in _BANK_AMOUNT_OPS:
+        if amount is None:
+            return 'Сумма не указана.'
+        try:
+            amount_int = int(amount)
+        except (ValueError, TypeError):
+            return f'Сумма должна быть целым числом (получено: {amount!r}).'
+        if amount_int <= 0:
+            return 'Сумма должна быть положительной (целое число > 0).'
+        amount = amount_int
+
+    # Dispatch с explicit pre-checks для понятных error messages.
+    if op_name == 'deposit':
+        if not can_open_deposit(state):
+            return 'Депозит закрыт — прокачай Banking Interest Rate в Спортзале.'
+        if state.money < amount:
+            return f'Недостаточно денег в кошельке (есть: {state.money:,.2f} $).'
+        if not _deposit(state, amount):
+            return f'Не удалось внести {amount} $.'
+
+    elif op_name == 'deposit_all':
+        if not can_open_deposit(state):
+            return 'Депозит закрыт — прокачай Banking Interest Rate.'
+        if state.money <= 0:
+            return 'Кошелёк пуст — нечего вносить.'
+        moved = _deposit_all(state)
+        if moved <= 0:
+            return 'Не удалось перенести деньги на депозит.'
+
+    elif op_name == 'withdraw':
+        if not can_withdraw(state):
+            return 'Снятие недоступно — нет депозита или skill=0.'
+        available = floor(state.bank.deposit_amount)
+        if amount > available:
+            return f'Сумма больше доступного депозита (доступно: {available} $).'
+        if not _withdraw(state, amount):
+            return f'Не удалось снять {amount} $.'
+
+    elif op_name == 'withdraw_all':
+        if not can_withdraw(state):
+            return 'Снятие недоступно — нет депозита или skill=0.'
+        paid = _withdraw_all(state)
+        if paid <= 0:
+            return 'Депозит пуст.'
+
+    elif op_name == 'take_loan':
+        if not can_take_loan(state):
+            cap = max_loan(state)
+            if cap == 0:
+                return 'Кредит недоступен — прокачай Loan Capacity в Спортзале.'
+            return f'Превышен лимит кредита ({state.bank.loan_amount:.2f} / {cap} $).'
+        available = max_loan(state) - int(state.bank.loan_amount)
+        if amount > available:
+            return f'Сумма больше доступного лимита (доступно: {available} $).'
+        if not _take_loan(state, amount):
+            return f'Не удалось взять кредит {amount} $.'
+
+    elif op_name == 'repay_loan':
+        if not can_repay_loan(state):
+            return 'Нет долга для погашения.'
+        if state.money < amount:
+            return f'Недостаточно денег в кошельке (есть: {state.money:,.2f} $).'
+        if not _repay_loan(state, amount):
+            return f'Не удалось погасить {amount} $.'
+
+    elif op_name == 'repay_all':
+        if not can_repay_loan(state):
+            return 'Нет долга для погашения.'
+        paid = _repay_loan_all(state)
+        if paid <= 0:
+            return 'Нет долга для погашения.'
+
+    stale = _persist_and_handle_stale(endpoint=f'bank_{op_name}')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+class BankAmountRequest(BaseModel):
+    """Body для amount-based POST /api/bank/* — deposit / withdraw / take_loan / repay_loan."""
+    amount: int = Field(..., gt=0, description="Положительное целое число.")
+
+
+def _bank_json_response(state, ok: bool, error: Optional[str] = None,
+                        status_code: int = 200):
+    """Helper: standard JSON response для bank API endpoints."""
+    if not ok:
+        return JSONResponse({"ok": False, "error": error}, status_code=status_code)
+    return JSONResponse({
+        "ok": True,
+        "money": state.money,
+        "deposit": state.bank.deposit_amount,
+        "loan": state.bank.loan_amount,
+    })
+
+
+# ----- Web endpoints (Form, HTMX swap) -----
+
+@app.post("/web/bank/deposit", response_class=HTMLResponse)
+async def web_bank_deposit(request: Request, amount: int = Form(...)):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_bank_op(state, 'deposit', amount)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, bank_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/bank/deposit_all", response_class=HTMLResponse)
+async def web_bank_deposit_all(request: Request):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_bank_op(state, 'deposit_all')
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, bank_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/bank/withdraw", response_class=HTMLResponse)
+async def web_bank_withdraw(request: Request, amount: int = Form(...)):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_bank_op(state, 'withdraw', amount)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, bank_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/bank/withdraw_all", response_class=HTMLResponse)
+async def web_bank_withdraw_all(request: Request):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_bank_op(state, 'withdraw_all')
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, bank_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/bank/take_loan", response_class=HTMLResponse)
+async def web_bank_take_loan(request: Request, amount: int = Form(...)):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_bank_op(state, 'take_loan', amount)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, bank_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/bank/repay_loan", response_class=HTMLResponse)
+async def web_bank_repay_loan(request: Request, amount: int = Form(...)):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_bank_op(state, 'repay_loan', amount)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, bank_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/web/bank/repay_all", response_class=HTMLResponse)
+async def web_bank_repay_all(request: Request):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_bank_op(state, 'repay_all')
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, bank_error=err)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+# ----- JSON API endpoints -----
+
+@app.post("/api/bank/deposit")
+async def api_bank_deposit(payload: BankAmountRequest):
+    state = game.state
+    if state is None:
+        return _bank_json_response(state, False, "state not initialized", status_code=503)
+    err = _validate_and_apply_bank_op(state, 'deposit', payload.amount)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return _bank_json_response(state, False, err, status_code=422)
+    return _bank_json_response(state, True)
+
+
+@app.post("/api/bank/deposit_all")
+async def api_bank_deposit_all():
+    state = game.state
+    if state is None:
+        return _bank_json_response(state, False, "state not initialized", status_code=503)
+    err = _validate_and_apply_bank_op(state, 'deposit_all')
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return _bank_json_response(state, False, err, status_code=422)
+    return _bank_json_response(state, True)
+
+
+@app.post("/api/bank/withdraw")
+async def api_bank_withdraw(payload: BankAmountRequest):
+    state = game.state
+    if state is None:
+        return _bank_json_response(state, False, "state not initialized", status_code=503)
+    err = _validate_and_apply_bank_op(state, 'withdraw', payload.amount)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return _bank_json_response(state, False, err, status_code=422)
+    return _bank_json_response(state, True)
+
+
+@app.post("/api/bank/withdraw_all")
+async def api_bank_withdraw_all():
+    state = game.state
+    if state is None:
+        return _bank_json_response(state, False, "state not initialized", status_code=503)
+    err = _validate_and_apply_bank_op(state, 'withdraw_all')
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return _bank_json_response(state, False, err, status_code=422)
+    return _bank_json_response(state, True)
+
+
+@app.post("/api/bank/take_loan")
+async def api_bank_take_loan(payload: BankAmountRequest):
+    state = game.state
+    if state is None:
+        return _bank_json_response(state, False, "state not initialized", status_code=503)
+    err = _validate_and_apply_bank_op(state, 'take_loan', payload.amount)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return _bank_json_response(state, False, err, status_code=422)
+    return _bank_json_response(state, True)
+
+
+@app.post("/api/bank/repay_loan")
+async def api_bank_repay_loan(payload: BankAmountRequest):
+    state = game.state
+    if state is None:
+        return _bank_json_response(state, False, "state not initialized", status_code=503)
+    err = _validate_and_apply_bank_op(state, 'repay_loan', payload.amount)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return _bank_json_response(state, False, err, status_code=422)
+    return _bank_json_response(state, True)
+
+
+@app.post("/api/bank/repay_all")
+async def api_bank_repay_all():
+    state = game.state
+    if state is None:
+        return _bank_json_response(state, False, "state not initialized", status_code=503)
+    err = _validate_and_apply_bank_op(state, 'repay_all')
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return _bank_json_response(state, False, err, status_code=422)
+    return _bank_json_response(state, True)
 
 
 # ===== 4.50.2 — Pending drop resolve (web) =====

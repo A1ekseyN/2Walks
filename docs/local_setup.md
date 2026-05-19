@@ -108,6 +108,8 @@ http://192.168.0.201:8008
 | `POST /api/preset/save` / `POST /web/preset/save` | `{name}` | **Save current equipment как preset (4.63.3, 0.2.4v).** |
 | `POST /api/preset/load` / `POST /web/preset/load` | `{name}` | **Apply preset (4.63.3, 0.2.4v).** Web ещё имеет `/web/preset/preview_load` для preview. |
 | `POST /api/preset/delete` / `POST /web/preset/delete` | `{name}` | **Удалить preset (4.63.3, 0.2.4v).** |
+| `POST /api/bank/{deposit,withdraw,take_loan,repay_loan}` / `POST /web/bank/*` | `{amount: int, gt=0}` | **Bank: amount-based операции (4.48.9, 0.2.4w).** Skill-gated (Banking Interest Rate / Loan Capacity). |
+| `POST /api/bank/{deposit_all,withdraw_all,repay_all}` / `POST /web/bank/*` | `{}` (без body) | **Bank: «всё»-операции (4.48.9, 0.2.4w).** Перенос всего кошелька / снятие всего депозита / погашение всего долга. |
 | `POST /api/drop/sell_existing` / `POST /web/drop/sell_existing` | `{index}` | Pending drop resolve: продать item инвентаря + положить находку. |
 | `POST /api/drop/sell_new` / `POST /web/drop/sell_new` | `{}` | Pending drop resolve: продать находку. |
 | `POST /web/drop/skip` | `{}` (Form only) | Pending drop resolve: отложить. |
@@ -147,6 +149,7 @@ curl -X POST http://127.0.0.1:8008/api/equipment/wear \
 - **🏭 Работа** — стартовать смену (вакансия + часы) или добавить часы к активной (4.48.5).
 - **🗺 Приключение** — 7 прогулок с прогрессивной разблокировкой, drop probabilities и стартом (4.48.3, 0.2.4s). Locked прогулки — greyed-out с unlock hint.
 - **🏋 Спортзал** — прокачка Gym-навыков (4.48.4).
+- **🏦 Банк** — депозиты + кредиты (4.48.9, 0.2.4w). Auto-accrue процентов на каждом render. Summary inline: active deposit/loan суммы или 🔒 при skill=0. Деп+Кред sub-blocks с inline формами; critical ops (take_loan, *_all) с `hx-confirm`. Take_loan confirm включает текущую rate-инфо.
 - **📈 Бонусы** — детализация Steps/Energy bonuses + Total used.
 - **🧥 Экипировка (N/7)** — список по слотам + ненулевые бонусы в summary. На каждом занятом слоте — кнопка «🗑 Снять» (disabled с tooltip если `inventory_full`, чтобы предмет не потерялся). 4.48.6 (0.2.4u).
 - **🎯 Loadout** — Auto-Optimizer (выбор одной из 4 characteristics → Preview banner с diff и bonus before/after → Apply/Cancel) + Presets management (save current / preview load / load / delete). Двухэтапный preview-flow с защитой от stale state. 4.63.3 (0.2.4v) — закрывает зонтичную 4.63.
