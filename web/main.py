@@ -734,7 +734,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        skill_error: Optional[str] = None,
                        gym_error: Optional[str] = None,
                        drop_error: Optional[str] = None,
-                       adventure_error: Optional[str] = None) -> dict:
+                       adventure_error: Optional[str] = None,
+                       inventory_sort: str = 'default') -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -962,6 +963,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # 4.48.3 — «🎁 Находка» banner: runtime-only state.last_adventure_drop.
         # Set в _finalize_adventure_with_drop_capture, cleared на mutation.
         "drop_notification": state.last_adventure_drop,
+        # 4.48.6 — Inventory + Equipment mutation views (sell/wear/unwear UI).
+        "inventory_view": _build_inventory_view(state, inventory_sort),
+        "equipment_view": _build_equipment_view(state),
+        "inventory_sort": inventory_sort,
     }
 
 
@@ -976,15 +981,18 @@ async def healthz():
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, sort: str = 'default'):
     """Главная страница — read-only dashboard.
 
     На каждом GET / (заход / F5 / pull-to-refresh) подтягиваем свежий state
     из Sheets через `try_reload_state()`. При сетевой ошибке оставляем
     кэшированный state — UI покажет badge на основе `last_reload.ok` (4.54.0).
+
+    `sort` (4.48.6) — query param для inventory sort dropdown
+    (default/grade/price/bonus). Через query string чтобы выживало F5.
     """
     try_reload_state()
-    context = _dashboard_context(request)
+    context = _dashboard_context(request, inventory_sort=sort)
     # Новый сигнатура Starlette 1.0+: TemplateResponse(request, name, context).
     return templates.TemplateResponse(request, "dashboard.html", context)
 
@@ -1616,6 +1624,382 @@ async def api_adventure_start(payload: AdventureStartRequest):
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "adventure": _adventure_snapshot(state)})
+
+
+# ============================================================================
+# 4.48.6 — Web: Inventory + Equipment (mutations: sell / wear / unwear)
+#
+# Дизайн (зафиксировано 19.05.2026):
+# - Inline always-visible кнопки на каждой строке (pattern из 4.50.2 sell-existing).
+# - Sort dropdown в Inventory секции — server-side reorder через `<select>` form.
+#   Hidden `sort` input в mutation-формах preserves выбор через HTMX swap.
+# - Ring item: explicit 2 кнопки «На палец 1» / «На палец 2» (не auto-pick).
+# - Non-ring при занятом слоте: auto-swap (`hx-confirm` показывает what replaces).
+# - Unwear блокируется если `inventory_full` (capacity check) — кнопка disabled.
+# - Trader skill (4.28) применяется к sell price preview.
+# - Pure helpers `_sell_item_at_index` / `_equip_from_inventory` / `_unequip` —
+#   уже существуют в inventory.py / equipment.py (с 4.50 и ранее).
+# ============================================================================
+
+
+# Inventory sort options для UI dropdown. Default = match CLI `_sort_inventory`
+# (item_type, characteristic, -bonus). Остальные — для гибкости.
+_INVENTORY_SORT_OPTIONS: tuple[tuple[str, str], ...] = (
+    ('default', 'По типу'),
+    ('grade',   'По grade (S+ → C)'),
+    ('price',   'По цене (дорогие первыми)'),
+    ('bonus',   'По бонусу'),
+)
+_VALID_SORT_KEYS: frozenset[str] = frozenset(k for k, _ in _INVENTORY_SORT_OPTIONS)
+
+# Grade order для sort by grade (s+ → s → a → b → c).
+_GRADE_ORDER: dict[str, int] = {
+    's+grade': 0,
+    's-grade': 1,
+    'a-grade': 2,
+    'b-grade': 3,
+    'c-grade': 4,
+}
+
+# item_type → list of valid slot_attr (для wear validation).
+_ITEM_TYPE_TO_SLOTS: dict[str, list[str]] = {
+    'helmet':   ['head'],
+    'necklace': ['neck'],
+    't-shirt':  ['torso'],
+    'ring':     ['finger_01', 'finger_02'],
+    'shoes':    ['foots'],
+}
+# Set всех equipment item_types (для wear button visibility).
+_EQUIPMENT_ITEM_TYPES: frozenset[str] = frozenset(_ITEM_TYPE_TO_SLOTS.keys())
+
+# slot_attr → human-readable label (для UI).
+_EQUIPMENT_SLOT_LABELS: dict[str, str] = {
+    'head':       'Голова',
+    'neck':       'Шея',
+    'torso':      'Торс',
+    'finger_01':  'Палец 1',
+    'finger_02':  'Палец 2',
+    'legs':       'Ноги',
+    'foots':      'Ступни',
+}
+# Set всех валидных slot_attr (для wear/unwear validation).
+_VALID_SLOT_ATTRS: frozenset[str] = frozenset(_EQUIPMENT_SLOT_LABELS.keys())
+
+
+def _sort_inventory_view(
+    inventory: list[dict], sort_key: str
+) -> list[tuple[int, dict]]:
+    """Возвращает список `(orig_index, item)` отсортированный по sort_key.
+
+    `orig_index` — 0-based индекс в state.inventory (нужен для wear/sell
+    endpoints — они оперируют на оригинальном списке, не на sorted view).
+
+    Sort keys: 'default' / 'grade' / 'price' / 'bonus'. Unknown → 'default'.
+    """
+    if sort_key not in _VALID_SORT_KEYS:
+        sort_key = 'default'
+
+    indexed = list(enumerate(inventory))
+
+    def _first(item, key, default=''):
+        v = item.get(key)
+        return v[0] if v else default
+
+    if sort_key == 'grade':
+        def key_fn(pair):
+            _, item = pair
+            grade = _first(item, 'grade', 'c-grade')
+            return (_GRADE_ORDER.get(grade, 999),
+                    _first(item, 'item_type'),
+                    -int((item.get('bonus') or [0])[0]))
+    elif sort_key == 'price':
+        def key_fn(pair):
+            _, item = pair
+            price = (item.get('price') or [0])[0]
+            return (-int(price), _first(item, 'item_type'))
+    elif sort_key == 'bonus':
+        def key_fn(pair):
+            _, item = pair
+            bonus = (item.get('bonus') or [0])[0]
+            return (-int(bonus), _first(item, 'item_type'))
+    else:  # 'default'
+        def key_fn(pair):
+            _, item = pair
+            return (_first(item, 'item_type'),
+                    _first(item, 'characteristic'),
+                    -int((item.get('bonus') or [0])[0]))
+
+    return sorted(indexed, key=key_fn)
+
+
+def _build_inventory_view(state, sort_key: str = 'default') -> dict:
+    """Pre-compute UI данные для Inventory секции с sell/wear buttons.
+
+    Returns dict:
+    - `items`: list of dict per inventory entry:
+        - orig_index (0-based в state.inventory — для form value)
+        - item_type, grade, characteristic, bonus, quality (str), price_raw
+        - sell_price (с trader bonus 4.28)
+        - is_equipment (bool — true если item_type в _EQUIPMENT_ITEM_TYPES)
+        - eligible_slots (list[str] — для ring 2 слота, для non-ring 1; пусто если не equipment)
+    - `sort_options`: list[(key, label)] для dropdown
+    - `current_sort`: выбранный sort_key
+    """
+    from bonus import apply_trader
+
+    sorted_pairs = _sort_inventory_view(state.inventory, sort_key)
+    items_view: list[dict] = []
+    for orig_index, item in sorted_pairs:
+        item_type = (item.get('item_type') or ['?'])[0]
+        price_raw = (item.get('price') or [0])[0]
+        sell_price = apply_trader(float(price_raw), state)
+        is_equipment = item_type in _EQUIPMENT_ITEM_TYPES
+        eligible_slots = _ITEM_TYPE_TO_SLOTS.get(item_type, []) if is_equipment else []
+        items_view.append({
+            'orig_index': orig_index,
+            'item_type': item_type,
+            'grade': (item.get('grade') or ['?'])[0],
+            'characteristic': (item.get('characteristic') or ['?'])[0],
+            'bonus': (item.get('bonus') or [0])[0],
+            'quality': (item.get('quality') or [0])[0],
+            'price_raw': price_raw,
+            'sell_price': sell_price,
+            'is_equipment': is_equipment,
+            'eligible_slots': eligible_slots,
+        })
+
+    return {
+        'items': items_view,
+        'sort_options': list(_INVENTORY_SORT_OPTIONS),
+        'current_sort': sort_key if sort_key in _VALID_SORT_KEYS else 'default',
+    }
+
+
+def _build_equipment_view(state) -> dict:
+    """Pre-compute UI данные для Equipment секции с unwear buttons.
+
+    Returns dict:
+    - `slots`: list of dict per slot (все 7 — head/neck/torso/finger_01/02/legs/foots):
+        - slot_attr (для form value)
+        - slot_label (human — «Голова», «Палец 1», etc.)
+        - item (dict | None)
+        - can_unequip (bool — false если slot пуст или inventory_full)
+        - block_reason (str | None — для tooltip)
+    - `inventory_full` (bool — для UI hint о причине disabled кнопок)
+    """
+    from bonus import backpack_capacity, inventory_full as is_inv_full
+
+    inv_full = is_inv_full(state)
+    cap = backpack_capacity(state)
+    slots_view: list[dict] = []
+    for slot_attr, label in _EQUIPMENT_SLOT_LABELS.items():
+        item = getattr(state.equipment, slot_attr)
+        if item is None:
+            can_unequip = False
+            block_reason = None
+        elif inv_full:
+            can_unequip = False
+            block_reason = f'Рюкзак полон ({len(state.inventory)}/{cap}). Сначала продай предмет.'
+        else:
+            can_unequip = True
+            block_reason = None
+        slots_view.append({
+            'slot_attr': slot_attr,
+            'slot_label': label,
+            'item': item,
+            'can_unequip': can_unequip,
+            'block_reason': block_reason,
+        })
+
+    return {
+        'slots': slots_view,
+        'inventory_full': inv_full,
+    }
+
+
+def _validate_and_apply_sell(state, inventory_index: int) -> Optional[str]:
+    """Продаёт предмет из state.inventory[index]. На успехе persist.
+
+    Возвращает текст ошибки или None. STALE → STALE_MARKER.
+    """
+    if not (0 <= inventory_index < len(state.inventory)):
+        return f'Неверный индекс предмета: {inventory_index} (инвентарь: {len(state.inventory)} предметов).'
+    from inventory import _sell_item_at_index
+    _sell_item_at_index(state, inventory_index)
+    stale = _persist_and_handle_stale(endpoint='inventory_sell')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_wear(state, inventory_index: int,
+                              slot_attr: Optional[str] = None) -> Optional[str]:
+    """Надевает предмет state.inventory[inventory_index] в slot_attr.
+
+    Для non-ring (helmet/necklace/t-shirt/shoes) — slot_attr может быть None
+    (определяется автоматически по item_type через _ITEM_TYPE_TO_SLOTS).
+    Для ring — slot_attr обязателен ('finger_01' или 'finger_02').
+
+    Если target slot занят — auto-swap (старый item → inventory), как в CLI.
+
+    Возвращает текст ошибки или None. STALE → STALE_MARKER.
+    """
+    if not (0 <= inventory_index < len(state.inventory)):
+        return f'Неверный индекс предмета: {inventory_index}.'
+    item = state.inventory[inventory_index]
+    item_type = (item.get('item_type') or [''])[0]
+    if item_type not in _EQUIPMENT_ITEM_TYPES:
+        return f'Предмет «{item_type}» не является экипировкой (нельзя надеть).'
+
+    eligible_slots = _ITEM_TYPE_TO_SLOTS[item_type]
+    if slot_attr is None:
+        if len(eligible_slots) != 1:
+            return f'Для «{item_type}» требуется явный выбор слота (eligible: {eligible_slots}).'
+        slot_attr = eligible_slots[0]
+    elif slot_attr not in eligible_slots:
+        return f'Слот «{slot_attr}» не подходит для «{item_type}» (eligible: {eligible_slots}).'
+
+    from equipment import _equip_from_inventory
+    _equip_from_inventory(state, slot_attr, inventory_index)
+    stale = _persist_and_handle_stale(endpoint='equipment_wear')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_unwear(state, slot_attr: str) -> Optional[str]:
+    """Снимает предмет со слота. Item уходит в inventory.
+
+    Capacity check: если `inventory_full` — reject (`_unequip` сам бы вернул
+    None, но мы делаем pre-check для понятного error message).
+
+    Возвращает текст ошибки или None. STALE → STALE_MARKER.
+    """
+    if slot_attr not in _VALID_SLOT_ATTRS:
+        return f'Неверный слот: «{slot_attr}» (valid: {sorted(_VALID_SLOT_ATTRS)}).'
+    if getattr(state.equipment, slot_attr) is None:
+        return f'Слот «{_EQUIPMENT_SLOT_LABELS[slot_attr]}» пуст — нечего снимать.'
+    from bonus import backpack_capacity, inventory_full as is_inv_full
+    if is_inv_full(state):
+        cap = backpack_capacity(state)
+        return f'Рюкзак полон ({len(state.inventory)}/{cap}). Сначала продай предмет.'
+
+    from equipment import _unequip
+    _unequip(state, slot_attr)
+    stale = _persist_and_handle_stale(endpoint='equipment_unwear')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+class InventorySellRequest(BaseModel):
+    """Body для POST /api/inventory/sell — 0-based index в state.inventory."""
+    index: int = Field(..., ge=0, description="0-based индекс предмета в state.inventory")
+
+
+class EquipmentWearRequest(BaseModel):
+    """Body для POST /api/equipment/wear.
+
+    `slot_attr` обязателен для ring, опционален для остальных (auto).
+    """
+    inventory_index: int = Field(..., ge=0, description="0-based индекс в state.inventory")
+    slot_attr: Optional[str] = Field(None, description="head/neck/torso/finger_01/finger_02/foots; для ring обязателен")
+
+
+class EquipmentUnwearRequest(BaseModel):
+    """Body для POST /api/equipment/unwear."""
+    slot_attr: str = Field(..., description="head/neck/torso/finger_01/finger_02/legs/foots")
+
+
+@app.post("/web/inventory/sell", response_class=HTMLResponse)
+async def web_inventory_sell(request: Request, index: int = Form(...),
+                              sort: str = Form('default')):
+    """Form-data продажа предмета. Возвращает обновлённый _status_fragment.html."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_sell(state, index)
+    if err == STALE_MARKER:
+        return _stale_response()
+    # preserve sort через HTMX swap (hidden form input был передан).
+    context = _dashboard_context(request, drop_error=err, inventory_sort=sort)
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/api/inventory/sell")
+async def api_inventory_sell(payload: InventorySellRequest):
+    """JSON продажа предмета."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_sell(state, payload.index)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "money": state.money,
+                         "inventory_size": len(state.inventory)})
+
+
+@app.post("/web/equipment/wear", response_class=HTMLResponse)
+async def web_equipment_wear(request: Request,
+                              inventory_index: int = Form(...),
+                              slot_attr: Optional[str] = Form(None),
+                              sort: str = Form('default')):
+    """Form-data надевание предмета."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_wear(state, inventory_index, slot_attr)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, drop_error=err)
+    context['_inventory_sort'] = sort
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/api/equipment/wear")
+async def api_equipment_wear(payload: EquipmentWearRequest):
+    """JSON надевание предмета."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_wear(state, payload.inventory_index, payload.slot_attr)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "inventory_size": len(state.inventory)})
+
+
+@app.post("/web/equipment/unwear", response_class=HTMLResponse)
+async def web_equipment_unwear(request: Request,
+                                slot_attr: str = Form(...),
+                                sort: str = Form('default')):
+    """Form-data снятие предмета."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_unwear(state, slot_attr)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, drop_error=err)
+    context['_inventory_sort'] = sort
+    return templates.TemplateResponse(request, "_status_fragment.html", context)
+
+
+@app.post("/api/equipment/unwear")
+async def api_equipment_unwear(payload: EquipmentUnwearRequest):
+    """JSON снятие предмета."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_unwear(state, payload.slot_attr)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "inventory_size": len(state.inventory)})
 
 
 # ===== 4.50.2 — Pending drop resolve (web) =====

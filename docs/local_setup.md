@@ -100,7 +100,10 @@ http://192.168.0.201:8008
 | `POST /api/work/add_hours` / `POST /web/work/add_hours` | `{hours}` | Добавить часы к активной смене. |
 | `POST /api/gym/start` / `POST /web/gym/start` | `{skill_name}` | Прокачка Gym-навыка. |
 | `POST /api/level/allocate` / `POST /web/level/allocate` | `{skill}` | Распределить очко уровня (после level-up). |
-| `POST /api/adventure/start` / `POST /web/adventure/start` | `{adv_name}` | **Стартовать прогулку (4.48.3, 0.2.4s).** Auto-finalize при таймере, drop-banner. |
+| `POST /api/adventure/start` / `POST /web/adventure/start` | `{adv_name}` | Стартовать прогулку (4.48.3, 0.2.4s). Auto-finalize при таймере, drop-banner. |
+| `POST /api/inventory/sell` / `POST /web/inventory/sell` | `{index}` | **Продать предмет из инвентаря (4.48.6, 0.2.4u).** Trader skill applied к цене. |
+| `POST /api/equipment/wear` / `POST /web/equipment/wear` | `{inventory_index, slot_attr?}` | **Надеть equipment (4.48.6, 0.2.4u).** `slot_attr` обязателен для ring (`finger_01`/`finger_02`), опционален для остальных (auto-pick из item_type). Auto-swap при занятом слоте. |
+| `POST /api/equipment/unwear` / `POST /web/equipment/unwear` | `{slot_attr}` | **Снять equipment (4.48.6, 0.2.4u).** 422 если `inventory_full` — сначала продай предмет. |
 | `POST /api/drop/sell_existing` / `POST /web/drop/sell_existing` | `{index}` | Pending drop resolve: продать item инвентаря + положить находку. |
 | `POST /api/drop/sell_new` / `POST /web/drop/sell_new` | `{}` | Pending drop resolve: продать находку. |
 | `POST /web/drop/skip` | `{}` (Form only) | Pending drop resolve: отложить. |
@@ -123,6 +126,14 @@ curl -X POST http://127.0.0.1:8008/api/adventure/start \
   -d '{"adv_name": "walk_easy"}'
 ```
 
+**Пример curl для /api/equipment/wear (ring → finger_02):**
+
+```bash
+curl -X POST http://127.0.0.1:8008/api/equipment/wear \
+  -H "Content-Type: application/json" \
+  -d '{"inventory_index": 0, "slot_attr": "finger_02"}'
+```
+
 **Ввод через web-форму:** на dashboard'е кликни на блок `🏃 Steps` — раскроется форма с input. Введи актуальное число шагов с браслета, нажми "Применить".
 
 ### Layout dashboard'а (collapsible blocks)
@@ -133,8 +144,8 @@ curl -X POST http://127.0.0.1:8008/api/adventure/start \
 - **🗺 Приключение** — 7 прогулок с прогрессивной разблокировкой, drop probabilities и стартом (4.48.3, 0.2.4s). Locked прогулки — greyed-out с unlock hint.
 - **🏋 Спортзал** — прокачка Gym-навыков (4.48.4).
 - **📈 Бонусы** — детализация Steps/Energy bonuses + Total used.
-- **🧥 Экипировка (N/7)** — список по слотам + ненулевые бонусы в summary.
-- **🎒 Инвентарь (N/cap)** — отсортированный список предметов.
+- **🧥 Экипировка (N/7)** — список по слотам + ненулевые бонусы в summary. На каждом занятом слоте — кнопка «🗑 Снять» (disabled с tooltip если `inventory_full`, чтобы предмет не потерялся). 4.48.6 (0.2.4u).
+- **🎒 Инвентарь (N/cap)** — отсортированный список предметов. **Sort dropdown** сверху (По типу / По grade / По цене / По бонусу) — server-side reorder через `<select onchange>`. На каждой строке — кнопка «💰 Продать (price$)» (с trader skill applied). Для equipment items дополнительно «🧥 Надеть» (auto-pick slot) или 2 кнопки «На палец 1» / «На палец 2» для ring (явный выбор). Auto-swap при занятом слоте — `hx-confirm` показывает что заменит. 4.48.6 (0.2.4u).
 
 При active `pending_drop` (рюкзак полон в момент дропа) — баннер сверху с 3 опциями resolve (4.50.2). После авто-финализации приключения с дропом — «🎁 Находка» banner (4.48.3) переживает F5, исчезает после любого mutation.
 

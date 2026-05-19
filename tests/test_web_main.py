@@ -363,7 +363,9 @@ def test_inventory_renders_items():
     assert "s-grade" in body
     assert "+4" in body
     assert "Luck" in body
-    assert "171 $" in body
+    # 4.48.6 — price теперь через format_money (с trader skill applied).
+    # Trader skill=0 (default) → sell_price=171.0 → "171.00 $".
+    assert "171.00 $" in body
 
 
 def test_equipment_empty_slot_shows_placeholder():
@@ -3481,4 +3483,518 @@ def test_adventure_section_shows_summary_when_active():
     body = response.text
     assert '▶ Старт' not in body
     assert 'идёт' in body
+
+
+# ============================================================================
+# 4.48.6 — Web: Inventory + Equipment (sell / wear / unwear endpoints + views)
+# ============================================================================
+
+
+def _make_inv_item(item_type='ring', grade='a-grade', characteristic='luck',
+                   bonus=3, quality=80.0, price=120, item_name=None):
+    """Helper: item-dict в legacy list-обёрточном формате (как `_make_item` в test_loadout)."""
+    return {
+        'item_name': [item_name or item_type],
+        'item_type': [item_type],
+        'grade': [grade],
+        'characteristic': [characteristic],
+        'bonus': [bonus],
+        'quality': [quality],
+        'price': [price],
+    }
+
+
+# ----- _sort_inventory_view -----
+
+def test_sort_inventory_view_default():
+    """Default sort = (item_type, characteristic, -bonus)."""
+    from web.main import _sort_inventory_view
+    inv = [
+        _make_inv_item(item_type='ring', bonus=5),
+        _make_inv_item(item_type='helmet', bonus=3),
+        _make_inv_item(item_type='ring', bonus=10),
+    ]
+    sorted_pairs = _sort_inventory_view(inv, 'default')
+    # helmet < ring alphabetically, ring 10 > ring 5
+    assert [p[0] for p in sorted_pairs] == [1, 2, 0]  # helmet, ring-10, ring-5
+
+
+def test_sort_inventory_view_by_grade():
+    """Sort by grade = s+ → s → a → b → c."""
+    from web.main import _sort_inventory_view
+    inv = [
+        _make_inv_item(grade='c-grade'),
+        _make_inv_item(grade='s+grade'),
+        _make_inv_item(grade='b-grade'),
+    ]
+    sorted_pairs = _sort_inventory_view(inv, 'grade')
+    assert [p[0] for p in sorted_pairs] == [1, 2, 0]  # s+, b, c
+
+
+def test_sort_inventory_view_by_price_desc():
+    from web.main import _sort_inventory_view
+    inv = [
+        _make_inv_item(price=50),
+        _make_inv_item(price=200),
+        _make_inv_item(price=100),
+    ]
+    sorted_pairs = _sort_inventory_view(inv, 'price')
+    assert [p[0] for p in sorted_pairs] == [1, 2, 0]  # 200, 100, 50
+
+
+def test_sort_inventory_view_by_bonus_desc():
+    from web.main import _sort_inventory_view
+    inv = [
+        _make_inv_item(bonus=2),
+        _make_inv_item(bonus=8),
+        _make_inv_item(bonus=5),
+    ]
+    sorted_pairs = _sort_inventory_view(inv, 'bonus')
+    assert [p[0] for p in sorted_pairs] == [1, 2, 0]
+
+
+def test_sort_inventory_view_invalid_key_falls_to_default():
+    from web.main import _sort_inventory_view
+    inv = [_make_inv_item(item_type='ring'), _make_inv_item(item_type='helmet')]
+    sorted_pairs = _sort_inventory_view(inv, 'unknown_sort_key')
+    # falls to default → helmet first.
+    assert [p[0] for p in sorted_pairs] == [1, 0]
+
+
+def test_sort_inventory_view_preserves_orig_index():
+    """orig_index в результате должен соответствовать позиции в исходном inv."""
+    from web.main import _sort_inventory_view
+    inv = [_make_inv_item(bonus=i) for i in range(5)]
+    sorted_pairs = _sort_inventory_view(inv, 'bonus')
+    # Bonuses 0,1,2,3,4 → sorted desc → 4,3,2,1,0 → orig_indices 4,3,2,1,0.
+    assert [p[0] for p in sorted_pairs] == [4, 3, 2, 1, 0]
+
+
+# ----- _build_inventory_view -----
+
+def test_inventory_view_includes_sort_metadata():
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item()]
+    _setup_state(state)
+    view = _build_inventory_view(state, 'grade')
+    assert view['current_sort'] == 'grade'
+    assert ('default', 'По типу') in view['sort_options']
+    assert ('grade', 'По grade (S+ → C)') in view['sort_options']
+
+
+def test_inventory_view_marks_equipment_items():
+    """is_equipment=True для ring/helmet/etc; False для food."""
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.inventory = [
+        _make_inv_item(item_type='ring'),
+        _make_inv_item(item_type='cheeseburger'),  # food, не equipment
+    ]
+    _setup_state(state)
+    view = _build_inventory_view(state, 'default')
+    # default sort: cheeseburger before ring alphabetically.
+    items_by_type = {i['item_type']: i for i in view['items']}
+    assert items_by_type['ring']['is_equipment'] is True
+    assert items_by_type['cheeseburger']['is_equipment'] is False
+
+
+def test_inventory_view_ring_has_two_eligible_slots():
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='ring')]
+    _setup_state(state)
+    view = _build_inventory_view(state, 'default')
+    assert view['items'][0]['eligible_slots'] == ['finger_01', 'finger_02']
+
+
+def test_inventory_view_non_ring_has_one_eligible_slot():
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='helmet')]
+    _setup_state(state)
+    view = _build_inventory_view(state, 'default')
+    assert view['items'][0]['eligible_slots'] == ['head']
+
+
+def test_inventory_view_applies_trader_to_sell_price():
+    """sell_price учитывает trader skill (4.28)."""
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.gym.trader = 50  # +50%
+    state.inventory = [_make_inv_item(price=100)]
+    _setup_state(state)
+    view = _build_inventory_view(state, 'default')
+    # 100 * 1.5 = 150
+    assert view['items'][0]['sell_price'] == 150.0
+    # price_raw остаётся оригинал.
+    assert view['items'][0]['price_raw'] == 100
+
+
+# ----- _build_equipment_view -----
+
+def test_equipment_view_all_seven_slots():
+    from web.main import _build_equipment_view
+    state = GameState.default_new_game()
+    _setup_state(state)
+    view = _build_equipment_view(state)
+    slot_attrs = [s['slot_attr'] for s in view['slots']]
+    assert slot_attrs == ['head', 'neck', 'torso', 'finger_01',
+                          'finger_02', 'legs', 'foots']
+
+
+def test_equipment_view_can_unequip_false_for_empty_slot():
+    from web.main import _build_equipment_view
+    state = GameState.default_new_game()
+    _setup_state(state)
+    view = _build_equipment_view(state)
+    for slot in view['slots']:
+        assert slot['item'] is None
+        assert slot['can_unequip'] is False
+
+
+def test_equipment_view_can_unequip_true_when_item_and_inv_not_full():
+    from web.main import _build_equipment_view
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet')
+    _setup_state(state)
+    view = _build_equipment_view(state)
+    head_slot = next(s for s in view['slots'] if s['slot_attr'] == 'head')
+    assert head_slot['can_unequip'] is True
+    assert head_slot['block_reason'] is None
+
+
+def test_equipment_view_blocks_unequip_when_inventory_full():
+    """Inventory заполнен до cap → can_unequip=False с понятным reason."""
+    from web.main import _build_equipment_view
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet')
+    state.inventory = [_make_inv_item() for _ in range(10)]  # 10/10 default cap
+    _setup_state(state)
+    view = _build_equipment_view(state)
+    head_slot = next(s for s in view['slots'] if s['slot_attr'] == 'head')
+    assert head_slot['can_unequip'] is False
+    assert 'Рюкзак полон' in head_slot['block_reason']
+    assert view['inventory_full'] is True
+
+
+# ----- _validate_and_apply_sell -----
+
+def test_validate_sell_rejects_invalid_index():
+    from web.main import _validate_and_apply_sell
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item()]
+    _setup_state(state)
+    assert _validate_and_apply_sell(state, -1) is not None
+    assert _validate_and_apply_sell(state, 99) is not None
+
+
+def test_validate_sell_success_removes_item_and_credits_money():
+    from web.main import _validate_and_apply_sell
+    state = GameState.default_new_game()
+    state.money = 1000.0
+    state.inventory = [_make_inv_item(price=100)]
+    _setup_state(state)
+    err = _validate_and_apply_sell(state, 0)
+    assert err is None
+    assert len(state.inventory) == 0
+    assert state.money > 1000.0  # money increased by sell price (with trader)
+
+
+# ----- _validate_and_apply_wear -----
+
+def test_validate_wear_non_ring_auto_picks_slot():
+    """Для helmet — slot_attr=None разрешён, auto = head."""
+    from web.main import _validate_and_apply_wear
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='helmet')]
+    _setup_state(state)
+    err = _validate_and_apply_wear(state, 0, slot_attr=None)
+    assert err is None
+    assert state.equipment.head is not None
+
+
+def test_validate_wear_ring_requires_explicit_slot():
+    """Для ring slot_attr=None → error (нужно явно finger_01 или finger_02)."""
+    from web.main import _validate_and_apply_wear
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='ring')]
+    _setup_state(state)
+    err = _validate_and_apply_wear(state, 0, slot_attr=None)
+    assert err is not None
+    assert 'явный выбор' in err
+
+
+def test_validate_wear_ring_to_explicit_finger():
+    from web.main import _validate_and_apply_wear
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='ring')]
+    _setup_state(state)
+    err = _validate_and_apply_wear(state, 0, slot_attr='finger_02')
+    assert err is None
+    assert state.equipment.finger_02 is not None
+    assert state.equipment.finger_01 is None
+
+
+def test_validate_wear_rejects_invalid_slot_for_item_type():
+    from web.main import _validate_and_apply_wear
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='helmet')]
+    _setup_state(state)
+    err = _validate_and_apply_wear(state, 0, slot_attr='finger_01')
+    assert err is not None
+    assert 'не подходит' in err
+
+
+def test_validate_wear_rejects_non_equipment_item():
+    """Food items нельзя надевать."""
+    from web.main import _validate_and_apply_wear
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='cheeseburger')]
+    _setup_state(state)
+    err = _validate_and_apply_wear(state, 0)
+    assert err is not None
+    assert 'не является экипировкой' in err
+
+
+def test_validate_wear_swap_returns_old_to_inventory():
+    """Если slot занят — auto-swap (старый → inventory)."""
+    from web.main import _validate_and_apply_wear
+    state = GameState.default_new_game()
+    old = _make_inv_item(item_type='helmet', bonus=2)
+    new = _make_inv_item(item_type='helmet', bonus=8)
+    state.equipment.head = old
+    state.inventory = [new]
+    _setup_state(state)
+    err = _validate_and_apply_wear(state, 0)
+    assert err is None
+    assert state.equipment.head is new
+    assert old in state.inventory
+
+
+# ----- _validate_and_apply_unwear -----
+
+def test_validate_unwear_rejects_invalid_slot():
+    from web.main import _validate_and_apply_unwear
+    state = GameState.default_new_game()
+    _setup_state(state)
+    err = _validate_and_apply_unwear(state, 'invalid_slot')
+    assert err is not None
+    assert 'Неверный слот' in err
+
+
+def test_validate_unwear_rejects_empty_slot():
+    from web.main import _validate_and_apply_unwear
+    state = GameState.default_new_game()
+    _setup_state(state)
+    err = _validate_and_apply_unwear(state, 'head')
+    assert err is not None
+    assert 'пуст' in err
+
+
+def test_validate_unwear_rejects_when_inventory_full():
+    from web.main import _validate_and_apply_unwear
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet')
+    state.inventory = [_make_inv_item() for _ in range(10)]  # at cap
+    _setup_state(state)
+    err = _validate_and_apply_unwear(state, 'head')
+    assert err is not None
+    assert 'Рюкзак полон' in err
+
+
+def test_validate_unwear_success_moves_item_to_inventory():
+    from web.main import _validate_and_apply_unwear
+    state = GameState.default_new_game()
+    helmet = _make_inv_item(item_type='helmet')
+    state.equipment.head = helmet
+    _setup_state(state)
+    err = _validate_and_apply_unwear(state, 'head')
+    assert err is None
+    assert state.equipment.head is None
+    assert helmet in state.inventory
+
+
+# ----- POST /web/inventory/sell -----
+
+def test_web_inventory_sell_form_success():
+    state = GameState.default_new_game()
+    state.money = 1000.0
+    state.inventory = [_make_inv_item(price=50)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/inventory/sell",
+                               data={"index": "0", "sort": "default"})
+    assert response.status_code == 200
+    assert len(state.inventory) == 0
+
+
+def test_api_inventory_sell_json_success():
+    state = GameState.default_new_game()
+    state.money = 500.0
+    state.inventory = [_make_inv_item(price=80)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/inventory/sell", json={"index": 0})
+    assert response.status_code == 200
+    assert response.json()['ok'] is True
+    assert len(state.inventory) == 0
+
+
+def test_api_inventory_sell_invalid_index_returns_422():
+    state = GameState.default_new_game()
+    state.inventory = []
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/inventory/sell", json={"index": 5})
+    assert response.status_code == 422
+
+
+# ----- POST /web/equipment/wear -----
+
+def test_web_equipment_wear_form_non_ring_success():
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='helmet')]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/equipment/wear",
+                               data={"inventory_index": "0", "slot_attr": "head",
+                                     "sort": "default"})
+    assert response.status_code == 200
+    assert state.equipment.head is not None
+
+
+def test_api_equipment_wear_ring_explicit_finger_02():
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='ring')]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/equipment/wear",
+                               json={"inventory_index": 0, "slot_attr": "finger_02"})
+    assert response.status_code == 200
+    assert state.equipment.finger_02 is not None
+    assert state.equipment.finger_01 is None
+
+
+def test_api_equipment_wear_ring_without_slot_returns_422():
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='ring')]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/equipment/wear",
+                               json={"inventory_index": 0})
+    assert response.status_code == 422
+
+
+# ----- POST /web/equipment/unwear -----
+
+def test_web_equipment_unwear_form_success():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet')
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/web/equipment/unwear",
+                               data={"slot_attr": "head", "sort": "default"})
+    assert response.status_code == 200
+    assert state.equipment.head is None
+
+
+def test_api_equipment_unwear_full_inventory_returns_422():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet')
+    state.inventory = [_make_inv_item() for _ in range(10)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/equipment/unwear",
+                               json={"slot_attr": "head"})
+    assert response.status_code == 422
+    assert 'Рюкзак полон' in response.json()['error']
+
+
+# ----- STALE handling -----
+
+def test_api_inventory_sell_stale_returns_409(monkeypatch):
+    from google_sheets_db import GameStateRepo
+    monkeypatch.setattr(GameStateRepo, "save_safe",
+                        lambda self, sd, expected_last_modified: "STALE")
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(price=50)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.post("/api/inventory/sell", json={"index": 0})
+    assert response.status_code == 409
+    assert response.json().get('stale') is True
+
+
+# ----- Section rendering -----
+
+def test_inventory_section_renders_sort_dropdown_when_not_empty():
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item()]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'name="sort"' in body
+    assert 'По типу' in body  # default label
+    assert 'По grade' in body
+
+
+def test_inventory_section_renders_sell_button():
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='ring', price=50)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '💰 Продать' in body
+    assert '/web/inventory/sell' in body
+
+
+def test_inventory_section_renders_two_buttons_for_ring():
+    """Ring → 2 кнопки 'На палец 1' / 'На палец 2'."""
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='ring')]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'На палец 1' in body
+    assert 'На палец 2' in body
+
+
+def test_inventory_section_renders_single_wear_button_for_helmet():
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='helmet')]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Один Wear button для helmet, без 'На палец'.
+    assert '🧥 Надеть' in body
+    assert 'На палец 1' not in body
+
+
+def test_equipment_section_renders_unwear_button_when_can():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet')
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert '🗑 Снять' in body
+    assert '/web/equipment/unwear' in body
+
+
+def test_equipment_section_disables_unwear_when_inventory_full():
+    state = GameState.default_new_game()
+    state.equipment.head = _make_inv_item(item_type='helmet')
+    state.inventory = [_make_inv_item() for _ in range(10)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Кнопка показана, но disabled.
+    assert 'disabled' in body
+    assert 'Рюкзак полон' in body  # warning под кнопками
 

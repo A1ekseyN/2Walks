@@ -476,27 +476,46 @@
             </small>
             {% endif %}
         </summary>
-        {% set slots = [
-            ('Голова', state.equipment.head),
-            ('Шея', state.equipment.neck),
-            ('Торс', state.equipment.torso),
-            ('Палец 1', state.equipment.finger_01),
-            ('Палец 2', state.equipment.finger_02),
-            ('Ноги', state.equipment.legs),
-            ('Ступни', state.equipment.foots),
-        ] %}
-        {% for slot_name, item in slots %}
-            <div class="item-row">
-                <strong>{{ slot_name }}:</strong>
-                {% if item %}
-                    {{ item['item_name'][0].title() }} <em>{{ item['grade'][0] }}</em>
-                    +{{ item['bonus'][0] }} {{ item['characteristic'][0].title() }}
-                    (Q: {{ "%.1f"|format(item['quality'][0]) if item['quality'][0] is number else item['quality'][0] }})
-                {% else %}
-                    <span class="equipment-empty">— пусто —</span>
+        {# 4.48.6 — slots из equipment_view с can_unequip flag + кнопкой Снять. #}
+        {% for slot in equipment_view.slots %}
+            <div class="item-row" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span style="flex: 1;">
+                    <strong>{{ slot.slot_label }}:</strong>
+                    {% if slot.item %}
+                        {{ slot.item['item_name'][0].title() }} <em>{{ slot.item['grade'][0] }}</em>
+                        +{{ slot.item['bonus'][0] }} {{ slot.item['characteristic'][0].title() }}
+                        (Q: {{ "%.1f"|format(slot.item['quality'][0]) if slot.item['quality'][0] is number else slot.item['quality'][0] }})
+                    {% else %}
+                        <span class="equipment-empty">— пусто —</span>
+                    {% endif %}
+                </span>
+                {% if slot.item %}
+                    {% if slot.can_unequip %}
+                    <form hx-post="/web/equipment/unwear" hx-target="#status-bar" hx-swap="innerHTML"
+                          hx-confirm="Снять «{{ slot.item['item_type'][0]|title }} {{ slot.item['grade'][0] }}»? Уйдёт в инвентарь."
+                          style="margin: 0;">
+                        <input type="hidden" name="slot_attr" value="{{ slot.slot_attr }}">
+                        <input type="hidden" name="sort" value="{{ inventory_sort }}">
+                        <button type="submit" class="secondary outline"
+                                style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                            🗑 Снять
+                        </button>
+                    </form>
+                    {% else %}
+                    <button class="secondary outline" disabled
+                            title="{{ slot.block_reason or 'Недоступно' }}"
+                            style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em; opacity: 0.5;">
+                        🗑 Снять
+                    </button>
+                    {% endif %}
                 {% endif %}
             </div>
         {% endfor %}
+        {% if equipment_view.inventory_full %}
+        <small class="equipment-empty" style="display: block; margin-top: 0.5rem;">
+            ⚠ Рюкзак полон — кнопки «Снять» заблокированы. Сначала продай предмет.
+        </small>
+        {% endif %}
     </details>
 </section>
 
@@ -505,25 +524,75 @@
        со sell-buttons без лишнего клика. Без pending — сворачиваем по умолчанию. #}
     <details {% if pending_drop_view.active %}open{% endif %}>
         <summary>🎒 <strong>Инвентарь</strong> ({{ state.inventory|length }}/{{ inventory_capacity }})</summary>
-        {% if state.inventory %}
-            {% for item in state.inventory %}
+
+        {% if inventory_view['items'] %}
+        {# 4.48.6 — Sort dropdown. Server-side reorder через onchange submit
+           (без JS-сортировки чтобы сохранить orig_index связь с state.inventory). #}
+        <form method="get" action="/" style="margin: 0.5rem 0;">
+            <label style="display: inline-block; margin-right: 0.5rem; font-size: 0.85em;">Сортировка:</label>
+            <select name="sort" onchange="this.form.submit()"
+                    style="display: inline-block; width: auto; padding: 0.2rem 0.4rem; font-size: 0.85em;">
+                {% for key, label in inventory_view.sort_options %}
+                <option value="{{ key }}" {% if key == inventory_view.current_sort %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        {% endif %}
+
+        {% if inventory_view['items'] %}
+            {% for item in inventory_view['items'] %}
                 <div class="item-row" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                     <span style="flex: 1;">
-                        {{ loop.index }}. {{ item['item_type'][0].title() }} <em>{{ item['grade'][0] }}</em>
-                        +{{ item['bonus'][0] }} {{ item['characteristic'][0].title() }}
-                        {% if item['quality']|length %}(Q: {{ "%.1f"|format(item['quality'][0]) if item['quality'][0] is number else item['quality'][0] }}){% endif %}
-                        {% if item['price']|length %}— {{ item['price'][0] }} ${% endif %}
+                        {{ loop.index }}. {{ item.item_type|title }} <em>{{ item.grade }}</em>
+                        +{{ item.bonus }} {{ item.characteristic|title }}
+                        (Q: {{ "%.1f"|format(item.quality) if item.quality is number else item.quality }})
+                        — {{ format_money(item.sell_price) }} $
                     </span>
+
                     {% if pending_drop_view.active %}
-                    {# 4.50.2 — sell-existing-and-keep-new кнопка на каждой строке.
-                       index = loop.index0 (0-based в state.inventory — порядок не sorted,
-                       template итерирует исходный список). #}
+                    {# 4.50.2 — sell-existing-and-keep-new кнопка при active pending.
+                       Имеет приоритет над обычным sell — pending-resolve flow. #}
                     <form hx-post="/web/drop/sell_existing" hx-target="#status-bar" hx-swap="innerHTML"
-                          hx-confirm="Продать «{{ item['item_type'][0]|title }} {{ item['grade'][0] }}» за {% if item['price']|length %}{{ item['price'][0] }}{% else %}0{% endif %} $ и положить находку в инвентарь?"
+                          hx-confirm="Продать «{{ item.item_type|title }} {{ item.grade }}» за {{ item.price_raw }} $ и положить находку в инвентарь?"
                           style="margin: 0;">
-                        <input type="hidden" name="index" value="{{ loop.index0 }}">
-                        <button type="submit" class="secondary outline" style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                        <input type="hidden" name="index" value="{{ item.orig_index }}">
+                        <button type="submit" class="secondary outline"
+                                style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
                             Продать + взять находку
+                        </button>
+                    </form>
+                    {% else %}
+                    {# 4.48.6 — Wear button(s): один для non-ring, два для ring. #}
+                    {% if item.is_equipment %}
+                        {% for slot_attr in item.eligible_slots %}
+                        <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML"
+                              hx-confirm="Надеть «{{ item.item_type|title }} {{ item.grade }}» в слот «{{ slot_attr.replace('finger_01', 'Палец 1').replace('finger_02', 'Палец 2').replace('head', 'Голова').replace('neck', 'Шея').replace('torso', 'Торс').replace('foots', 'Ступни') }}»?"
+                              style="margin: 0;">
+                            <input type="hidden" name="inventory_index" value="{{ item.orig_index }}">
+                            <input type="hidden" name="slot_attr" value="{{ slot_attr }}">
+                            <input type="hidden" name="sort" value="{{ inventory_sort }}">
+                            <button type="submit" class="secondary outline"
+                                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                                🧥
+                                {%- if item.item_type == 'ring' -%}
+                                    {%- if slot_attr == 'finger_01' %} На палец 1
+                                    {%- elif slot_attr == 'finger_02' %} На палец 2
+                                    {%- endif %}
+                                {%- else %} Надеть
+                                {%- endif %}
+                            </button>
+                        </form>
+                        {% endfor %}
+                    {% endif %}
+                    {# 4.48.6 — Sell button (всегда видна, кроме active pending). #}
+                    <form hx-post="/web/inventory/sell" hx-target="#status-bar" hx-swap="innerHTML"
+                          hx-confirm="Продать «{{ item.item_type|title }} {{ item.grade }}» за {{ format_money(item.sell_price) }} $?"
+                          style="margin: 0;">
+                        <input type="hidden" name="index" value="{{ item.orig_index }}">
+                        <input type="hidden" name="sort" value="{{ inventory_sort }}">
+                        <button type="submit" class="secondary outline"
+                                style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                            💰 Продать ({{ format_money(item.sell_price) }} $)
                         </button>
                     </form>
                     {% endif %}
