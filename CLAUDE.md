@@ -149,6 +149,10 @@ Since 0.2.1j-r (task 5.1, 05.05.2026) the codebase has ~100% type hint coverage 
 
 `tests/` contains pytest suites for each module. Pure logic helpers (`_sort_inventory`, `_buy_item`, `_equip_from_inventory`, `try_spend`, formula functions, `_state_dict_to_rows`, `_rows_to_state_dict`) are tested directly with hand-built `GameState` instances. UI methods that use `input()`/`print()` are tested via `capsys` and `monkeypatch.setattr('builtins.input', ...)`. Sheets repos (`GameStateRepo`, `StepsLogRepo`) are tested with mocked gspread (`unittest.mock.MagicMock`) — no real network. Tests do not depend on Google Sheets at all after task 1.2 (`import characteristics` is a pure operation), so the full suite runs in ~1 sec.
 
+**Autouse-фикстуры в `tests/conftest.py` защищают production Sheets от загрязнения** (skip только для `test_sheets_repo.py` который тестирует сами repo + `test_history.py` который тестирует log_event):
+- `_disable_history_log_for_non_history_tests` — `history.log_event` → no-op (иначе тесты пишут в реальный `history.jsonl` + Sheets `history` sheet).
+- `_stub_steps_log_for_day` (since 0.2.4q + extended 0.2.4t) — `StepsLogRepo.for_day` → `[]` AND `StepsLogRepo.append` → no-op. Без `append`-мока тесты POST'ящие `/web/steps` или `/api/steps` пишут в production `steps_log` лист → max-merge на следующем load подтягивает test-значения как actual `state.steps.today` (реальный инцидент 19.05.2026: тест с `value=5100` загрязнил утренний gameplay игрока). Тесты которым нужно настоящее `append`-поведение (трекинг вызовов) переопределяют через `monkeypatch.setattr(StepsLogRepo, 'append', tracking_fake)` локально.
+
 ### Credentials and ignored files
 
 `.gitignore` excludes the `credentials/` directory (which must contain `2walks_service_account.json` for Sheets to work). When running locally for the first time, expect Sheets calls to fail until that file is provided; loaders fall back to CSV automatically (`characteristics.py:92`).

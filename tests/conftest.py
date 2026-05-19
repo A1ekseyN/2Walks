@@ -24,23 +24,36 @@ def _disable_history_log_for_non_history_tests(monkeypatch, request):
 
 @pytest.fixture(autouse=True)
 def _stub_steps_log_for_day(monkeypatch, request):
-    """Default-mock `StepsLogRepo.for_day` → `[]` для всех тестов.
+    """Default-mock `StepsLogRepo.for_day` → `[]` и `.append` → no-op для всех
+    тестов. Защищает Sheets от загрязнения тест-данными.
 
-    Ловушка (обнаружена 15.05.2026 при 4.54.7): `init_game_state()` зовёт
+    Ловушка #1 (обнаружена 15.05.2026 при 4.54.7): `init_game_state()` зовёт
     `apply_steps_log_max_merge()` → `StepsLogRepo().for_day()` — это **реальный
     Sheets API call** даже в unit-тестах, если сам `for_day` не замокан.
     Тесты вроде `test_handle_stale_prompt_reload` (Reload re-init'ит state)
     тратили ~2 сек на сетевой round-trip + могли пройти в офлайне молча
     (silent-fail catches all).
 
-    Этот autouse fixture даёт безопасный default — пустой лог, no-op merge.
-    Тесты, которым нужно специфическое поведение for_day (test_steps_max_merge,
-    test_sheets_repo), переопределяют через свои monkeypatch.setattr.
+    Ловушка #2 (обнаружена 19.05.2026 после 4.48.3 — реальный bug с потерей
+    UX-консистентности): тесты POST'ящие в `/web/steps` или `/api/steps`
+    ходят через `_apply_new_steps()` → `StepsLogRepo().append(...)` —
+    **реальная запись в Sheets steps_log**. Pollution накапливается с каждым
+    pytest-прогоном; max-merge на следующий load игры подтянет тестовые
+    значения как actual today (например, тест с `steps=5100` → today=5100
+    на следующее F5 в production web). Симптом: игрок видит
+    `Steps: 5,100 / 8,007` утром при никаких действиях — на самом деле это
+    leak из тестов. После фикса append тоже no-op в default-фикстуре.
+
+    Этот autouse fixture даёт безопасный default — пустой лог, no-op merge,
+    no-op append. Тесты, которым нужно специфическое поведение for_day или
+    append (`test_steps_max_merge`, `test_sheets_repo`), переопределяют
+    через свои `monkeypatch.setattr`.
 
     Skip:
-    - test_sheets_repo.py — тестирует сам StepsLogRepo через MagicMock gspread
-      (свои repo.for_day(...) вызовы должны идти через настоящий код метода).
-    - test_history.py — мокать ему ничего не надо.
+    - `test_sheets_repo.py` — тестирует сам StepsLogRepo через MagicMock
+      gspread (свои repo.for_day/append вызовы должны идти через настоящий
+      код метода).
+    - `test_history.py` — мокать ему ничего не надо.
     """
     skip = {'test_sheets_repo.py', 'test_history.py'}
     if request.node.fspath.basename in skip:
@@ -48,3 +61,5 @@ def _stub_steps_log_for_day(monkeypatch, request):
     import google_sheets_db
     monkeypatch.setattr(google_sheets_db.StepsLogRepo, 'for_day',
                         lambda self, date_str, user_id=None: [])
+    monkeypatch.setattr(google_sheets_db.StepsLogRepo, 'append',
+                        lambda self, ts, steps, source, user_id=None: None)
