@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 import gspread
-from gspread.utils import ValueInputOption
+from gspread.utils import ValueInputOption, ValueRenderOption
 from oauth2client.service_account import ServiceAccountCredentials
 
 from config import (
@@ -279,10 +279,18 @@ class GameStateRepo:
         """
         ws = self._worksheet()
         # Fast-path: A1 в blob layout = last_modified (float).
+        # 4.48.5.4 (0.2.5d) — UNFORMATTED_VALUE критично: cell A1 имеет дефолтное
+        # форматирование "Number" (без decimals) → FORMATTED_VALUE возвращает
+        # округлённый до integer string ('1779300151' вместо реального
+        # 1779300150.71383). Это давало false-positive STALE: load_meta
+        # возвращал rounded value > expected + 0.01 epsilon → каждый второй
+        # save'ил STALE без реальной причины (диагноз 20.05.2026).
         try:
-            cell = ws.acell('A1').value
+            cell = ws.acell('A1',
+                            value_render_option=ValueRenderOption.unformatted).value
             if cell is not None and cell != 'Key':
-                # Не legacy header — пробуем как float.
+                # UNFORMATTED для number cell возвращает int/float напрямую,
+                # не string. float() работает на обоих.
                 return float(cell)
         except (TypeError, ValueError):
             pass

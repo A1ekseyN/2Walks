@@ -2679,6 +2679,25 @@ sudo systemctl status 2walks    # verify
 
 **Тесты:** 6 новых (3 STALE rollback + 1 OK happy-path для adventure + 2 endpoint tests для full-page и fragment STALE). 1 existing test обновлён (mock возвращает "OK" явно). 1051 passed total, mypy 0 issues (68 source files).
 
+#### 4.48.5.4. Critical: `load_meta` UNFORMATTED_VALUE — fix false-positive STALE `[H / XS / done (20.05.2026, 0.2.5d)]`
+
+**Регрессия из 1.4.3 (0.2.5):** новый JSON-blob layout пишет `last_modified` (float) в ячейку A1. Sheets применяет дефолтное "Number" форматирование (без decimals), display value округляется до integer. `load_meta` использовала `ws.acell('A1').value` который возвращает **FORMATTED** display string — `'1779300151'` вместо реального `1779300150.71383`. Потеря ~0.3 сек > 0.01 epsilon → **ложный STALE на каждом save после паузы 200+ мс**.
+
+**Симптом:** игрок видит STALE prompt `(diff пустой — race condition без явных изменений)` при любом save через несколько секунд после успешного `s`. Воспроизводилось стабильно (заметил Oleksii, инцидент 20.05.2026).
+
+**Диагноз через direct Sheets query:**
+```
+A1 FORMATTED:   '1779300151'           ← display, rounded
+A1 UNFORMATTED: 1779300150.71383       ← raw
+B1 blob last_modified: 1779300150.71383 ← правильно
+```
+
+**Fix:** `ws.acell('A1', value_render_option=ValueRenderOption.unformatted).value` — возвращает float напрямую (без формат-округления). 1 тест обновлён, 1 regression test добавлен. 1057 passed.
+
+**Альтернативы рассмотрены:** убрать форматирование с A1 в Sheets вручную (не reproducible, хрупко); хранить last_modified только в blob (теряем fast-path load_meta — раз; нарушает 4.54.2 архитектуру — два).
+
+**Note:** в `load()` той же проблемы НЕТ — он читает blob B1 через JSON parsing с full precision.
+
 #### 4.48.5.3. Защита от регрессии state.steps.today при save `[H / XS / done (20.05.2026, 0.2.5c)]`
 
 **Реальный инцидент 20.05.2026:** игрок в CLI увидел STALE diff `steps.today: 2,878 → 2,171 (-707)` — Sheets откатился на меньшее значение чем CLI знал из max-merge'а steps_log.

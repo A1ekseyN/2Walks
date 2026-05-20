@@ -303,13 +303,34 @@ def test_game_state_repo_load_legacy_kv_layout(monkeypatch, capsys):
 # ----- 4.54.2: load_meta + save_safe (Optimistic concurrency) -----
 
 def test_load_meta_fast_path_blob_layout(monkeypatch):
-    """1.4.3 (0.2.5) — fast-path через acell('A1') когда blob layout."""
-    ws = _mock_worksheet(meta='1747275600.123')
+    """1.4.3 (0.2.5) — fast-path через acell('A1') когда blob layout.
+    4.48.5.4 (0.2.5d) — acell вызывается с UNFORMATTED_VALUE чтобы избежать
+    округления Sheets-форматирования (cell A1 имеет default "Number" format
+    без decimals, FORMATTED возвращает rounded integer)."""
+    from gspread.utils import ValueRenderOption
+
+    # UNFORMATTED для number cell возвращает float напрямую (не string).
+    ws = _mock_worksheet(meta=1747275600.123)
     repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
     assert repo.load_meta() == 1747275600.123
-    # acell вызвана, get_all_values НЕ вызывалась (fast-path).
-    ws.acell.assert_called_once_with('A1')
+    # acell вызвана с UNFORMATTED, get_all_values НЕ вызывалась (fast-path).
+    ws.acell.assert_called_once_with(
+        'A1', value_render_option=ValueRenderOption.unformatted
+    )
     ws.get_all_values.assert_not_called()
+
+
+def test_load_meta_handles_rounded_formatted_value(monkeypatch):
+    """4.48.5.4 regression: до fix'а FORMATTED давал rounded integer string
+    ('1779300151' вместо float 1779300150.71383) → load_meta возвращал
+    округлённое значение → ложный STALE. После fix'а UNFORMATTED возвращает
+    точный float напрямую."""
+    # Симулируем UNFORMATTED behavior — возвращает float не string.
+    ws = _mock_worksheet(meta=1779300150.71383)
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    result = repo.load_meta()
+    assert result == 1779300150.71383
+    assert result != 1779300151  # НЕ округление
 
 
 def test_load_meta_legacy_fallback_when_present(monkeypatch):
