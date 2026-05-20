@@ -502,3 +502,61 @@ def test_status_bar_with_work_active(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert 'Место работы' in out
     assert 'Factory' in out
+
+
+# ===========================================================================
+# 4.61 — status_bar warning для broken / low-quality equipped items
+# ===========================================================================
+
+
+def _eq_item(char='stamina', bonus=5, quality=80):
+    return {'characteristic': [char], 'bonus': [bonus], 'quality': [quality],
+            'item_name': ['x'], 'item_type': ['helmet'], 'grade': ['a-grade'], 'price': [50]}
+
+
+def test_status_bar_no_warning_when_all_items_full_quality(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    state = GameState.default_new_game()
+    state.date_last_enter = str(datetime.now().date())
+    state.equipment.head = _eq_item(quality=80)
+    status_bar(state)
+    out = capsys.readouterr().out
+    assert 'Сломано' not in out
+    assert 'Требует ремонта' not in out
+
+
+def test_status_bar_warning_when_broken_item_equipped(tmp_path, monkeypatch, capsys):
+    """quality=0 → красное «🔨 Сломано» warning."""
+    monkeypatch.chdir(tmp_path)
+    state = GameState.default_new_game()
+    state.date_last_enter = str(datetime.now().date())
+    state.equipment.head = _eq_item(quality=0)
+    status_bar(state)
+    out = capsys.readouterr().out
+    assert '🔨' in out
+    assert 'Сломано: 1' in out
+
+
+def test_status_bar_warning_when_low_quality_item_equipped(tmp_path, monkeypatch, capsys):
+    """0 < quality < 20 → жёлтое «Требует ремонта» warning (но не broken)."""
+    monkeypatch.chdir(tmp_path)
+    state = GameState.default_new_game()
+    state.date_last_enter = str(datetime.now().date())
+    state.equipment.head = _eq_item(quality=15)
+    status_bar(state)
+    out = capsys.readouterr().out
+    assert 'Требует ремонта: 1' in out
+    assert 'Сломано' not in out  # quality=15 это не broken
+
+
+def test_status_bar_warns_for_both_broken_and_low_separately(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    state = GameState.default_new_game()
+    state.date_last_enter = str(datetime.now().date())
+    state.equipment.head = _eq_item(quality=0)     # broken
+    state.equipment.neck = _eq_item(quality=10)    # low
+    state.equipment.torso = _eq_item(quality=12)   # low
+    status_bar(state)
+    out = capsys.readouterr().out
+    assert 'Сломано: 1' in out
+    assert 'Требует ремонта: 2' in out

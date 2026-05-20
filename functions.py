@@ -93,6 +93,21 @@ def status_bar(state: GameState) -> None:
         print(f'(+ 1 эн. через: {abs(energy_regen_interval(60, state) - (timestamp_now() - state.energy_time_stamp)):,.0f} sec.)', end='')
     print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{format_money(state.money)}{Style.RESET_ALL} $.')
 
+    # 4.61 — Warning о низком quality equipped items (< 20%) или broken (=0).
+    # Broken items не дают bonus (4.61 binary cliff), low-quality скоро сломаются.
+    from equipment_bonus import low_quality_equipped_items
+    low_q = low_quality_equipped_items(state)
+    if low_q:
+        broken = [i for i in low_q if i.get('quality', [0])[0] == 0]
+        if broken:
+            print(f'{Fore.LIGHTRED_EX}🔨 Сломано: {len(broken)} '
+                  f'предмет(ов) (0% quality, не даёт bonus). '
+                  f'Отремонтируй в Кузнице (9 → 1).{Style.RESET_ALL}')
+        warn_only = [i for i in low_q if i.get('quality', [0])[0] > 0]
+        if warn_only:
+            print(f'{Fore.LIGHTYELLOW_EX}⚠ Требует ремонта: {len(warn_only)} '
+                  f'предмет(ов) (<20% quality).{Style.RESET_ALL}')
+
     char_level_view.level_status_bar()
 
     print(f'Вы находитесь в локации: {icon_loc(state)} {Fore.GREEN}{state.loc.title()}{Style.RESET_ALL}.')

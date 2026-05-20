@@ -102,35 +102,26 @@ class Equipment:
         )):
             print('\nНа персонаже нет вещей: ')
 
-        if eq.head is not None:
-            print(f'1. Голова:            {eq.head["item_name"][0].title()} {eq.head["grade"][0].title()}: + {eq.head["bonus"][0]} {eq.head["characteristic"][0].title()} (Quality: {eq.head["quality"][0]:,.2f})')
-        else:
-            print('1. Голова:            Нет одежды')
-
-        if eq.neck is not None:
-            print(f'2. Шея:               {eq.neck["item_name"][0].title()} {eq.neck["grade"][0].title()}: + {eq.neck["bonus"][0]} {eq.neck["characteristic"][0].title()} (Quality: {eq.neck["quality"][0]:,.2f})')
-        else:
-            print('2. Шея:               Нет одежды')
-
-        if eq.torso is not None:
-            print(f'3. Торс:              {eq.torso["item_name"][0].title()} {eq.torso["grade"][0].title()}: + {eq.torso["bonus"][0]} {eq.torso["characteristic"][0].title()} (Quality: {eq.torso["quality"][0]:,.2f})')
-        else:
-            print('3. Торс:              Нет одежды')
-
-        if eq.finger_01 is not None:
-            print(f'4. Палец левой руки:  {eq.finger_01["item_name"][0].title()} {eq.finger_01["grade"][0].title()}: + {eq.finger_01["bonus"][0]} {eq.finger_01["characteristic"][0].title()} (Quality: {eq.finger_01["quality"][0]:,.2f})')
-        else:
-            print('4. Палец левой руки:  Нет кольца')
-
-        if eq.finger_02 is not None:
-            print(f'5. Палец правой руки: {eq.finger_02["item_name"][0].title()} {eq.finger_02["grade"][0].title()}: + {eq.finger_02["bonus"][0]} {eq.finger_02["characteristic"][0].title()} (Quality: {eq.finger_02["quality"][0]:,.2f})')
-        else:
-            print('5. Палец правой руки: Нет кольца')
-
-        if eq.foots is not None:
-            print(f'6. Ступни:            {eq.foots["item_name"][0].title()} {eq.foots["grade"][0].title()}: + {eq.foots["bonus"][0]} {eq.foots["characteristic"][0].title()} (Quality: {eq.foots["quality"][0]:,.2f})')
-        else:
-            print('6. Ступни:            Нет обуви')
+        # 4.61 — 6 однотипных строк через helper. broken=0% → 🔨 СЛОМАН +0 bonus.
+        slots_display = [
+            ('1. Голова:           ', eq.head,      'Нет одежды'),
+            ('2. Шея:              ', eq.neck,      'Нет одежды'),
+            ('3. Торс:             ', eq.torso,     'Нет одежды'),
+            ('4. Палец левой руки: ', eq.finger_01, 'Нет кольца'),
+            ('5. Палец правой руки:', eq.finger_02, 'Нет кольца'),
+            ('6. Ступни:           ', eq.foots,     'Нет обуви'),
+        ]
+        for label, item, empty_msg in slots_display:
+            if item is None:
+                print(f'{label} {empty_msg}')
+                continue
+            qual = item["quality"][0]
+            is_broken = qual == 0
+            bonus_display = '+0' if is_broken else f'+ {item["bonus"][0]}'
+            broken_marker = '🔨 СЛОМАН ' if is_broken else ''
+            print(f'{label} {broken_marker}{item["item_name"][0].title()} {item["grade"][0].title()}: '
+                  f'{bonus_display} {item["characteristic"][0].title()} '
+                  f'(Quality: {qual:,.2f})')
 
         print('\n7. 🎯 Оптимизировать loadout (auto-equip)')
         print('8. 💼 Управление preset\'ами экипировки')

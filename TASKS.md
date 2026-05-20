@@ -3899,7 +3899,22 @@ Steps 🏃: N, Energy 🔋: M, Money 💰: K $
 
 ---
 
-### 4.61. Поломка предметов: реальный эффект quality на gameplay `[L / M / todo (14.05.2026)]`
+### 4.61. Поломка предметов: реальный эффект quality на gameplay `[L / M / done MVP (20.05.2026, 0.2.4x)]`
+
+**Реализован MVP (20.05.2026, 0.2.4x) — binary cliff вместо ранее обсуждавшихся вариантов A-E:**
+- **Quality > 0** → полный bonus (как раньше). **Quality == 0** → 0 bonus, предмет «сломан».
+- Wear formula без изменений (100k шагов = -1% quality, neatness_in_using_things замедляет).
+- Auto-unequip НЕ делается — broken остаётся в слоте, игрок решает.
+- Migration: respect current quality (без free reset).
+- Crafted items: avg(qualities) (4.59.2 без изменений).
+- Visual feedback: status_bar warning при equipped < 20% quality (broken красный, low amber); «🔨 СЛОМАН» marker в Equipment menu/web с «+0» bonus.
+- 19 новых тестов. 991 passed total, mypy 0 issues.
+
+Решение MVP было «максимально упростить логику» (вместо обсуждавшихся ранее A/B/D/E variants). Tiered partial bonus вынесен в follow-up 4.61.1.
+
+---
+
+### 4.61 (ОРИГИНАЛЬНЫЙ ANALYSIS, для истории — оставлен ниже)
 
 **Идея.** Сейчас quality предмета — почти косметика: визуальный индикатор + цена при продаже. На бонус характеристик и работоспособность экипировки quality **не влияет вообще**. Это значит, что Repair (4.59.1) экономически имеет смысл только если игрок планирует продавать предметы — для активной игры нет давления ремонтировать. Добавить «настоящую» механику поломки чтобы:
 
@@ -3967,6 +3982,49 @@ adjusted_steps = steps × neatness_factor
 **Эффорт:** **M** — формула в `equipment_bonus.py` + thread через все callers + миграция баланса (Stamina-калибровка может сдвинуться). Не тривиальная задача, нужна осторожная балансировка и тесты на economy regression.
 
 **Зависимость:** **blocked by 4.59.1 Repair** (уже done в 0.2.4n — игрок должен иметь способ ремонтировать ДО введения поломки). Желательно после **1.6 Items as dataclass**.
+
+---
+
+#### 4.61.1. Tiered partial bonus для quality (post-MVP) `[L / S / todo (20.05.2026, follow-up к 4.61)]`
+
+**Контекст.** 4.61 MVP (0.2.4x) ввёл **binary cliff**: quality > 0 → полный bonus, quality == 0 → 0 bonus. Игрок зафиксировал что в будущем хочет более плавную градацию. Эта подзадача — собрать данные о feel binary cliff после bake-test'а 4.61, потом ввести tiered penalty.
+
+**Предлагаемая шкала (зафиксировано в дизайн-сессии 20.05.2026):**
+
+| Quality | Бонус (% от full) | Психология |
+|---|---|---|
+| 75-100% | 100% | «Новый / в хорошем состоянии» — никакого штрафа |
+| 25-75% | 75% | «Подношен» — заметный, но не критичный штраф |
+| 0-25% (>0) | 50% | «Сильно повреждён» — игрок видит motivation к ремонту |
+| 0% | 0% (broken) | «Сломан» (как MVP сейчас) |
+
+**Implementation:** заменить `if _is_broken(item): continue` в 5 функциях `equipment_bonus.py` на `effective_bonus(item, base)` helper:
+
+```python
+def _quality_multiplier(item) -> float:
+    qual_list = item.get('quality')
+    if not qual_list:
+        return 1.0  # legacy без quality = full bonus
+    q = qual_list[0]
+    if q == 0:
+        return 0.0
+    if q < 25:
+        return 0.5
+    if q < 75:
+        return 0.75
+    return 1.0
+
+def effective_bonus(item, base_bonus) -> int:
+    return round(base_bonus * _quality_multiplier(item))
+```
+
+Display: «🔨 СЛОМАН» marker остаётся для quality=0; для tier'ов 25/75 — мягче маркер («📉 Подношен 75%», «📉 Повреждён 50%»). Status_bar warning остаётся для < 20%, но добавится counter «изношено: N» для items в 25-75% диапазоне.
+
+**Зависимость:** **blocked by 4.61 MVP done (✓)**. Также bake-test 4.61 (1-2 недели) — посмотреть реакцию игрока на binary cliff.
+
+**Тесты:** symmetric к 4.61 — для каждого tier проверить multiplier × bonus. Edge cases: 24.99% (50%), 25% (75%), 74.99% (75%), 75% (100%).
+
+**Effort:** **S** (~1-2 часа) — изменения локализованы в `equipment_bonus.py` + display tweaks. Pure-helper changes, тесты адаптируются легко.
 
 ---
 

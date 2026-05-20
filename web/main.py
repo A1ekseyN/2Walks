@@ -987,7 +987,23 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # 4.48.9 — Bank: депозиты + кредиты UI.
         "bank_view": _build_bank_view(state),
         "bank_error": bank_error,
+        # 4.61 — Low quality warning для Stats area. Pre-computed dict с
+        # broken (quality=0) и low (0 < quality < 20) listами equipped items.
+        "low_quality_warning": _build_low_quality_warning(state),
     }
+
+
+def _build_low_quality_warning(state) -> dict:
+    """4.61 — Pre-compute warning dict для low/broken equipped items.
+
+    Returns: {'broken': [items quality=0], 'low': [items 0<quality<20]}.
+    Шаблон показывает блок warning если любой list не пуст.
+    """
+    from equipment_bonus import low_quality_equipped_items
+    all_low = low_quality_equipped_items(state, threshold=20)
+    broken = [i for i in all_low if i.get('quality', [0])[0] == 0]
+    low = [i for i in all_low if i.get('quality', [0])[0] > 0]
+    return {'broken': broken, 'low': low}
 
 
 @app.get("/healthz")

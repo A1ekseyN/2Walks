@@ -133,6 +133,23 @@
         </div>
         <progress value="{{ char_level_progress }}" max="100"></progress>
         <small>Прогресс до следующего уровня: {{ "%.2f"|format(char_level_progress) }} %</small>
+
+        {# 4.61 — Warning о низком quality / сломанных equipped items.
+           Показывается только когда есть items с quality < 20% (включая broken=0). #}
+        {% if low_quality_warning.broken or low_quality_warning.low %}
+        <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--pico-color-amber-50, #fef3c7); border-left: 3px solid var(--pico-color-amber-500, #f59e0b); border-radius: 4px;">
+            {% if low_quality_warning.broken %}
+            <small style="display: block; color: var(--pico-color-red-700, #b91c1c);">
+                🔨 <strong>Сломано: {{ low_quality_warning.broken|length }} предмет(ов)</strong> (0% quality, не даёт bonus). Отремонтируй в Кузнице.
+            </small>
+            {% endif %}
+            {% if low_quality_warning.low %}
+            <small style="display: block; color: var(--pico-color-amber-700, #b45309);">
+                ⚠ <strong>Требует ремонта: {{ low_quality_warning.low|length }} предмет(ов)</strong> (<20% quality).
+            </small>
+            {% endif %}
+        </div>
+        {% endif %}
     </article>
 </section>
 
@@ -609,14 +626,17 @@
             </small>
             {% endif %}
         </summary>
-        {# 4.48.6 — slots из equipment_view с can_unequip flag + кнопкой Снять. #}
+        {# 4.48.6 — slots из equipment_view с can_unequip flag + кнопкой Снять.
+           4.61 — broken items (quality=0) с маркером 🔨 СЛОМАН + +0 bonus. #}
         {% for slot in equipment_view.slots %}
+            {% set is_broken = slot.item and slot.item['quality'] and slot.item['quality'][0] == 0 %}
             <div class="item-row" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                 <span style="flex: 1;">
                     <strong>{{ slot.slot_label }}:</strong>
                     {% if slot.item %}
+                        {% if is_broken %}<span style="color: var(--pico-color-red-700, #b91c1c); font-weight: bold;">🔨 СЛОМАН</span>{% endif %}
                         {{ slot.item['item_name'][0].title() }} <em>{{ slot.item['grade'][0] }}</em>
-                        +{{ slot.item['bonus'][0] }} {{ slot.item['characteristic'][0].title() }}
+                        {% if is_broken %}+0{% else %}+{{ slot.item['bonus'][0] }}{% endif %} {{ slot.item['characteristic'][0].title() }}
                         (Q: {{ "%.1f"|format(slot.item['quality'][0]) if slot.item['quality'][0] is number else slot.item['quality'][0] }})
                     {% else %}
                         <span class="equipment-empty">— пусто —</span>

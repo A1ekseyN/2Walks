@@ -4766,3 +4766,79 @@ def test_bank_section_take_loan_hx_confirm_includes_rate():
     assert 'годовых' in body
     assert '80.0%' in body or '80%' in body
 
+
+# ============================================================================
+# 4.61 — Web: warning о low/broken equipped items + 🔨 СЛОМАН marker
+# ============================================================================
+
+
+def _eq_item_with_qual(quality, char='stamina', bonus=5):
+    return {'characteristic': [char], 'bonus': [bonus], 'quality': [quality],
+            'item_name': ['x'], 'item_type': ['helmet'], 'grade': ['a-grade'], 'price': [50]}
+
+
+def test_low_quality_warning_absent_when_all_items_full_quality():
+    state = GameState.default_new_game()
+    state.equipment.head = _eq_item_with_qual(quality=80)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'Сломано:' not in body
+    assert 'Требует ремонта:' not in body
+
+
+def test_low_quality_warning_shows_broken_count_when_broken_equipped():
+    state = GameState.default_new_game()
+    state.equipment.head = _eq_item_with_qual(quality=0)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'Сломано: 1 предмет' in body
+    assert '🔨' in body
+
+
+def test_low_quality_warning_shows_low_count():
+    state = GameState.default_new_game()
+    state.equipment.head = _eq_item_with_qual(quality=15)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'Требует ремонта: 1' in body
+    assert 'Сломано:' not in body  # quality=15 не broken
+
+
+def test_equipment_section_marks_broken_item_with_marker():
+    """Equipment row для broken item содержит 🔨 СЛОМАН marker + +0 bonus."""
+    state = GameState.default_new_game()
+    state.equipment.head = _eq_item_with_qual(quality=0, bonus=10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Marker + bonus override.
+    assert '🔨 СЛОМАН' in body
+    # +0 вместо +10 для broken item.
+    head_section_pos = body.find('Голова:')
+    next_row_pos = body.find('Шея:', head_section_pos)
+    head_row = body[head_section_pos:next_row_pos]
+    assert '+0' in head_row
+    assert '+10' not in head_row
+
+
+def test_equipment_section_shows_full_bonus_for_non_broken_item():
+    state = GameState.default_new_game()
+    state.equipment.head = _eq_item_with_qual(quality=80, bonus=10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    head_section_pos = body.find('Голова:')
+    next_row_pos = body.find('Шея:', head_section_pos)
+    head_row = body[head_section_pos:next_row_pos]
+    # Не сломан → +10, без СЛОМАН marker.
+    assert '+10' in head_row
+    assert '🔨 СЛОМАН' not in head_row
+
