@@ -102,6 +102,14 @@
             opacity: 1;
             transition: opacity 0.2s ease-out 0.15s;
         }
+        /* 4.48.5.2 (0.2.5b) — overlay при full-page navigation (F5 / pull-to-refresh).
+           Опасит instant (без 150ms delay) — игрок уже инициировал переход,
+           показываем feedback сразу. body.navigating ставится в beforeunload
+           handler'е (см. JS внизу). */
+        body.navigating #save-overlay {
+            opacity: 1;
+            transition: none;
+        }
         .save-overlay-card {
             background: var(--pico-card-background-color, #fff);
             color: var(--pico-color, #1c1c1c);
@@ -158,7 +166,7 @@
 <div id="save-overlay" aria-hidden="true">
     <div class="save-overlay-card">
         <div class="save-overlay-spinner"></div>
-        <span>Сохраняем...</span>
+        <span id="save-overlay-text">Сохраняем...</span>
     </div>
 </div>
 
@@ -289,6 +297,37 @@
     });
     document.body.addEventListener("htmx:sendError", () => {
         document.body.classList.remove("htmx-saving");
+    });
+
+    /* 4.48.5.2 (0.2.5b) — Navigation feedback overlay (F5 / pull-to-refresh).
+       Без этого web "зависает" на 3-5 секунд при первом заходе в новый день
+       (try_reload_state делает 4 Sheets round-trip'а). Native browser spinner
+       на iPhone Safari еле виден — overlay даёт явный feedback.
+
+       Логика: в beforeunload меняем текст overlay на день-specific
+       ("🌅 Новый день..." если localStorage.lastSeenDate отличается от
+       сегодня; иначе "Загрузка...") и добавляем body.navigating —
+       overlay мгновенно показывается через `body.navigating #save-overlay`
+       CSS rule. На загрузке новой страницы DOMContentLoaded обновляет
+       lastSeenDate.
+
+       beforeunload надёжно срабатывает на F5 и pull-to-refresh в современных
+       браузерах (включая iPhone Safari) для side-effect listener'ов без
+       confirmation dialog (мы НЕ ставим event.returnValue). */
+    window.addEventListener("beforeunload", () => {
+        const textEl = document.getElementById("save-overlay-text");
+        if (textEl) {
+            const today = new Date().toDateString();
+            const last = localStorage.getItem("lastSeenDate");
+            textEl.textContent = (last && last !== today)
+                ? "🌅 Новый день — обновляем счётчики..."
+                : "Загрузка...";
+        }
+        document.body.classList.add("navigating");
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+        localStorage.setItem("lastSeenDate", new Date().toDateString());
     });
 
     /* Steps form toggle (4.48.2). Используем event delegation на body, чтобы

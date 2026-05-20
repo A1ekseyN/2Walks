@@ -153,6 +153,39 @@ def test_dashboard_contains_main_sections():
     assert "Экипировка" in body
 
 
+# ----- 4.48.5.2 (0.2.5b): navigation overlay (F5 / pull-to-refresh feedback) -----
+
+def test_dashboard_has_navigation_overlay_handler():
+    """beforeunload handler устанавливает body.navigating + меняет overlay text
+    в зависимости от дня (localStorage.lastSeenDate vs today)."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    # beforeunload handler в JS.
+    assert 'beforeunload' in body
+    # localStorage сравнение для day-specific message.
+    assert 'lastSeenDate' in body
+    # День-specific текст.
+    assert '🌅 Новый день — обновляем счётчики' in body
+    # Fallback text для обычного F5.
+    assert 'Загрузка...' in body
+    # DOMContentLoaded handler обновляет lastSeenDate.
+    assert "localStorage.setItem(\"lastSeenDate\"" in body
+
+
+def test_dashboard_has_navigating_overlay_css_rule():
+    """body.navigating триггерит overlay (instant, без 150ms delay)."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    # CSS правило для navigation.
+    assert 'body.navigating #save-overlay' in body
+    # Overlay element с id text.
+    assert 'id="save-overlay-text"' in body
+
+
 def test_dashboard_does_not_have_htmx_polling_on_status_bar():
     """HTMX polling намеренно отключён в 0.2.0j — цифры обновляются только при
     F5 / submit формы. Таймеры активных сессий двигаются JS на клиенте.

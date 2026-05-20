@@ -2679,6 +2679,22 @@ sudo systemctl status 2walks    # verify
 
 **Тесты:** 6 новых (3 STALE rollback + 1 OK happy-path для adventure + 2 endpoint tests для full-page и fragment STALE). 1 existing test обновлён (mock возвращает "OK" явно). 1051 passed total, mypy 0 issues (68 source files).
 
+#### 4.48.5.2. Navigation overlay при F5 / pull-to-refresh `[L / XS / done (20.05.2026, 0.2.5b)]`
+
+**Контекст:** игрок жаловался: «при заходе на web в новый день страница как будто зависает на 3-5 секунд». Объективно — `try_reload_state` делает 4 Sheets round-trip'а при rollover (load game_state + read steps_log + load_meta + save_safe write), total 3.5-5 сек. Native browser spinner на iPhone Safari еле виден.
+
+**Реализация (20.05.2026, 0.2.5b, Variant B per design discussion):** Client-side overlay с day-specific сообщением.
+
+1. Переиспользован существующий `#save-overlay` (был только для HTMX requests) — новое CSS правило `body.navigating #save-overlay { opacity: 1; transition: none; }` для instant показа (без 150ms delay).
+2. `<span>` в overlay получил `id="save-overlay-text"` чтобы JS мог менять текст контекстуально.
+3. `beforeunload` handler — устанавливает текст: «🌅 Новый день — обновляем счётчики...» если `localStorage.lastSeenDate !== today`, иначе «Загрузка...». Затем `body.classList.add("navigating")`.
+4. `DOMContentLoaded` handler — обновляет `localStorage.lastSeenDate` на сегодня для следующего сравнения.
+5. **Без backend изменений** — чисто UX-fix.
+
+**Tradeoff:** в обычный день F5 теперь тоже показывает overlay с «Загрузка...» (~2 сек) — небольшая регрессия для нормальных дней, но компенсация в день смены значительно перевешивает.
+
+**Тесты:** 2 новых (`test_dashboard_has_navigation_overlay_handler` + `test_dashboard_has_navigating_overlay_css_rule`). 1053 passed.
+
 ##### 4.48.5.1.1. Deferred log_event в Adventure финализаторе `[L / XS / todo (опциональное продолжение 4.48.5.1)]`
 
 **Контекст:** `Adventure.adventure_check_done` (`adventure.py`) фаерит `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save. При STALE rollback'е в `_finalize_adventure_with_drop_capture` (4.48.5.1) эти entries остаются в `history.jsonl` / Sheets `history` лист — phantom события которые не отражают реального state.
