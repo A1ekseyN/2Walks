@@ -1,24 +1,26 @@
-"""Persistence layer — save/load state в Google Sheets + CSV fallback.
+"""Persistence layer — save/load state в Google Sheets + локальный fallback.
 
-Выделено из `characteristics.py` в задаче 1.3.3 (0.2.4y, 20.05.2026). До этого
-все функции жили в characteristics.py что делало его mixed-concern файлом
-(state container + persistence I/O в одном). После выноса:
+Выделено из `characteristics.py` в задаче 1.3.3 (0.2.4y, 20.05.2026).
 
 - `characteristics.py` — state container (`game` singleton + `init_game_state`).
 - `persistence.py` — save/load I/O + STALE prompt UI.
 
-**Unified parser (1.4.2 одним проходом с 1.3.3, 0.2.4y):**
-Раньше CSV и Sheets парсились разными функциями (`load_characteristic` +
-`google_sheets_db._rows_to_state_dict`) с дублированной логикой. Теперь
-оба используют общий `_parse_value(v, key)` — `json.loads` → `ast.literal_eval`
-→ manual int/float/bool/empty detection → datetime fallback для DATE_KEYS.
-Удалена дублированная типизация. Format сейвов не изменён —
-backwards-compat 100%.
+**Unified parser (1.4.2, 0.2.4y):** общий `_parse_value(v, key)` для CSV и
+Sheets — `json.loads` → `ast.literal_eval` → manual int/float/bool/empty
+detection → datetime fallback для DATE_KEYS.
+
+**state.json primary (1.4.3, 0.2.5):** offline-fallback теперь хранится в
+`state.json` (полный JSON-blob через `state.to_dict()`), а не в плоском
+`characteristic.csv`. Save пишет только state.json. Load пробует state.json
+первым; если файла нет — fallback на CSV reader (legacy backwards-compat
+для игроков на pre-0.2.5 сейвах). CSV reader + writer удалится в 1.4.3.1
+Legacy cleanup через 1-2 недели после bake-test'а.
 """
 
 import ast
 import csv
 import json
+import os
 import time
 from datetime import datetime
 from typing import Any, Literal, Optional
@@ -26,6 +28,9 @@ from typing import Any, Literal, Optional
 from characteristics import game
 from settings import debug_mode
 from state import GameState
+
+STATE_JSON_PATH = 'state.json'
+CHARACTERISTIC_CSV_PATH = 'characteristic.csv'  # legacy fallback (1.4.3.1 удалит)
 
 
 # --- Datetime parsing constants ---
@@ -113,12 +118,47 @@ def _parse_value(value: Any, key: Optional[str] = None) -> Any:
 
 # --- Load ---
 
+def _json_default(obj: object) -> object:
+    """Сериализация non-JSON типов для `json.dumps` (state.json)."""
+    if isinstance(obj, datetime):
+        return obj.strftime(_DATETIME_FMT)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def load_state_json() -> dict:
+    """Считать state из `state.json` (1.4.3 / 0.2.5).
+
+    Datetime поля приходят из JSON как строки (`_DATETIME_FMT`); конвертируем
+    обратно в datetime для совместимости с `GameState.from_dict` (`_deser_datetime`
+    тоже примет str, но native datetime в blob тестах нагляднее).
+
+    Raises `FileNotFoundError` если файла нет — caller (`load_data_from_*`)
+    делает fallback на CSV reader.
+    """
+    with open(STATE_JSON_PATH, mode='r', encoding='utf-8') as file:
+        data = json.load(file)
+    if not isinstance(data, dict):
+        raise ValueError(f"{STATE_JSON_PATH}: expected dict, got {type(data).__name__}")
+    for key in _DATETIME_KEYS:
+        v = data.get(key)
+        if isinstance(v, str) and v:
+            try:
+                data[key] = datetime.strptime(v, _DATETIME_FMT)
+            except ValueError:
+                pass
+    return data
+
+
 def load_characteristic() -> dict:
-    """Считать сохранение из CSV (offline fallback). Использует unified
-    `_parse_value` для каждой ячейки."""
+    """Считать сохранение из CSV (LEGACY fallback, удалится в 1.4.3.1).
+
+    С 1.4.3 (0.2.5) primary offline-формат — `state.json`. Этот reader
+    сохранён для backwards-compat: игроки на pre-0.2.5 сейвах могут
+    автоматически мигрировать на первом save после обновления.
+    """
     char_characteristic: dict[str, Any] = {}
 
-    with open("characteristic.csv", mode='r', encoding='utf-8') as file:
+    with open(CHARACTERISTIC_CSV_PATH, mode='r', encoding='utf-8') as file:
         csv_reader = csv.reader(file)
         headers = next(csv_reader)
         data_row = next(csv_reader)
@@ -129,21 +169,35 @@ def load_characteristic() -> dict:
 
 
 def load_data_from_google_sheet_or_csv() -> dict:
-    """Сначала пытается загрузить данные из Google Sheets, при неудаче — CSV."""
+    """Загружает state из Google Sheets, при неудаче — локальный fallback.
+
+    Локальный fallback (1.4.3 / 0.2.5): сначала пробуем `state.json` (новый
+    primary format), при отсутствии файла — legacy `characteristic.csv`.
+    """
     from google_sheets_db import GameStateRepo  # lazy для тестов
     try:
         loaded = GameStateRepo().load()
         if loaded:
             return loaded
-        print("Google Sheets пуст. Загружаем данные из CSV файла.")
-        loaded = load_characteristic()
-        print("Loaded Data from CSV.")
-        return loaded
+        print("Google Sheets пуст. Загружаем данные из локального файла.")
+        return _load_local_fallback()
     except Exception as error:
-        print(f"Ошибка при загрузке данных из Google Sheets: {error}. Загружаем данные из CSV файла.")
-        loaded = load_characteristic()
-        print("Loaded Data from CSV.")
+        print(f"Ошибка при загрузке данных из Google Sheets: {error}. Загружаем данные из локального файла.")
+        return _load_local_fallback()
+
+
+def _load_local_fallback() -> dict:
+    """1.4.3 / 0.2.5 — state.json primary, characteristic.csv legacy fallback."""
+    if os.path.exists(STATE_JSON_PATH):
+        loaded = load_state_json()
+        print(f"Loaded Data from {STATE_JSON_PATH}.")
         return loaded
+    if os.path.exists(CHARACTERISTIC_CSV_PATH):
+        loaded = load_characteristic()
+        print(f"Loaded Data from {CHARACTERISTIC_CSV_PATH} (legacy fallback).")
+        return loaded
+    print("Локальный файл не найден.")
+    return {}
 
 
 # --- STALE prompt (CLI UX) ---
@@ -252,30 +306,27 @@ def handle_stale_prompt() -> Literal["reload", "force", "cancel"]:
 # --- Save ---
 
 def save_characteristic() -> Literal["OK", "STALE"]:
-    """Save state: Sheets save_safe + локальный CSV (offline fallback).
+    """Save state: Sheets save_safe + локальный `state.json` (offline fallback).
 
     4.54.4 — обёртка для optimistic concurrency. Sheets save выполняется через
     `GameStateRepo.save_safe()` с pre-check `state.last_modified` vs Sheets.
 
     Returns:
-    - **"OK"** — Sheets save прошёл (или сетевая ошибка — fall back на CSV-only).
+    - **"OK"** — Sheets save прошёл (или сетевая ошибка — fall back на local-only).
       В этом случае: (1) `state.last_modified` синкается к новому timestamp'у
       от Sheets, (2) `state.last_loaded_snapshot` обновляется через `take_snapshot()`,
-      (3) CSV пишется с новым timestamp'ом.
+      (3) `state.json` пишется с новым timestamp'ом.
     - **"STALE"** — Sheets имеет newer `last_modified` (someone else сохранил
-      первым). State не мутируется, CSV не пишется. Caller (4.54.5 CLI prompt /
-      4.54.6 web flash) должен показать игроку diff + Reload/Force/Cancel.
+      первым). State не мутируется, локальный файл не пишется.
 
-    Сетевая ошибка Sheets → treat as "OK" (CSV-only fallback): pre-4.54 поведение
-    сохраняется для offline-mode, игрок продолжает играть локально.
+    Сетевая ошибка Sheets → treat as "OK" (state.json-only fallback): pre-4.54
+    поведение сохраняется для offline-mode, игрок продолжает играть локально.
 
-    Формат сохранения (4.20.1, 0.2.3b): `state_dict = game.state.to_dict()`
-    — flat-dict со всеми полями. dict / list-значения серилазуются как
-    JSON-строки (через `json.dumps`). Datetime — через `__str__()`.
-
-    Историческая заметка (1.4.1, 0.2.3c — 07.05.2026): раньше save также
-    писал в `characteristic.txt` (JSON), который никогда не читался —
-    write-only zombie файл. Удалён в той задаче.
+    **Формат локального сейва (1.4.3, 0.2.5):** `state.json` через `state.to_dict()`
+    + `json.dumps` (с `_json_default` для datetime). Заменил плоский CSV формат
+    (`characteristic.csv`) который писался до 0.2.5. CSV reader сохранён в
+    `load_characteristic()` для обратной совместимости и автомиграции на
+    первом save — он будет удалён в 1.4.3.1 Legacy cleanup.
     """
     if game.state is None:
         raise RuntimeError("game.state не инициализирован — вызови init_game_state() до save_characteristic().")
@@ -292,27 +343,23 @@ def save_characteristic() -> Literal["OK", "STALE"]:
             state_dict, expected_last_modified=game.state.last_modified
         )
     except Exception as e:  # noqa: BLE001 — best-effort sync
-        print(f'[save] Sheets sync failed (CSV-only fallback): {e}')
+        print(f'[save] Sheets sync failed (local-only fallback): {e}')
         sheets_network_error = True
         sheets_status = "OK"
 
-    # Step 2: STALE — rejection, NO CSV write, NO state mutation. Caller handles.
+    # Step 2: STALE — rejection, NO local write, NO state mutation.
     if sheets_status == "STALE":
         return "STALE"
 
     # Step 3: OK — синкаем state с тем что записано в Sheets.
     game.state.last_modified = state_dict.get('last_modified', game.state.last_modified)
 
-    # Step 4: CSV write.
+    # Step 4: state.json write (1.4.3, 0.2.5).
     try:
-        with open('characteristic.csv', 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=state_dict.keys())
-            writer.writeheader()
-            processed_char = {k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
-                              for k, v in state_dict.items()}
-            writer.writerow(processed_char)
+        with open(STATE_JSON_PATH, mode='w', encoding='utf-8') as f:
+            json.dump(state_dict, f, ensure_ascii=False, indent=2, default=_json_default)
     except PermissionError:
-        print("\nОшибка записи в файл 'characteristic.csv'. "
+        print(f"\nОшибка записи в файл '{STATE_JSON_PATH}'. "
               "\nЗакройте файл и повторите попытку. Задержка 30 сек и повторный запуск.")
         time.sleep(30)
         return save_characteristic()  # retry

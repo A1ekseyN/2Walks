@@ -11,7 +11,6 @@ Lazy singleton клиент (`_get_client()`) — один re-use'имый gspre
 на весь процесс, чтобы избежать ~0.5 сек авторизации при каждом save/load.
 """
 
-import ast
 import json
 import time
 from datetime import datetime
@@ -73,6 +72,10 @@ def _reset_client() -> None:
 def _state_dict_to_rows(data: dict) -> list:
     """flat-dict (`state.to_dict()`) → rows для записи на лист game_state.
 
+    **LEGACY format (до 1.4.3 / 0.2.5).** С 1.4.3 используется `_state_dict_to_blob_rows`
+    (JSON-blob в одной ячейке + last_modified в A1). Этот helper оставлен для
+    обратной совместимости и для тестов которые проверяют parsing старого формата.
+
     Первая строка — заголовок ['Key', 'Value']. Списки/словари сериализуются
     как JSON-строки. Datetime — через strftime в legacy-формате. Float —
     явно через `repr()` (а не как Python-объект), чтобы Sheets не интерпретировал
@@ -95,12 +98,15 @@ def _state_dict_to_rows(data: dict) -> list:
 
 
 def _rows_to_state_dict(rows: list) -> dict:
-    """rows из листа game_state → flat-dict (формат, который ест GameState.from_dict).
+    """rows из листа game_state (LEGACY Key/Value layout) → flat-dict.
 
     Принимает rows БЕЗ заголовка (первая строка с ключом отброшена caller'ом).
     Использует unified `persistence._parse_value` (1.4.2, 0.2.4y) — общий
-    parser для CSV и Sheets. Раньше тут была дублированная type-detection
-    логика (json.loads + ast.literal_eval + manual int/bool/datetime).
+    parser для CSV и Sheets.
+
+    **С 1.4.3 (0.2.5)** используется только как fallback в `GameStateRepo.load`
+    когда auto-detect видит старый Key/Value layout. Удалится в 1.4.3.1
+    Legacy cleanup через 1-2 недели после bake-test'а.
     """
     from persistence import _parse_value  # lazy: persistence → characteristics → state
     data = {}
@@ -110,6 +116,81 @@ def _rows_to_state_dict(rows: list) -> dict:
         key, value = row[0], row[1]
         data[key] = _parse_value(value, key=key)
     return data
+
+
+def _json_blob_default(obj: object) -> object:
+    """Сериализация non-JSON типов для `json.dumps` в blob layout.
+
+    Datetime → strftime в `_DATETIME_FMT` (тот же формат что использовался
+    в legacy Key/Value layout). Это сохраняет совместимость с
+    `persistence._parse_value` (`_DATETIME_KEYS` → strptime обратно).
+
+    Future task 1.4.3.2 — переход на ISO-8601 (datetime.isoformat / fromisoformat).
+    """
+    if isinstance(obj, datetime):
+        return obj.strftime(_DATETIME_FMT)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def _state_dict_to_blob_rows(data: dict) -> list:
+    """flat-dict → rows для blob layout (1.4.3 / 0.2.5).
+
+    Возвращает одну строку с двумя ячейками:
+    - A1: `last_modified` (float, для fast load_meta)
+    - B1: JSON-blob всего state (включая дубликат last_modified — round-trip simplicity)
+
+    Datetime сериализуется через `_json_blob_default` в legacy strftime формат
+    (чтобы `from_dict` не пришлось менять — он принимает и datetime, и str
+    через `_deser_datetime`).
+    """
+    last_mod = data.get('last_modified', 0.0)
+    if not isinstance(last_mod, (int, float)):
+        last_mod = 0.0
+    blob = json.dumps(data, ensure_ascii=False, default=_json_blob_default)
+    return [[float(last_mod), blob]]
+
+
+def _blob_rows_to_state_dict(rows: list) -> dict:
+    """rows blob layout → flat-dict.
+
+    Ожидает row[0] = [last_modified, json_blob_string]. Datetime поля из
+    `_DATETIME_KEYS` конвертируются обратно из str → datetime через strptime
+    (legacy формат). Остальные поля приходят как native Python типы из JSON.
+
+    Returns {} если row[0] пустой / blob невалидный — caller fallback на legacy.
+    """
+    if not rows or len(rows[0]) < 2:
+        return {}
+    blob = rows[0][1]
+    if not isinstance(blob, str) or not blob:
+        return {}
+    try:
+        data = json.loads(blob)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    # Datetime поля приходят как str (legacy strftime формат) — конвертируем обратно.
+    for key in _DATETIME_KEYS:
+        v = data.get(key)
+        if isinstance(v, str) and v:
+            try:
+                data[key] = datetime.strptime(v, _DATETIME_FMT)
+            except ValueError:
+                pass  # оставим как есть, _deser_datetime в from_dict разрулит
+    return data
+
+
+def _is_legacy_kv_layout(rows: list) -> bool:
+    """Auto-detect: первая строка — ['Key', 'Value'] header → legacy layout.
+
+    Auto-detect нужен для миграции 1.4.3 → 0.2.5: первый load после deploy
+    видит старый формат, парсит его, первый save переписывает в blob layout.
+    """
+    if not rows:
+        return False
+    first = rows[0]
+    return len(first) >= 2 and first[0] == 'Key' and first[1] == 'Value'
 
 
 def _format_steps_entry(ts: float, user_id: str, steps: int, source: str) -> list:
@@ -138,28 +219,46 @@ class GameStateRepo:
         return _get_client().open_by_key(self.spreadsheet_id).worksheet(self.sheet_name)
 
     def save(self, state_dict: dict) -> None:
-        """Записать flat-dict на лист game_state (полная перезапись).
+        """Записать flat-dict на лист game_state в blob layout (1.4.3 / 0.2.5).
 
-        Используем `ValueInputOption.raw` (вместо default `user_entered`) чтобы
-        Sheets НЕ парсил числовые значения по системной локали. С `user_entered`
-        float `2018.10` сохранялся как `'2018,1'` (локаль с запятой), на чтении
-        `ast.literal_eval('2018,1')` → tuple `(2018, 1)` → crash в `from_dict`
-        на `float(tuple)`. RAW сохраняет значение как есть, без интерпретации.
+        Layout:
+        - A1: `last_modified` (float) — для fast `load_meta` без parse JSON.
+        - B1: JSON-blob всего state.
+
+        Полная перезапись (`ws.clear()` перед update) — гарантирует что
+        legacy Key/Value rows (если до этого был старый формат) удалены.
+        Первый save после deploy 1.4.3 автоматически мигрирует layout.
+
+        `ValueInputOption.raw` — same reason что и до 1.4.3: float без
+        locale-парсинга. Для JSON-blob важно чтобы Sheets не интерпретировал
+        строку как formula (если начинается с `=`).
         """
         ping = time.time()
-        rows = _state_dict_to_rows(state_dict)
+        rows = _state_dict_to_blob_rows(state_dict)
         ws = self._worksheet()
         ws.clear()
         ws.update(rows, value_input_option=ValueInputOption.raw)
         print(f"Save Data to Google Sheets. [{time.time() - ping:,.2f} sec]")
 
     def load(self) -> dict:
-        """Прочитать лист game_state → flat-dict для GameState.from_dict()."""
+        """Прочитать лист game_state → flat-dict для GameState.from_dict().
+
+        Auto-detect (1.4.3 / 0.2.5): если первая строка — legacy header
+        `['Key', 'Value']` → парсим старым `_rows_to_state_dict` и печатаем
+        migration notice. Иначе — blob layout через `_blob_rows_to_state_dict`.
+        Это позволяет первому load после deploy прочитать pre-migration данные;
+        первый save автоматически перепишет в новый формат.
+        """
         ping = time.time()
         print("Loading...")
         ws = self._worksheet()
-        rows = ws.get_all_values()[1:]  # Пропускаем заголовок.
-        data = _rows_to_state_dict(rows)
+        rows = ws.get_all_values()
+        if _is_legacy_kv_layout(rows):
+            print("[migration 1.4.3] Detected legacy Key/Value layout — "
+                  "next save will convert to JSON-blob format.")
+            data = _rows_to_state_dict(rows[1:])
+        else:
+            data = _blob_rows_to_state_dict(rows)
         print(f"Data Loaded from Google Sheets. [{time.time() - ping:,.2f} sec]")
         return data
 
@@ -167,15 +266,29 @@ class GameStateRepo:
         """4.54.2 — Облегчённый запрос только `last_modified` ячейки.
 
         Используется для optimistic concurrency check в `save_safe()`: нужен
-        только timestamp, не полный state. Тот же gspread round-trip что и
-        `load()`, но без parsing overhead полного `_rows_to_state_dict` (~50
-        ms saved на типичном save).
+        только timestamp, не полный state.
+
+        1.4.3 (0.2.5) — fast-path через `acell('A1')`: одна cell read вместо
+        scan всех rows. Auto-detect (1.4.3): если A1 не parsable как float
+        (legacy Key/Value layout до миграции) → fallback на старый scan
+        `last_modified` row.
 
         Returns 0.0 если ключ отсутствует (legacy save до 4.54) или формат
         невалидный. Default 0.0 + check `current > expected + epsilon` → legacy
         save без `last_modified` пройдёт первый save_safe (expected тоже 0.0).
         """
         ws = self._worksheet()
+        # Fast-path: A1 в blob layout = last_modified (float).
+        try:
+            cell = ws.acell('A1').value
+            if cell is not None and cell != 'Key':
+                # Не legacy header — пробуем как float.
+                return float(cell)
+        except (TypeError, ValueError):
+            pass
+        except Exception:  # noqa: BLE001 — network/api errors → fallback на scan
+            pass
+        # Legacy fallback: scan rows ища `last_modified` row.
         rows = ws.get_all_values()
         for row in rows:
             if len(row) >= 2 and row[0] == 'last_modified':

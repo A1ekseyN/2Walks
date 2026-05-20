@@ -358,7 +358,7 @@ def test_handle_stale_prompt_load_failed_returns_cancel(monkeypatch, capsys):
 
 
 def test_save_characteristic_network_error_returns_ok(monkeypatch, tmp_path, capsys):
-    """Sheets network error → CSV-only fallback, return "OK" + warning в лог."""
+    """Sheets network error → state.json-only fallback, return "OK" + warning в лог."""
     from persistence import save_characteristic
     import google_sheets_db
 
@@ -376,9 +376,9 @@ def test_save_characteristic_network_error_returns_ok(monkeypatch, tmp_path, cap
     status = save_characteristic()
 
     assert status == "OK"
-    # CSV написан несмотря на Sheets-fail.
-    assert (tmp_path / 'characteristic.csv').exists()
+    # state.json (1.4.3 / 0.2.5 — primary локальный фолбэк) написан несмотря на Sheets-fail.
+    assert (tmp_path / 'state.json').exists()
     # Warning в выводе.
     captured = capsys.readouterr()
     assert 'Sheets sync failed' in captured.out
-    assert 'CSV-only fallback' in captured.out
+    assert 'local-only fallback' in captured.out

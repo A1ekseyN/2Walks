@@ -144,7 +144,7 @@ Move 5–7 UI/display функций из functions.py в `ui_helpers.py` или
 
 ---
 
-### 1.4. Единый формат сохранения (зонтичная) `[M / M / partial (1.4.1 + 1.4.2 done; 1.4.3 JSON-blob todo)]`
+### 1.4. Единый формат сохранения (зонтичная) `[M / M / done — все 3 фазы (1.4.1 / 1.4.2 / 1.4.3) закрыты; 1.4.3.1 Legacy cleanup + 1.4.3.2 ISO-8601 — опциональные follow-up'ы]`
 
 Сейчас параллельные форматы сохранения: `characteristic.csv` (ast.literal_eval), Google Sheets (гибридный парсинг), и был `characteristic.txt` (JSON, удалён в 1.4.1). Каждое новое поле требует поддержки в нескольких местах — отсюда баги с датами и типами (например 5.6.1 для adventure end_ts).
 
@@ -189,25 +189,63 @@ Move 5–7 UI/display функций из functions.py в `ui_helpers.py` или
 
 **НЕ меняет формат сейвов** — backwards-compat 100%.
 
-#### 1.4.3. JSON-blob в Sheets (single-cell) `[M / M / todo]`
+#### 1.4.3. JSON-blob в Sheets (single-cell) + state.json offline primary `[M / M / done (20.05.2026, 0.2.5)]`
 
-**⚠️ Breaking change в формате Sheets — нужна миграция.**
+**⚠️ Breaking change в формате сохранения — миграция через auto-detect.**
 
-Заменить `Key | Value` layout в Google Sheets `game_state` на одну ячейку с полным JSON-blob'ом всего state. Преимущества:
-- Round-trip элементарный: `json.dumps(state.to_dict())` / `json.loads(cell)`.
-- Никакого hybrid-парсинга, datetime через ISO-8601 нативно.
-- Новое поле = обновление `state.to_dict / from_dict`, ничего больше.
+**Реализация (20.05.2026, 0.2.5, Variant B per design discussion):**
 
-**Скоуп (~80 строк):**
-1. `GameStateRepo.save` — пишет JSON в `A1`.
-2. `GameStateRepo.load` — читает JSON из `A1`, fallback на старый Key/Value layout (backwards-compat при первом запуске).
-3. Datetime → ISO-8601 (если ещё нет — расширить `to_dict`).
-4. Тесты Sheets-mock на новый layout.
-5. CLAUDE.md и docs/local_setup.md.
+1. **Sheets layout** — `game_state` лист теперь хранит ОДНУ строку с 2 ячейками:
+   - **A1** = `last_modified` (float) — для fast `load_meta` через `acell('A1')` без scan rows.
+   - **B1** = JSON-blob всего state через `state.to_dict()` + `json.dumps(default=_json_blob_default)`.
 
-**Зависимость:** не блокирующая, но **желательно после 1.4.2** (унифицированный parser упростит implement single-cell).
+2. **Auto-detect + auto-migration** (защищает pre-existing сейвы):
+   - `GameStateRepo.load` сначала читает `ws.get_all_values()`; если first row = `['Key', 'Value']` → fallback на legacy `_rows_to_state_dict` с migration notice; иначе blob parser.
+   - `GameStateRepo.load_meta` сначала пробует `acell('A1')` (fast-path 1 read), если cell не parsable как float (legacy header или error) → fallback на старый scan rows.
+   - Первый save переписывает в новый формат — clean migration без отдельного script'а.
 
-**Что отвергнуто:** удаление CSV (вариант A) — CSV остаётся как offline backup mirror (генерируется автоматически из state.to_dict).
+3. **Offline format** — `characteristic.csv` (плоский Key/Value) → `state.json` (полный JSON-blob, indent=2):
+   - `save_characteristic` пишет state.json вместо CSV.
+   - `load_state_json` (новый) — primary reader; конвертирует `_DATETIME_KEYS` обратно из str через strptime.
+   - `_load_local_fallback` (новый orchestrator) — state.json первым, при отсутствии файла → legacy `load_characteristic` (CSV reader).
+
+4. **Backup script** — `scripts/backup_sheets_before_migration.py` (one-shot) экспортит текущий game_state в `backup_before_1.4.3_YYYYMMDD_HHMMSS.json` ДО deploy. Safety net на случай если auto-migration сломается.
+
+5. **Datetime serialization** — `_json_default` / `_json_blob_default` конвертируют datetime в legacy strftime формат (`_DATETIME_FMT = '%Y-%m-%d %H:%M:%S.%f'`). Round-trip через `_DATETIME_KEYS` → strptime. Переход на ISO-8601 намеренно отложен в 1.4.3.2.
+
+6. **.gitignore** — добавлены `state.json` + `backup_before_*.json`. `characteristic.csv` оставлен (удалится в 1.4.3.1).
+
+**Что НЕ делалось в этой задаче:**
+- **Phase 3 (ISO-8601 datetime)** — вынесено в 1.4.3.2 для минимизации blast radius миграции.
+- **Удаление legacy parser'ов** (Key/Value + CSV reader/writer) — вынесено в 1.4.3.1 после bake-test'а.
+- **Deploy на production server (192.168.0.155)** — отдельный шаг.
+
+**Тесты:** 23 новых (14 в test_sheets_repo + 9 в test_persistence), 7 existing обновлены под новый формат (mock'и `_mock_worksheet(meta=...)` для acell fast-path). 1045 passed total, mypy 0 issues (68 source files).
+
+**Variant trade-off (зафиксировано):** выбран **B** (last_modified в A1 + blob в B1) — сохраняет 4.54.2 fast-path для optimistic concurrency. Альтернативы: A (single cell pure blob, теряет fast-path), C (dual-write transitional, 2× quota), D (auto-detect single-cell без отдельного last_modified). **CSV** удалён полностью — `Перевести на единый файл state.json` per user choice (вместо `Оставить плоский Key/Value`).
+
+##### 1.4.3.1. Legacy cleanup — удалить Key/Value parser + CSV reader `[L / S / todo (запланировано через 1-2 недели после bake-test 1.4.3 / 0.2.5)]`
+
+После того как все пользователи 2Walks (на момент 1.4.3 — один игрок) пожили на новой схеме 1-2 недели без рассинхронов / потерянных сейвов:
+
+1. Удалить из `google_sheets_db.py`: `_state_dict_to_rows`, `_rows_to_state_dict`, `_is_legacy_kv_layout`, fallback ветку в `load`, legacy fallback scan в `load_meta`.
+2. Удалить из `persistence.py`: `load_characteristic` (CSV reader), `CHARACTERISTIC_CSV_PATH` constant, fallback в `_load_local_fallback`.
+3. Удалить из `.gitignore` строку `characteristic.csv`.
+4. Локально удалить файл `characteristic.csv` (если ещё есть).
+5. Тесты на legacy layout удалить (или оставить как regression «должно сломаться чтобы напомнить»).
+6. Update CLAUDE.md и changelog.
+
+**Не делать раньше времени** — auto-detect cost (~0 ms на новом формате) ничтожен; преимущество только в чистоте кода.
+
+##### 1.4.3.2. Datetime → ISO-8601 в state.py `[L / S / todo (опциональная упрощалка)]`
+
+Перевести `to_dict` / `from_dict` с legacy strftime (`_DATETIME_FMT = '%Y-%m-%d %H:%M:%S.%f'`) на нативный ISO-8601 (`datetime.isoformat()` / `datetime.fromisoformat()`).
+
+Преимущества: убирает custom `_DATETIME_FMT` constant + custom default-функцию в `json.dumps`. Native `datetime.isoformat()` поддерживается без default-callback'а в json.dump (через объект proxy конвертера или вручную); fromisoformat принимает свой output.
+
+**Зависимость:** делать **после** 1.4.3.1 (когда legacy CSV/Key-Value parser'ы удалены — иначе придётся поддерживать два datetime формата параллельно).
+
+**Blast radius:** новые сейвы будут содержать ISO-формат, старые legacy сейвы (если пользователь восстанавливает из backup) перестанут парситься. Мелкая, но breaking change в формате сейва.
 
 ---
 

@@ -175,3 +175,122 @@ def test_parse_value_no_key_argument_skips_datetime():
     result = _parse_value('2026-05-20 14:30:00.123456')
     # Plain string — нет datetime trigger.
     assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# 1.4.3 (0.2.5) — state.json primary + CSV legacy fallback
+# ---------------------------------------------------------------------------
+
+def test_load_state_json_round_trip(tmp_path, monkeypatch):
+    """save → load round-trip через state.json."""
+    import json
+    from persistence import STATE_JSON_PATH, load_state_json
+
+    monkeypatch.chdir(tmp_path)
+    data = {'energy': 50, 'money': 100.5, 'inventory': [{'a': 1}], 'last_modified': 123.45}
+    (tmp_path / STATE_JSON_PATH).write_text(json.dumps(data), encoding='utf-8')
+    loaded = load_state_json()
+    assert loaded == data
+
+
+def test_load_state_json_converts_datetime_strings(tmp_path, monkeypatch):
+    """Datetime поля (из _DATETIME_KEYS) приходят как strftime str → конвертируется обратно."""
+    import json
+    from persistence import STATE_JSON_PATH, load_state_json
+
+    monkeypatch.chdir(tmp_path)
+    data = {'working_end': '2026-05-01 14:30:00.000000', 'energy': 50}
+    (tmp_path / STATE_JSON_PATH).write_text(json.dumps(data), encoding='utf-8')
+    loaded = load_state_json()
+    assert loaded['working_end'] == datetime(2026, 5, 1, 14, 30, 0)
+    assert loaded['energy'] == 50
+
+
+def test_load_state_json_non_dict_raises(tmp_path, monkeypatch):
+    """state.json содержит не-dict (например list) → ValueError."""
+    import json
+    import pytest
+    from persistence import STATE_JSON_PATH, load_state_json
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / STATE_JSON_PATH).write_text(json.dumps([1, 2, 3]), encoding='utf-8')
+    with pytest.raises(ValueError):
+        load_state_json()
+
+
+def test_load_state_json_missing_file_raises(tmp_path, monkeypatch):
+    """Если state.json нет → FileNotFoundError (caller делает CSV fallback)."""
+    import pytest
+    from persistence import load_state_json
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(FileNotFoundError):
+        load_state_json()
+
+
+def test_load_local_fallback_prefers_state_json(tmp_path, monkeypatch):
+    """state.json и CSV оба присутствуют → читаем state.json (primary)."""
+    import csv as csv_mod
+    import json
+    from persistence import (
+        CHARACTERISTIC_CSV_PATH,
+        STATE_JSON_PATH,
+        _load_local_fallback,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / STATE_JSON_PATH).write_text(
+        json.dumps({'energy': 50, 'source': 'json'}), encoding='utf-8'
+    )
+    with open(tmp_path / CHARACTERISTIC_CSV_PATH, 'w', newline='', encoding='utf-8') as f:
+        writer = csv_mod.DictWriter(f, fieldnames=['energy', 'source'])
+        writer.writeheader()
+        writer.writerow({'energy': 99, 'source': 'csv'})
+
+    loaded = _load_local_fallback()
+    assert loaded['source'] == 'json'  # primary
+    assert loaded['energy'] == 50
+
+
+def test_load_local_fallback_csv_when_no_json(tmp_path, monkeypatch, capsys):
+    """state.json отсутствует → CSV legacy fallback."""
+    import csv as csv_mod
+    from persistence import CHARACTERISTIC_CSV_PATH, _load_local_fallback
+
+    monkeypatch.chdir(tmp_path)
+    with open(tmp_path / CHARACTERISTIC_CSV_PATH, 'w', newline='', encoding='utf-8') as f:
+        writer = csv_mod.DictWriter(f, fieldnames=['energy', 'source'])
+        writer.writeheader()
+        writer.writerow({'energy': 99, 'source': 'csv'})
+
+    loaded = _load_local_fallback()
+    assert loaded['source'] == 'csv'
+    # CSV legacy notice печатается.
+    out = capsys.readouterr().out
+    assert 'legacy fallback' in out
+
+
+def test_load_local_fallback_empty_when_neither(tmp_path, monkeypatch):
+    """Ни state.json, ни CSV → пустой dict."""
+    from persistence import _load_local_fallback
+
+    monkeypatch.chdir(tmp_path)
+    loaded = _load_local_fallback()
+    assert loaded == {}
+
+
+def test_json_default_datetime():
+    """_json_default конвертирует datetime в legacy strftime формат."""
+    from persistence import _json_default
+
+    dt = datetime(2026, 5, 1, 14, 30, 0)
+    assert _json_default(dt) == '2026-05-01 14:30:00.000000'
+
+
+def test_json_default_raises_for_unsupported_type():
+    """_json_default raises TypeError для unsupported types (object, set и т.п.)."""
+    import pytest
+    from persistence import _json_default
+
+    with pytest.raises(TypeError):
+        _json_default(object())

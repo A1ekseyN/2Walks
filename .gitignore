@@ -16,8 +16,14 @@ save.txt
 # History log (4.6) — личные данные игрока, append-only JSONL.
 history.jsonl
 
-# Player save state (CSV-фолбэк) — личные данные, аналогично history.jsonl.
-# Sheets — primary source of truth, CSV пишется на каждый save_characteristic()
-# для offline-fallback. Не версионируем — заводится автоматически при первом
-# `s` в CLI после успешного init_game_state().
+# Player save state — личные данные, аналогично history.jsonl.
+# Sheets — primary source of truth, локальный файл пишется на каждый
+# save_characteristic() для offline-fallback. Заводится автоматически
+# при первом `s` в CLI после успешного init_game_state().
+# - state.json — primary с 1.4.3 (0.2.5)
+# - characteristic.csv — legacy CSV fallback, удалится в 1.4.3.1
+state.json
 characteristic.csv
+
+# Backup snapshots от scripts/backup_sheets_before_migration.py (1.4.3).
+backup_before_*.json
