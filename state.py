@@ -227,6 +227,15 @@ class GameState:
         default=None, repr=False, compare=False
     )
 
+    # 4.48.5.1 — Финализатор откатил мутацию из-за STALE (concurrent save
+    # от CLI / другого web-процесса опередил наш save_characteristic).
+    # **Runtime-only** — НЕ сериализуется. Web `_dashboard_context` после
+    # рендера проверяет флаг → возвращает STALE response с toast +
+    # auto-reload (вместо обычного dashboard'а). CLI игнорирует — там warning
+    # печатается финализатором напрямую. Сбрасывается caller'ом после
+    # обработки.
+    finalize_stale: bool = field(default=False, repr=False, compare=False)
+
     @classmethod
     def default_new_game(cls) -> "GameState":
         """Дефолтное состояние нового персонажа (energy=50, money=0, location=home)."""

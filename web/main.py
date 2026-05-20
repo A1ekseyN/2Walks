@@ -234,6 +234,62 @@ def _stale_response() -> HTMLResponse:
     return HTMLResponse(html)
 
 
+def _stale_response_full_page() -> HTMLResponse:
+    """4.48.5.1 (0.2.5a) — Full HTML page для случая STALE из финализатора.
+
+    Когда `work_check_done` / `skill_training_check_done` /
+    `_finalize_adventure_with_drop_capture` детектит STALE (concurrent save
+    от CLI / другого web-процесса), мутация откатывается и `state.finalize_stale=True`.
+    Endpoint вместо обычного dashboard возвращает эту страницу — полный HTML
+    с warning toast'ом + JS `window.location.reload()` через 2 сек.
+
+    Отличается от `_stale_response()`: тот возвращает фрагмент для HTMX swap,
+    этот — full page для GET / навигации (F5, переход по адресу).
+    """
+    from google_sheets_db import GameStateRepo
+    from sync_diff import diff_states, format_diff_brief, has_changes
+    try:
+        fresh = GameStateRepo().load()
+    except Exception:  # noqa: BLE001
+        fresh = {}
+    snapshot = game.state.last_loaded_snapshot or {} if game.state else {}
+    diff = diff_states(snapshot, fresh)
+    brief = format_diff_brief(diff) if has_changes(diff) else "состояние обновилось"
+    html = (
+        '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">'
+        '<title>2Walks — STALE</title>'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '</head><body style="font-family: sans-serif; padding: 2rem;">'
+        f'<div class="stale-toast" '
+        f'style="padding:1rem; background:#ffd2d2; '
+        f'border:2px solid #d33; border-radius:.5rem; '
+        f'color:#600; font-weight:bold;">'
+        f'⚠️ Финализация прервана: {brief}. Перезагружаю...'
+        f'</div>'
+        f'<script>setTimeout(function(){{window.location.reload();}}, 2000);</script>'
+        '</body></html>'
+    )
+    return HTMLResponse(html)
+
+
+def _render_dashboard_or_stale(request: Request, template_name: str,
+                                context: dict):
+    """4.48.5.1 (0.2.5a) — После `_dashboard_context` проверяет
+    `state.finalize_stale` и возвращает STALE response (fragment или full page)
+    вместо обычного template'а.
+
+    `template_name == "_status_fragment.html"` → fragment STALE (через
+    `_stale_response()` для HTMX swap). Иначе — full page STALE (для GET /
+    navigation).
+    """
+    if game.state is not None and game.state.finalize_stale:
+        game.state.finalize_stale = False
+        if template_name == "_status_fragment.html":
+            return _stale_response()
+        return _stale_response_full_page()
+    return templates.TemplateResponse(request, template_name, context)
+
+
 def _stale_json_response() -> JSONResponse:
     """4.54.6 — JSON-вариант STALE response для API endpoint'ов.
 
@@ -782,12 +838,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
 
     # Auto-finalize тренировки навыка (4.48.4 / 0.2.1e). Если state.training.end
     # < now — повышает уровень навыка на +1 и сбрасывает state.training.
-    # save_characteristic вызывается внутри skill_training_check_done.
-    # GameStateRepo.save отдельно не зовём — на следующее web-mutation
-    # snapshot подтянется. Но если game_state Sheets важен, persist здесь
-    # нужен — для согласованности с work_check_done (который тоже без persist
-    # в Sheets, только save_characteristic локально). Остаётся та же
-    # известная проблема double-claim race (см. TASKS 4.48.5.1).
+    # 4.48.5.1 (0.2.5a): atomic save-first pattern — STALE → rollback +
+    # state.finalize_stale=True (поднят будет в _render_dashboard_or_stale).
     skill_training_check_done(state)
 
     # Auto-finalize работы по таймеру: каждый рендер dashboard'а / fragment'а
@@ -1030,7 +1082,7 @@ async def dashboard(request: Request, sort: str = 'default'):
     try_reload_state()
     context = _dashboard_context(request, inventory_sort=sort)
     # Новый сигнатура Starlette 1.0+: TemplateResponse(request, name, context).
-    return templates.TemplateResponse(request, "dashboard.html", context)
+    return _render_dashboard_or_stale(request, "dashboard.html", context)
 
 
 @app.get("/status", response_class=HTMLResponse)
@@ -1042,7 +1094,7 @@ async def status_fragment(request: Request):
     polling: 1 заход в Sheets на F5, 0 заходов на каждый автообновление (4.54.0).
     """
     context = _dashboard_context(request)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 # ----------------------------------------------------------------------------
@@ -1110,7 +1162,7 @@ async def web_steps(request: Request, steps: int = Form(...)):
         steps_error=result.error if not result.applied else None,
         steps_form_open=not result.applied,
     )
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 # ----------------------------------------------------------------------------
@@ -1177,7 +1229,7 @@ async def web_work_start(request: Request,
         if err == STALE_MARKER:
             return _stale_response()
         context = _dashboard_context(request, work_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/work/add_hours", response_class=HTMLResponse)
@@ -1197,7 +1249,7 @@ async def web_work_add_hours(request: Request, hours: int = Form(...)):
         if err == STALE_MARKER:
             return _stale_response()
         context = _dashboard_context(request, work_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/api/work/start")
@@ -1285,7 +1337,7 @@ async def web_level_allocate(request: Request, skill: str = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, skill_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/api/level/allocate")
@@ -1342,7 +1394,7 @@ async def web_gym_start(request: Request, skill_name: str = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, gym_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/api/gym/start")
@@ -1524,16 +1576,19 @@ def _build_adventure_view(state) -> dict:
 
 
 def _finalize_adventure_with_drop_capture(state) -> None:
-    """Wrapper вокруг Adventure.adventure_check_done, который при transition
-    `active=True → False` (т.е. финализация на этом render'е) захватывает
-    дроп через delta inventory/pending_drop → пишет в state.last_adventure_drop.
+    """Wrapper вокруг Adventure.adventure_check_done с atomic save + STALE rollback.
+
+    4.48.5.1 (0.2.5a): atomic save-first pattern. Tentative mutate inventory /
+    pending_drop / counters / money (forced sale) → save_characteristic → если
+    STALE → rollback всех мутаций (claim отменён, fresh reload подтянет state).
+
+    **Known minor issue:** `Adventure.adventure_check_done` фаерит
+    `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save.
+    При STALE rollback'е эти entries остаются в history (phantom). Не критично —
+    history fail-resistant noise, deferred follow-up 4.48.5.1.1.
 
     Если active=False с самого начала — no-op (не сбрасывает существующий
     notification — чтобы banner переживал F5 после finalize'а).
-
-    Если active=True но end_ts ещё не наступил — тоже no-op (CLI helper
-    напечатает «Персонаж находится в Приключении» но не финализирует —
-    нас интересует только финал).
     """
     if not state.adventure.active:
         return
@@ -1541,23 +1596,41 @@ def _finalize_adventure_with_drop_capture(state) -> None:
     if end_ts is None or end_ts > datetime.now().timestamp():
         return  # ещё не время
 
-    # Capture pre-state.
+    # 4.48.5.1: snapshot для rollback.
+    snap_inventory = list(state.inventory)  # shallow copy refs
+    snap_pending = state.pending_drop
+    snap_adv = (state.adventure.active, state.adventure.name, state.adventure.end_ts)
+    snap_counters = dict(state.adventure.counters)
+    snap_money = state.money  # forced sale при full inventory + pending
+    snap_drop = state.last_adventure_drop
+
+    # Capture pre-state для drop capture.
     inv_len_before = len(state.inventory)
     pending_before = state.pending_drop
 
-    # Делегируем существующему helper'у.
+    # Делегируем существующему helper'у (мутирует state + фаерит log_event).
     from adventure import Adventure
     Adventure.adventure_check_done(self=None, state=state)
 
-    # Capture what dropped.
+    # Capture what dropped (tentative — для banner).
     if len(state.inventory) > inv_len_before:
-        # Normal drop — last item.
         state.last_adventure_drop = state.inventory[-1]
     elif state.pending_drop is not None and pending_before is None:
-        # Full inventory → captured как pending.
         state.last_adventure_drop = state.pending_drop
-    # else: no drop (либо roll missed, либо forced sale — для simplicity
-    # forced sale не показываем, money-delta видна в Stats).
+
+    # Commit в Sheets.
+    from persistence import save_characteristic
+    status = save_characteristic()
+    if status == "STALE":
+        # Rollback всех мутаций — adventure result не подтверждён.
+        state.inventory = snap_inventory
+        state.pending_drop = snap_pending
+        state.adventure.active, state.adventure.name, state.adventure.end_ts = snap_adv
+        state.adventure.counters = snap_counters
+        state.money = snap_money
+        state.last_adventure_drop = snap_drop
+        state.finalize_stale = True
+        print('[adventure finalize] STALE — drop откатан, fresh reload подтянет state.')
 
 
 def _validate_and_apply_adventure(state, adv_name: str) -> Optional[str]:
@@ -1637,7 +1710,7 @@ async def web_adventure_start(request: Request, adv_name: str = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, adventure_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/api/adventure/start")
@@ -1959,7 +2032,7 @@ async def web_inventory_sell(request: Request, index: int = Form(...),
         return _stale_response()
     # preserve sort через HTMX swap (hidden form input был передан).
     context = _dashboard_context(request, drop_error=err, inventory_sort=sort)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/api/inventory/sell")
@@ -1991,7 +2064,7 @@ async def web_equipment_wear(request: Request,
         return _stale_response()
     context = _dashboard_context(request, drop_error=err)
     context['_inventory_sort'] = sort
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/api/equipment/wear")
@@ -2021,7 +2094,7 @@ async def web_equipment_unwear(request: Request,
         return _stale_response()
     context = _dashboard_context(request, drop_error=err)
     context['_inventory_sort'] = sort
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/api/equipment/unwear")
@@ -2337,11 +2410,11 @@ async def web_loadout_preview(request: Request, characteristic: str = Form(...))
     from loadout import OPTIMIZABLE_CHARACTERISTICS
     if characteristic not in OPTIMIZABLE_CHARACTERISTICS:
         context = _dashboard_context(request, loadout_error=f'Неподдерживаемая characteristic: «{characteristic}».')
-        return templates.TemplateResponse(request, "_status_fragment.html", context)
+        return _render_dashboard_or_stale(request, "_status_fragment.html", context)
     preview = _build_optimize_preview(state, characteristic)
     context = _dashboard_context(request)
     context['loadout_preview'] = preview
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/loadout/optimize", response_class=HTMLResponse)
@@ -2354,7 +2427,7 @@ async def web_loadout_optimize(request: Request, characteristic: str = Form(...)
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, loadout_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/preset/save", response_class=HTMLResponse)
@@ -2367,7 +2440,7 @@ async def web_preset_save(request: Request, name: str = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, loadout_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/preset/preview_load", response_class=HTMLResponse)
@@ -2379,10 +2452,10 @@ async def web_preset_preview_load(request: Request, name: str = Form(...)):
     preview = _build_preset_preview(state, name)
     if preview is None:
         context = _dashboard_context(request, loadout_error=f'Preset «{name}» не найден.')
-        return templates.TemplateResponse(request, "_status_fragment.html", context)
+        return _render_dashboard_or_stale(request, "_status_fragment.html", context)
     context = _dashboard_context(request)
     context['loadout_preview'] = preview
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/preset/load", response_class=HTMLResponse)
@@ -2395,7 +2468,7 @@ async def web_preset_load(request: Request, name: str = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, loadout_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/preset/delete", response_class=HTMLResponse)
@@ -2408,7 +2481,7 @@ async def web_preset_delete(request: Request, name: str = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, loadout_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 # ----- JSON API endpoints (без preview — клиенты сами рассчитывают diff) -----
@@ -2670,7 +2743,7 @@ async def web_bank_deposit(request: Request, amount: int = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, bank_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/bank/deposit_all", response_class=HTMLResponse)
@@ -2682,7 +2755,7 @@ async def web_bank_deposit_all(request: Request):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, bank_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/bank/withdraw", response_class=HTMLResponse)
@@ -2694,7 +2767,7 @@ async def web_bank_withdraw(request: Request, amount: int = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, bank_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/bank/withdraw_all", response_class=HTMLResponse)
@@ -2706,7 +2779,7 @@ async def web_bank_withdraw_all(request: Request):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, bank_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/bank/take_loan", response_class=HTMLResponse)
@@ -2718,7 +2791,7 @@ async def web_bank_take_loan(request: Request, amount: int = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, bank_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/bank/repay_loan", response_class=HTMLResponse)
@@ -2730,7 +2803,7 @@ async def web_bank_repay_loan(request: Request, amount: int = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, bank_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/bank/repay_all", response_class=HTMLResponse)
@@ -2742,7 +2815,7 @@ async def web_bank_repay_all(request: Request):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, bank_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 # ----- JSON API endpoints -----
@@ -2893,7 +2966,7 @@ async def web_drop_sell_existing(request: Request, index: int = Form(...)):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, drop_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/drop/sell_new", response_class=HTMLResponse)
@@ -2907,7 +2980,7 @@ async def web_drop_sell_new(request: Request):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, drop_error=err)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.post("/web/drop/skip", response_class=HTMLResponse)
@@ -2919,7 +2992,7 @@ async def web_drop_skip(request: Request):
     if state is None:
         raise HTTPException(status_code=503, detail="state not initialized")
     context = _dashboard_context(request)
-    return templates.TemplateResponse(request, "_status_fragment.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 def _pending_drop_snapshot(state) -> Optional[dict]:

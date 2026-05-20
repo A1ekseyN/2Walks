@@ -205,9 +205,20 @@ class Work:
 
 
 def work_check_done(state: GameState) -> GameState:
-    """Финализатор работы по таймеру: начислить зарплату, обнулить смену, save.
+    """Финализатор работы по таймеру: атомарно начислить зарплату + save.
 
-    Возвращает state (мутированный или нет) — для удобной chain-композиции."""
+    4.48.5.1 (0.2.5a): atomic save-first pattern. Tentative mutate в RAM →
+    save_characteristic → если STALE → rollback RAM (claim отменён, фрешный
+    state придёт с Sheets через STALE response в web / handle_stale_prompt
+    в CLI). Если save OK → claim подтверждён, log_event фаерится.
+
+    Закрывает double-claim race: claim попадает в money ТОЛЬКО если Sheets
+    save прошёл успешно. Web restart до сохранения = в Sheets state.work
+    остаётся active → на reload web попробует финализировать заново, но это
+    будет ПЕРВЫЙ commit (никакого double).
+
+    Возвращает state (мутированный или нет) — для удобной chain-композиции.
+    """
     if state.work.end is None:
         return state
 
@@ -224,23 +235,47 @@ def work_check_done(state: GameState) -> GameState:
         earned = effective_salary * state.work.hours
         finished_vacancy = state.work.work_type
         finished_hours = state.work.hours
+
+        # 4.48.5.1: snapshot для rollback при STALE.
+        snap = (
+            state.money,
+            state.work.work_type,
+            state.work.salary,
+            state.work.active,
+            state.work.hours,
+            state.work.start,
+            state.work.end,
+        )
+
+        # Tentative mutate.
         state.money += earned
-        print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{format_money(earned)}{Style.RESET_ALL} $.')
         state.work.work_type = None
         state.work.salary = 0
         state.work.active = False
         state.work.hours = 0
         state.work.start = None
         state.work.end = None
+
+        # Commit в Sheets.
+        status = save_characteristic()
+        if status == "STALE":
+            # Rollback — claim не подтверждён. На следующем reload (через
+            # STALE response в web или handle_stale_prompt в CLI) фрешный
+            # state с Sheets придёт с уже-финализированной сменой (если
+            # CLI/другой web успел) — там money уже зачислен другим финализатором.
+            (state.money, state.work.work_type, state.work.salary,
+             state.work.active, state.work.hours, state.work.start,
+             state.work.end) = snap
+            state.finalize_stale = True
+            print('[work finalize] STALE — claim откатан, fresh reload подтянет state.')
+            return state
+
+        # Commit подтверждён — фаерим log_event + печатаем для CLI.
+        print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{format_money(earned)}{Style.RESET_ALL} $.')
         # 4.6 — log_event завершения смены. salary = итоговая (с bonus),
         # salary_base = базовая (без bonus) — для отладки.
         from history import log_event
         log_event('work_done', vacancy=finished_vacancy, hours=finished_hours,
                   salary=round(earned, 2), salary_base=base_salary,
                   earnings_boost_pct=state.gym.earnings_boost)
-        # 4.54.4 — finalizers tolerate STALE: state в RAM уже с применённым finalize,
-        # следующий user save получит STALE prompt и через Reload подтянет fresh.
-        status = save_characteristic()
-        if status == "STALE":
-            print('[work finalize] STALE — concurrent save, retry on next user save.')
     return state

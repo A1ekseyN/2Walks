@@ -2234,7 +2234,7 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
 
 ---
 
-### 4.48. Web Interface + FastAPI backend (зонтичная) `[H / L+ / partial — 10/12 substasks done (19.05.2026, 0.2.4w); остался Shop (4.48.7, blocked by 4.7) + минор 4.48.5.1]`
+### 4.48. Web Interface + FastAPI backend (зонтичная) `[H / L+ / partial — 11/12 substasks done (20.05.2026, 0.2.5a); остался Shop (4.48.7, blocked by 4.7)]`
 
 **Цель:** добавить веб-интерфейс игры как параллельный путь играть. Открываешь на iPhone после прогулки — управляешь через браузер. CLI остаётся **primary** (содержит больше функциональности), web нарастает incrementally.
 
@@ -2654,15 +2654,43 @@ sudo systemctl status 2walks    # verify
 - Auto-finalize смены: `work_check_done(state)` вызывается на каждый рендер `_dashboard_context()` — F5 / любой POST автоматически закроет смену, начислит зарплату и обнулит `state.work`. CLI не нужен для claim'а.
 - Известное ограничение: если игрок никогда не зайдёт на web после `state.work.end`, смена не финализируется до следующего захода (или CLI tick'а). Не критично, но см. 4.48.5.1 ниже.
 
-#### 4.48.5.1. Web: double-claim и periodic auto-save `[L / S / todo]`
+#### 4.48.5.1. Web: double-claim race в финализаторах (Work + Training + Adventure) `[L / S / done (20.05.2026, 0.2.5a)]`
 
-**Контекст:** auto-finalize Work через `work_check_done(state)` в `_dashboard_context()` зачисляет зарплату и пишет save_characteristic() сразу при истечении `state.work.end`. Но если в момент финализации Sheets недоступны (или игрок не сохранится через CLI), а потом игра перезапустится — Sheets'овский snapshot будет содержать active=True work, и при следующей загрузке (или reload через 4.54.0) `work_check_done` снова выполнит claim → двойная зарплата.
+**Контекст:** auto-finalize Work / Training / Adventure через `_dashboard_context()` мутировал RAM ПЕРЕД save_characteristic. Если save fail (network / quota) → mutation в RAM, но Sheets stale (state.work.active=True). На web restart → reload из Sheets → финализатор срабатывает снова → **двойной claim**. До 0.2.5a в коде висел warning «retry on next user save» которая не закрывала race.
 
-**Почему не критично сейчас:** save_characteristic пишет и в CSV, и в Sheets (когда credentials есть). Single-user MVP — игрок обычно сразу видит claim и не перезапускает. Но это лазейка, которую закроет либо:
-1. Idempotent claim — пометить `state.work` как "claimed" с timestamp, чтобы повторный work_check_done был no-op.
-2. Periodic auto-save из web (раз в N минут или после каждого mutation endpoint) — гарантия, что Sheets всегда актуален.
+**Реализация (20.05.2026, 0.2.5a, Variant A per design discussion):** Atomic save-first pattern с rollback при STALE.
 
-**Решить:** после внедрения 4.48.3 (Adventure auto-finalize) и 4.48.4 (training auto-finalize), когда станет понятно, какой паттерн обобщать. Возможно, идемпотентность важнее периодического сохранения.
+1. **Новое runtime-only поле** `state.GameState.finalize_stale: bool = field(default=False, repr=False, compare=False)` — НЕ сериализуется, сбрасывается caller'ом после обработки.
+
+2. **3 финализатора рефакторены** одинаковым паттерном:
+   - **`work.work_check_done`** — snapshot (money + 6 work fields) → tentative mutate → save → rollback при STALE. log_event('work_done') + «заработали» print фаерятся только после OK commit.
+   - **`gym.skill_training_check_done`** — snapshot (skill level + 4 training fields) → tentative mutate (+ `stamina_skill_bonus_def` recompute) → save → rollback (+ re-call recompute с старым уровнем). log_event('skill_upgraded') + «улучшен до» print только после OK.
+   - **`web/main.py:_finalize_adventure_with_drop_capture`** — snapshot 6 полей (inventory list + pending_drop + adventure tuple + counters dict + money + last_adventure_drop) → call adventure_check_done → capture drop → save → rollback при STALE.
+
+3. **Web STALE response для финализаторов:**
+   - Новый helper `_stale_response_full_page()` — полный HTML doc с warning toast + JS `window.location.reload()` через 2 сек. Для GET / navigation (в отличие от существующего `_stale_response()` который returns fragment для HTMX swap).
+   - Новая обёртка `_render_dashboard_or_stale(request, template_name, context)` проверяет `state.finalize_stale` после `_dashboard_context` и возвращает либо STALE response, либо обычный template. 20 callers `templates.TemplateResponse` заменены на helper через replace_all.
+
+4. **CLI остаётся прежним UX** — print warning «[X finalize] STALE — claim откатан». На следующем `s`/`q` сработает `handle_stale_prompt` (3-option r/f/c) и подтянет fresh state. Асимметрия web/CLI оправдана: web пассивны (вкладка в браузере), CLI активны (видят каждую stdout строку).
+
+**Closes race:** claim попадает в state ТОЛЬКО если save в Sheets прошёл успешно. Web restart до сохранения = в Sheets state.work остаётся active → reload web попробует финализировать снова, но это будет ПЕРВЫЙ commit (никакого double).
+
+**Known minor issue (deferred 4.48.5.1.1):** `Adventure.adventure_check_done` фаерит `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save. При STALE rollback'е эти entries остаются в history. Не критично (history fail-resistant noise), но не 100% чисто. Fix — refactor adventure_check_done чтобы log_event вызывался ПОСЛЕ save commit (через callback или return-value pattern).
+
+**Тесты:** 6 новых (3 STALE rollback + 1 OK happy-path для adventure + 2 endpoint tests для full-page и fragment STALE). 1 existing test обновлён (mock возвращает "OK" явно). 1051 passed total, mypy 0 issues (68 source files).
+
+##### 4.48.5.1.1. Deferred log_event в Adventure финализаторе `[L / XS / todo (опциональное продолжение 4.48.5.1)]`
+
+**Контекст:** `Adventure.adventure_check_done` (`adventure.py`) фаерит `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save. При STALE rollback'е в `_finalize_adventure_with_drop_capture` (4.48.5.1) эти entries остаются в `history.jsonl` / Sheets `history` лист — phantom события которые не отражают реального state.
+
+**Минорно:** history — fail-resistant noise по дизайну (entries никогда не блокируют gameplay). Phantom drop/adventure_done entries — косметический мусор в логах, не gameplay impact. Возможно когда-то будут влиять на дешборды (4.10) или streak-counter logic — тогда придётся чистить.
+
+**Решение:**
+1. Refactor `Adventure.adventure_check_done` — возвращать tuple `(adv_done_payload, drop_payload)` вместо internal log_event. Caller вызывает `log_event('adventure_done', **adv_done_payload)` + `log_event('drop', **drop_payload)` ПОСЛЕ save commit.
+2. CLI caller (`functions.py:status_bar`) и web wrapper (`_finalize_adventure_with_drop_capture`) обновить под новый return shape.
+3. Тесты — добавить assertion «log_event не фаерится при STALE rollback».
+
+**Effort:** XS (~20-30 строк refactor + 1 тест). **Trigger:** появятся реальные следствия phantom entries (например 4.10 dashboards считают неверный drop rate) — тогда стоит закрывать.
 
 #### 4.48.6. Web: Inventory + Equipment `[M / M / done (19.05.2026, 0.2.4u)]`
 

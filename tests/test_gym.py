@@ -155,7 +155,8 @@ def test_skill_training_check_done_timer_not_expired_no_op():
 def test_skill_training_check_done_timer_expired_levels_up(monkeypatch, capsys):
     """По таймеру повышается уровень, чистится сессия, save_characteristic вызывается."""
     saves = []
-    monkeypatch.setattr('gym.save_characteristic', lambda: saves.append(True))
+    monkeypatch.setattr('gym.save_characteristic',
+                        lambda: (saves.append(True), "OK")[1])
 
     state = GameState.default_new_game()
     state.training.active = True
@@ -170,4 +171,36 @@ def test_skill_training_check_done_timer_expired_levels_up(monkeypatch, capsys):
     assert state.training.skill_name is None
     assert state.training.time_end is None
     assert len(saves) == 1
+    assert state.finalize_stale is False
     assert 'улучшен до 4' in capsys.readouterr().out
+
+
+def test_skill_training_check_done_stale_rollback(monkeypatch, capsys):
+    """4.48.5.1 (0.2.5a): STALE → skill-up откатан, training остаётся активным,
+    log_event не фаерился, state.finalize_stale=True."""
+    log_events = []
+    monkeypatch.setattr('gym.save_characteristic', lambda: "STALE")
+    monkeypatch.setattr('history.log_event', lambda *a, **k: log_events.append((a, k)))
+
+    state = GameState.default_new_game()
+    state.training.active = True
+    state.training.skill_name = 'stamina'
+    end_ts = datetime.now() - timedelta(seconds=1)
+    state.training.time_end = end_ts
+    state.gym.stamina = 3
+
+    skill_training_check_done(state)
+
+    # Rollback — skill не повышен, training активен.
+    assert state.gym.stamina == 3
+    assert state.training.active is True
+    assert state.training.skill_name == 'stamina'
+    assert state.training.time_end == end_ts
+    # Флаг STALE поднят.
+    assert state.finalize_stale is True
+    # log_event не фаерился.
+    assert log_events == []
+    # Warning напечатан, «улучшен» НЕ напечатано.
+    out = capsys.readouterr().out
+    assert 'STALE' in out
+    assert 'улучшен' not in out

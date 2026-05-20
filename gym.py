@@ -320,23 +320,45 @@ def skill_training_check_done(state: GameState) -> None:
     # → прокачал reduction → отдал меньше».
     old_level = getattr(state.gym, skill_name)
     new_level = old_level + 1
-    setattr(state.gym, skill_name, new_level)
-    print(f'\n🏋 Навык {skill_name.title()} улучшен до {new_level}')
-    # 4.6 — log_event значимого события прокачки навыка.
-    from history import log_event
-    log_event('skill_upgraded', skill=skill_name, from_level=old_level, to_level=new_level)
 
+    # 4.48.5.1 (0.2.5a): atomic save-first pattern. Snapshot для rollback при STALE.
+    snap = (
+        getattr(state.gym, skill_name),
+        state.training.active,
+        state.training.skill_name,
+        state.training.timestamp,
+        state.training.time_end,
+    )
+
+    # Tentative mutate.
+    setattr(state.gym, skill_name, new_level)
     state.training.active = False
     state.training.skill_name = None
     state.training.timestamp = None
     state.training.time_end = None
     stamina_skill_bonus_def(state)
-    # 4.54.4 — finalizers tolerate STALE: state в RAM уже с применённым finalize,
-    # следующий user save получит STALE prompt и через Reload подтянет fresh
-    # (где finalize, скорее всего, уже применён web'ом → idempotent).
+
+    # Commit в Sheets.
     status = save_characteristic()
     if status == "STALE":
-        print('[gym finalize] STALE — concurrent save, retry on next user save.')
+        # Rollback — skill-up не подтверждён. На reload state с Sheets
+        # придёт с уже-прокачанным скиллом (если другой процесс успел) →
+        # double-claim не произойдёт.
+        setattr(state.gym, skill_name, snap[0])
+        state.training.active = snap[1]
+        state.training.skill_name = snap[2]
+        state.training.timestamp = snap[3]
+        state.training.time_end = snap[4]
+        stamina_skill_bonus_def(state)
+        state.finalize_stale = True
+        print('[gym finalize] STALE — skill-up откатан, fresh reload подтянет state.')
+        return
+
+    # Commit подтверждён — log_event + печать.
+    print(f'\n🏋 Навык {skill_name.title()} улучшен до {new_level}')
+    # 4.6 — log_event значимого события прокачки навыка.
+    from history import log_event
+    log_event('skill_upgraded', skill=skill_name, from_level=old_level, to_level=new_level)
 
 
 class Skill_Training:

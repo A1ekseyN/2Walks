@@ -116,7 +116,8 @@ def test_work_check_done_timer_not_expired_no_op():
 def test_work_check_done_timer_expired_pays_and_clears(monkeypatch, capsys):
     """По таймеру выплачивается зарплата, сессия очищается, save вызывается."""
     saves = []
-    monkeypatch.setattr('work.save_characteristic', lambda: saves.append(True))
+    monkeypatch.setattr('work.save_characteristic',
+                        lambda: (saves.append(True), "OK")[1])
 
     state = GameState.default_new_game()
     state.work.active = True
@@ -137,7 +138,45 @@ def test_work_check_done_timer_expired_pays_and_clears(monkeypatch, capsys):
     assert state.work.end is None
     assert state.work.start is None
     assert len(saves) == 1
+    assert state.finalize_stale is False
     assert 'заработали' in capsys.readouterr().out.lower()
+
+
+def test_work_check_done_stale_rollback(monkeypatch, capsys):
+    """4.48.5.1 (0.2.5a): save_characteristic вернул STALE → claim откатан,
+    state.finalize_stale=True, log_event не фаерился, money не зачислен."""
+    log_events = []
+    monkeypatch.setattr('work.save_characteristic', lambda: "STALE")
+    monkeypatch.setattr('history.log_event', lambda *a, **k: log_events.append((a, k)))
+
+    state = GameState.default_new_game()
+    state.work.active = True
+    state.work.work_type = 'factory'
+    state.work.salary = 5
+    state.work.hours = 4
+    state.work.start = datetime.now() - timedelta(hours=2)
+    end_ts = datetime.now() - timedelta(seconds=1)
+    state.work.end = end_ts
+    state.money = 100
+
+    work_check_done(state)
+
+    # Rollback — деньги НЕ зачислены, work НЕ очищен.
+    assert state.money == 100
+    assert state.work.active is True
+    assert state.work.work_type == 'factory'
+    assert state.work.salary == 5
+    assert state.work.hours == 4
+    assert state.work.end == end_ts
+    # Флаг STALE поднят для web endpoint обработки.
+    assert state.finalize_stale is True
+    # log_event не фаерился (commit не подтверждён).
+    assert log_events == []
+    # Warning напечатан.
+    out = capsys.readouterr().out
+    assert 'STALE' in out
+    # «Заработали» НЕ напечатано (claim не подтверждён).
+    assert 'заработали' not in out.lower()
 
 
 def test_work_check_done_no_session_no_op():

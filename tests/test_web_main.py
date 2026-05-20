@@ -3410,6 +3410,112 @@ def test_drop_notification_banner_renders_when_set():
     assert 'Helmet' in body
 
 
+# ----- 4.48.5.1 (0.2.5a): adventure STALE rollback -----
+
+def test_finalize_adventure_stale_rollback(monkeypatch):
+    """STALE → adventure rollback: inventory / counters / pending не изменились,
+    state.finalize_stale=True, adventure всё ещё active."""
+    from web.main import _finalize_adventure_with_drop_capture
+    from drop import Drop_Item
+    import persistence as _pers
+
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() - 1
+    state.inventory = []
+    state.adventure.counters = {'walk_easy': 5}
+    _setup_state(state)
+
+    test_item = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8],
+        'quality': [80.0], 'price': [50],
+    }
+    def fake_collect(self, hard, state):
+        state.inventory.append(test_item)
+    monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
+    # Override conftest's mock to simulate STALE.
+    monkeypatch.setattr(_pers, "save_characteristic", lambda: "STALE")
+
+    _finalize_adventure_with_drop_capture(state)
+
+    # Rollback — adventure ещё active, inventory пустой, counter не изменился.
+    assert state.adventure.active is True
+    assert state.adventure.name == 'walk_easy'
+    assert state.inventory == []
+    assert state.adventure.counters.get('walk_easy') == 5
+    assert state.last_adventure_drop is None
+    # Флаг STALE поднят.
+    assert state.finalize_stale is True
+
+
+def test_finalize_adventure_ok_commits(monkeypatch):
+    """save → OK: adventure финализирован, drop в inventory, finalize_stale=False."""
+    from web.main import _finalize_adventure_with_drop_capture
+    from drop import Drop_Item
+    import persistence as _pers
+
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() - 1
+    state.inventory = []
+    state.adventure.counters = {}
+    _setup_state(state)
+
+    test_item = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8],
+        'quality': [80.0], 'price': [50],
+    }
+    def fake_collect(self, hard, state):
+        state.inventory.append(test_item)
+    monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
+    monkeypatch.setattr(_pers, "save_characteristic", lambda: "OK")
+
+    _finalize_adventure_with_drop_capture(state)
+
+    # Commit — adventure cleared, drop captured.
+    assert state.adventure.active is False
+    assert state.adventure.name is None
+    assert state.inventory == [test_item]
+    assert state.adventure.counters.get('walk_easy') == 1
+    assert state.last_adventure_drop is test_item
+    assert state.finalize_stale is False
+
+
+# ----- 4.48.5.1: web endpoint returns STALE response when finalize_stale=True -----
+
+def test_dashboard_returns_stale_full_page_when_finalize_stale_set():
+    """GET / при state.finalize_stale=True → STALE full-page response (с
+    auto-reload script), а не обычный dashboard."""
+    state = GameState.default_new_game()
+    state.finalize_stale = True
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    assert 'Финализация прервана' in body or 'Перезагружаю' in body
+    assert 'window.location.reload' in body
+    # После рендера флаг должен быть сброшен.
+    assert game.state.finalize_stale is False
+
+
+def test_status_fragment_returns_stale_fragment_when_finalize_stale_set():
+    """GET /status при state.finalize_stale=True → fragment STALE response
+    (для HTMX swap), а не обычный fragment."""
+    state = GameState.default_new_game()
+    state.finalize_stale = True
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'stale-toast' in body or 'обновлено извне' in body
+    assert 'window.location.reload' in body
+    assert game.state.finalize_stale is False
+
+
 def test_drop_notification_banner_absent_when_none():
     state = _state_for_adventure()
     state.last_adventure_drop = None
