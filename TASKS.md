@@ -2835,12 +2835,24 @@ Phase 6 (loan skill)   → 4.49.3
 - `gym_menu skill_options`: пункт `'9'` (Банковская ставка). Стоимость шарится из общей `skill_training_table` — отдельная цена не нужна.
 - `_GYM_SKILL_DISPLAY` (web/main.py): запись с иконкой 🏦, effect «+1 % к годовой ставке депозита», available=True. Web Gym 4.48.4 universal — 9-й навык подхватился без изменений шаблонов.
 
-##### 4.49.1.1. Capitalize-on-skill-up + recompute интеграция `[M / S / done (0.2.2, 06.05.2026)]`
+##### 4.49.1.1. Capitalize-on-skill-up + recompute интеграция `[M / S / done (0.2.2, 06.05.2026), затем undone — см. 4.49.1.2 ниже]`
 
 **Реализация (06.05.2026):**
 - Хук в `gym.skill_training_check_done(state)` — при `skill_name=='banking_interest_rate'` ПЕРЕД `setattr(state.gym, ...)` вызывается `accrue_deposit(state)` через lazy import (избегает циклов). Накопленные проценты идут по СТАРОЙ ставке за прошедший период, новая применяется только к будущим — compound interest с капитализацией на событиях, exploit «качнуть навык → бесплатные старые проценты» закрыт.
 - 4 новых теста в test_bank.py: end-to-end сценарий 30+30 дней с upgrade посередине; хук НЕ срабатывает для других навыков; banking_interest_rate в _SKILL_DESCRIPTIONS и _GYM_SKILL_DISPLAY.
 - 2 существующих теста в test_web_main.py обновлены под 9-й навык. All 447 tests pass, mypy 0 issues.
+
+##### 4.49.1.2. Retro-bonus exploit ОТКРЫТ намеренно (откат 4.49.1.1) `[M / XS / done (0.2.4z, 20.05.2026)]`
+
+**Полное обоснование design choice + numerical examples + maintainer warning** — см. `docs/bank_retro_bonus.md`.
+
+**Контекст и мотивация:** игрок попросил намеренно открыть retro-bonus exploit для banking_interest_rate — стимул прокачивать скилл («открыл депозит → прокачал → собрал retro-проценты»). Симметрично уже существующему механизму в work / earnings_boost (4.23 — `state.work.salary` базовая, `apply_earnings_boost` применяется при финализации с текущим уровнем скилла; прокачал во время смены → ретроактивный бонус ко всем часам). До 0.2.4z Bank работал противоположно — closed exploit через capitalize-on-change. Теперь Bank и Work consistent: оба recompute с текущим уровнем.
+
+**Реализация (20.05.2026):**
+- Удалён 10-строчный if-блок в `gym.py:skill_training_check_done` (lines 315-324 в 0.2.4y) — больше нет специальной обработки `banking_interest_rate`. accrue срабатывает только на mutation (top-up / withdraw / take_loan / repay), при следующем accrue новая ставка применяется ретроактивно к накопленному с `last_interest_ts` периоду.
+- Тест `test_skill_up_hook_capitalizes_at_old_rate_first` инвертирован → `test_skill_up_no_accrue_retro_bonus_applies` (проверяет что timestamp НЕ сдвигается на skill-up и retro-bonus реально применяется).
+- Тест `test_skill_up_hook_does_not_fire_for_other_skills` оставлен без изменений (становится избыточным но служит regression защитой).
+- 1020 passed total (без изменения количества тестов).
 
 #### 4.49.2. Кредиты (зонтичная) `[M / M / todo (blocked by 4.49.0)]`
 
@@ -2895,9 +2907,20 @@ Phase 6 (loan skill)   → 4.49.3
    - Handler `_do_repay_loan` — auto-promote message: `Кредит закрыт. Спасибо за пользование банком.` при X == ceil(loan); иначе остаток.
    - Handler `_do_repay_loan_all` — точное float-списание + сообщение «Кредит закрыт. Спасибо за пользование банком.»
 
-4. Хук в `gym.skill_training_check_done`: при `skill_name=='loan_interest_reduction'` ПЕРЕД инкрементом вызывается `accrue_loan` (через lazy import). Симметрично хуку для `banking_interest_rate` — закрывает exploit «качнуть навык → накопленные проценты пересчитаются по новой ставке».
+4. Хук в `gym.skill_training_check_done`: при `skill_name=='loan_interest_reduction'` ПЕРЕД инкрементом вызывается `accrue_loan` (через lazy import). Симметрично хуку для `banking_interest_rate` — закрывает exploit «качнуть навык → накопленные проценты пересчитаются по новой ставке». **(Снят в 4.49.2.2 ниже, 20.05.2026.)**
 
 **Тесты:** 35 новых в test_bank.py (current_loan_rate / max_loan / can_take/repay matrix, accrue_loan idempotent / 100% / no-op, preview no-mutation, _take_loan blocked at skill=0 / normal / cap respect / zero, _repay_loan partial / auto-promote at ceil / over reject / insufficient / no debt / zero, _repay_loan_all exact float / insufficient / no debt, hook capitalize on skill-up для loan_interest_reduction / not on other skills, UI shows credit section / unlocked / take confirmation flow / cancel / repay full message). 1 тест в test_state.py обновлён (expected_keys: +2 ключа). All 499 tests pass (464 + 35), mypy 0 issues.
+
+##### 4.49.2.3. Retro-discount exploit ОТКРЫТ намеренно (откат хука loan_interest_reduction) `[M / XS / done (0.2.4z, 20.05.2026)]`
+
+**Контекст:** парный к 4.49.1.2 (deposit retro-bonus). Игрок попросил намеренно открыть retro-DISCOUNT для кредита — стимул прокачивать `loan_interest_reduction` («взял кредит → прокачал → отдал меньше процентов»). Симметрично earnings_boost в work (4.23). До 0.2.4z hook закрывал exploit — capitalize по СТАРОЙ ставке перед инкрементом.
+
+**Нумерация:** 4.49.2.2 уже занят (Auto-repay toggle, вынесен 13.05.2026 как deferred follow-up). Этой подзадаче присвоен 4.49.2.3 — следующий свободный номер в зонтичной.
+
+**Реализация (20.05.2026):**
+- В 4.49.1.2 удалён весь if-блок в `gym.skill_training_check_done` целиком — обе ветки (`banking_interest_rate` и `loan_interest_reduction`) одновременно. То есть фикс единый.
+- Тест `test_skill_up_hook_for_loan_interest_reduction` инвертирован → `test_skill_up_no_accrue_for_loan_retro_discount` (проверяет что timestamp НЕ сдвигается на skill-up и retro-discount реально применяется при следующем accrue).
+- Тест `test_skill_up_hook_does_not_affect_loan_for_other_skills` оставлен без изменений (regression защита).
 
 ##### 4.49.2.2. Auto-repay toggle: %-отчисление с зарплаты `[L / S / deferred follow-up (вынесена 13.05.2026 из зонтичной 4.49 для closure, номер сохранён для traceability)]`
 

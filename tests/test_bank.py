@@ -498,46 +498,44 @@ def test_bank_menu_deposit_attempt_at_skill_zero_shows_message(monkeypatch, caps
 
 
 # ---------------------------------------------------------------------------
-# 4.49.1.1 — Capitalize-on-skill-up. Хук в gym.skill_training_check_done.
-# Когда тренировка banking_interest_rate завершается, accrue_deposit вызывается
-# ПЕРЕД инкрементом скилла — чтобы накопленные проценты пошли по СТАРОЙ ставке,
-# а новая применялась только к будущим периодам.
+# 4.49.1.2 (0.2.4z) — Retro-bonus exploit ОТКРЫТ намеренно. Хук accrue
+# ПЕРЕД инкрементом скилла удалён. Новая ставка применяется ретроактивно
+# к накопленному времени с last_interest_ts — стимул прокачивать скиллы
+# банка. Симметрично earnings_boost (4.23).
 # ---------------------------------------------------------------------------
 
-def test_skill_up_hook_capitalizes_at_old_rate_first(monkeypatch):
-    """End-to-end: открыли депозит при skill=0 → 30 дней без процентов
-    (т.к. ставка 0%) → завершилась тренировка banking_interest_rate (skill 0→1)
-    → ещё 30 дней → проценты идут только за второй период по 1%."""
+def test_skill_up_no_accrue_retro_bonus_applies(monkeypatch):
+    """End-to-end: открыли депозит при skill=0 (rate 0%) → 30 дней →
+    завершилась тренировка banking_interest_rate (skill 0→1) → НИКАКОГО
+    accrue не произошло (timestamp не сдвинулся) → ручной accrue по
+    НОВОЙ ставке считает проценты за ВЕСЬ 30-дневный период (retro-bonus)."""
     from datetime import datetime
     import gym as gym_module
 
     s = GameState.default_new_game()
     s.bank.deposit_amount = 1000.0
     s.bank.deposit_last_interest_ts = 1000.0
-    # Активная тренировка banking_interest_rate, time_end в прошлом.
     s.training.active = True
     s.training.skill_name = 'banking_interest_rate'
     s.training.time_end = datetime.fromtimestamp(900.0)  # уже истекло
 
-    # Mock time на момент завершения тренировки = +30 дней с открытия депозита.
     monkeypatch.setattr(bank.time, 'time', lambda: 1000.0 + 86400 * 30)
-    # Mock save_characteristic — не пишем в реальные файлы из теста.
     monkeypatch.setattr(gym_module, 'save_characteristic', lambda: None)
 
     gym_module.skill_training_check_done(s)
 
-    # Проценты накопились по СТАРОЙ ставке (0% за 30 дней) → ничего не изменилось.
-    assert s.bank.deposit_amount == 1000.0
-    # Skill инкрементнут после accrue.
+    # Skill инкрементнут.
     assert s.gym.banking_interest_rate == 1
-    # last_interest_ts переехал на момент финализации (= now).
-    assert s.bank.deposit_last_interest_ts == 1000.0 + 86400 * 30
+    # accrue НЕ вызывался — депозит не изменился, timestamp не сдвинулся.
+    assert s.bank.deposit_amount == 1000.0
+    assert s.bank.deposit_last_interest_ts == 1000.0
 
-    # Теперь второй период — 30 дней при skill=1 (ставка 1%).
-    monkeypatch.setattr(bank.time, 'time', lambda: 1000.0 + 86400 * 60)
+    # Следующий accrue (top-up / withdraw / другая mutation) применит НОВУЮ
+    # ставку 1% за все 30 дней с момента открытия депозита = retro-bonus.
     bank.accrue_deposit(s)
     expected_interest = 1000.0 * 0.01 * (86400 * 30 / (365 * 86400))
     assert s.bank.deposit_amount == pytest.approx(1000.0 + expected_interest)
+    assert s.bank.deposit_last_interest_ts == 1000.0 + 86400 * 30
 
 
 def test_skill_up_hook_does_not_fire_for_other_skills(monkeypatch):
@@ -930,12 +928,13 @@ def test_repay_loan_all_no_debt():
     assert paid == 0.0
 
 
-# ----- Hook: capitalize-on-skill-up для loan_interest_reduction -----
+# ----- Loan retro-discount (4.49.2.3 / 0.2.4z): см. 4.49.1.2 для deposit -----
 
-def test_skill_up_hook_for_loan_interest_reduction(monkeypatch):
-    """End-to-end: взяли кредит при skill=0 → 30 дней под 100% → завершилась
-    тренировка loan_interest_reduction (skill 0→1) → ещё 30 дней под 99% →
-    проценты идут по разным ставкам в разные периоды."""
+def test_skill_up_no_accrue_for_loan_retro_discount(monkeypatch):
+    """End-to-end: взяли кредит при skill=0 (rate 100%) → 30 дней →
+    завершилась тренировка loan_interest_reduction (skill 0→1, rate 99%) →
+    НИКАКОГО accrue не произошло → следующий accrue считает по НОВОЙ ставке
+    99% за весь период = retro-DISCOUNT (player отдал меньше)."""
     from datetime import datetime
     import gym as gym_module
 
@@ -952,12 +951,16 @@ def test_skill_up_hook_for_loan_interest_reduction(monkeypatch):
 
     gym_module.skill_training_check_done(s)
 
-    # Капитализация по СТАРОЙ ставке (100% × 30 дней).
-    expected = 100.0 + 100.0 * 1.0 * (86400 * 30 / (365 * 86400))
-    assert s.bank.loan_amount == pytest.approx(expected, rel=1e-4)
     assert s.gym.loan_interest_reduction == 1
-    # Timestamp обновлён на момент апгрейда.
-    assert s.bank.loan_last_interest_ts == 1000.0 + 86400 * 30
+    # accrue НЕ вызывался на skill-up — долг и timestamp не трогались.
+    assert s.bank.loan_amount == 100.0
+    assert s.bank.loan_last_interest_ts == 1000.0
+
+    # Следующий accrue применит НОВУЮ ставку 99% за весь 30-дневный период
+    # (вместо 100% если бы accrue сработал на skill-up).
+    bank.accrue_loan(s)
+    expected = 100.0 + 100.0 * 0.99 * (86400 * 30 / (365 * 86400))
+    assert s.bank.loan_amount == pytest.approx(expected, rel=1e-4)
 
 
 def test_skill_up_hook_does_not_affect_loan_for_other_skills(monkeypatch):

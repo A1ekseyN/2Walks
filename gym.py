@@ -312,16 +312,12 @@ def skill_training_check_done(state: GameState) -> None:
         return
 
     skill_name = state.training.skill_name
-    # 4.49.1.1 / 4.49.2.1: capitalize-on-skill-up — для banking_interest_rate
-    # и loan_interest_reduction сначала начисляем проценты по СТАРОЙ ставке за
-    # прошедший период, потом инкрементим скилл. Иначе новая ставка применилась
-    # бы задним числом (exploit). Lazy import — избегаем циклов.
-    if skill_name == 'banking_interest_rate':
-        from bank import accrue_deposit
-        accrue_deposit(state)
-    elif skill_name == 'loan_interest_reduction':
-        from bank import accrue_loan
-        accrue_loan(state)
+    # 4.49.1.2 / 4.49.2.3 (0.2.4z): retro-bonus exploit ОТКРЫТ намеренно —
+    # симметрично earnings_boost (4.23). accrue срабатывает только на mutation
+    # (top-up / withdraw / take_loan / repay), новая ставка применяется
+    # ретроактивно к накопленному времени. Stimulus для прокачки скиллов:
+    # «открыл депозит → прокачал → собрал с retro-процентами» / «взял кредит
+    # → прокачал reduction → отдал меньше».
     old_level = getattr(state.gym, skill_name)
     new_level = old_level + 1
     setattr(state.gym, skill_name, new_level)
