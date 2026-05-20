@@ -112,7 +112,7 @@ def test_state_attribute_is_live_reference():
 
 def test_save_characteristic_returns_ok_on_clean_save(monkeypatch, tmp_path):
     """Чистый save: Sheets.save_safe OK → return "OK" + snapshot обновлён."""
-    from characteristics import save_characteristic
+    from persistence import save_characteristic
     import google_sheets_db
 
     _reset_game_container()
@@ -145,7 +145,7 @@ def test_save_characteristic_returns_ok_on_clean_save(monkeypatch, tmp_path):
 
 def test_save_characteristic_returns_stale_no_state_mutation(monkeypatch, tmp_path):
     """STALE: state.last_modified не меняется, snapshot не меняется, CSV не пишется."""
-    from characteristics import save_characteristic
+    from persistence import save_characteristic
     import google_sheets_db
 
     _reset_game_container()
@@ -174,7 +174,7 @@ def test_save_characteristic_returns_stale_no_state_mutation(monkeypatch, tmp_pa
 
 def test_handle_stale_prompt_cancel(monkeypatch, capsys):
     """Cancel — без мутаций state'а, log_event sync_conflict зафиксирован."""
-    from characteristics import handle_stale_prompt
+    from persistence import handle_stale_prompt
     import google_sheets_db
     import history
 
@@ -212,7 +212,7 @@ def test_handle_stale_prompt_cancel(monkeypatch, capsys):
 
 def test_handle_stale_prompt_reload(monkeypatch):
     """Reload — re-init из Sheets, state синкан с свежими данными."""
-    from characteristics import handle_stale_prompt
+    from persistence import handle_stale_prompt
     import google_sheets_db
     import history
 
@@ -245,7 +245,7 @@ def test_handle_stale_prompt_reload(monkeypatch):
 
 def test_handle_stale_prompt_force_with_double_confirm(monkeypatch, capsys):
     """Force — двойной confirm prompt → save_safe с expected=None (bypass)."""
-    from characteristics import handle_stale_prompt
+    from persistence import handle_stale_prompt
     import google_sheets_db
     import history
 
@@ -289,7 +289,7 @@ def test_handle_stale_prompt_force_with_double_confirm(monkeypatch, capsys):
 
 def test_handle_stale_prompt_force_aborted_on_no_confirm(monkeypatch):
     """Force confirm `no` — возврат в loop, повторный выбор."""
-    from characteristics import handle_stale_prompt
+    from persistence import handle_stale_prompt
     import google_sheets_db
     import history
 
@@ -317,7 +317,7 @@ def test_handle_stale_prompt_force_aborted_on_no_confirm(monkeypatch):
 
 def test_handle_stale_prompt_invalid_choice_loops(monkeypatch):
     """Невалидный ввод → повтор prompt'а."""
-    from characteristics import handle_stale_prompt
+    from persistence import handle_stale_prompt
     import google_sheets_db
     import history
 
@@ -338,7 +338,7 @@ def test_handle_stale_prompt_invalid_choice_loops(monkeypatch):
 
 def test_handle_stale_prompt_load_failed_returns_cancel(monkeypatch, capsys):
     """Sheets load fail → возврат cancel без prompt'а."""
-    from characteristics import handle_stale_prompt
+    from persistence import handle_stale_prompt
     import google_sheets_db
 
     _reset_game_container()
@@ -359,7 +359,7 @@ def test_handle_stale_prompt_load_failed_returns_cancel(monkeypatch, capsys):
 
 def test_save_characteristic_network_error_returns_ok(monkeypatch, tmp_path, capsys):
     """Sheets network error → CSV-only fallback, return "OK" + warning в лог."""
-    from characteristics import save_characteristic
+    from persistence import save_characteristic
     import google_sheets_db
 
     _reset_game_container()

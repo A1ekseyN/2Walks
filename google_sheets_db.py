@@ -98,43 +98,17 @@ def _rows_to_state_dict(rows: list) -> dict:
     """rows из листа game_state → flat-dict (формат, который ест GameState.from_dict).
 
     Принимает rows БЕЗ заголовка (первая строка с ключом отброшена caller'ом).
-    Восстанавливает int / float / bool / None / dict / list / datetime по форме строки.
+    Использует unified `persistence._parse_value` (1.4.2, 0.2.4y) — общий
+    parser для CSV и Sheets. Раньше тут была дублированная type-detection
+    логика (json.loads + ast.literal_eval + manual int/bool/datetime).
     """
+    from persistence import _parse_value  # lazy: persistence → characteristics → state
     data = {}
     for row in rows:
         if len(row) < 2:
             continue
         key, value = row[0], row[1]
-        # Пытаемся как JSON — для list/dict.
-        try:
-            data[key] = json.loads(value)
-        except (json.JSONDecodeError, TypeError):
-            data[key] = value if not (isinstance(value, str) and value.isdigit()) else int(value)
-
-        # Разбираем как Python-литерал (list/dict с одинарными кавычками).
-        if isinstance(data[key], str):
-            v = data[key]
-            try:
-                data[key] = ast.literal_eval(v)
-            except (ValueError, SyntaxError):
-                pass
-
-            if isinstance(data[key], str):
-                if v.isdigit():
-                    data[key] = int(v)
-                elif v.replace('.', '', 1).isdigit():
-                    data[key] = float(v)
-                elif v.lower() in ('true', 'false'):
-                    data[key] = v.lower() == 'true'
-                elif v == '':
-                    data[key] = None
-
-            # Datetime поля — explicit парсинг.
-            if key in _DATETIME_KEYS and isinstance(data[key], str):
-                try:
-                    data[key] = datetime.strptime(data[key], _DATETIME_FMT)
-                except ValueError:
-                    pass
+        data[key] = _parse_value(value, key=key)
     return data
 
 

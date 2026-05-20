@@ -9,8 +9,10 @@ from colorama import init
 
 from characteristics import (
     game,
-    handle_stale_prompt,
     init_game_state,
+)
+from persistence import (
+    handle_stale_prompt,
     save_characteristic,
 )
 from adventure import Adventure

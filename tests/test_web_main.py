@@ -65,9 +65,12 @@ def patch_sheets_load(monkeypatch):
         if status == "OK":
             game.state.take_snapshot()
         return status
-    import characteristics as _ch
+    # 1.3.3 (0.2.4y): save_characteristic жив в persistence.py + locally
+    # импортируется во многих модулях. Патчим все local refs т.к. они
+    # импортированы через `from persistence import save_characteristic`.
+    import persistence as _pers
     import work as _wm
-    monkeypatch.setattr(_ch, "save_characteristic", fake_save_characteristic)
+    monkeypatch.setattr(_pers, "save_characteristic", fake_save_characteristic)
     monkeypatch.setattr(_wm, "save_characteristic", fake_save_characteristic)
     # И в web.sync (persist_state_to_cloud зовёт save_characteristic локально —
     # после переноса helper'а из web/main.py в web/sync.py в 0.2.1b).

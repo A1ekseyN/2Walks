@@ -20,7 +20,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Optional
 
-from characteristics import apply_steps_log_max_merge, game, save_characteristic
+from characteristics import apply_steps_log_max_merge, game
+from persistence import save_characteristic
 from functions import save_game_date_last_enter
 from google_sheets_db import GameStateRepo
 

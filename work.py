@@ -5,7 +5,7 @@ from typing import Optional
 
 from colorama import Fore, Style
 
-from characteristics import save_characteristic
+from persistence import save_characteristic
 from settings import debug_mode
 from functions_02 import format_money, time
 from equipment_bonus import equipment_speed_skill_bonus

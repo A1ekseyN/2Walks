@@ -27,10 +27,12 @@ import time
 
 import pytest
 
-import characteristics
+import characteristics  # noqa: F401 — used by old test refs (kept для других обращений)
+import persistence
 import google_sheets_db
 import history
-from characteristics import game, init_game_state, save_characteristic
+from characteristics import game, init_game_state
+from persistence import save_characteristic
 from state import GameState
 
 
@@ -163,7 +165,7 @@ def test_scenario_web_wins_then_cli_reload_and_redo(monkeypatch, tmp_path):
 
     # Шаг 4: CLI пользователь выбирает Reload → handle_stale_prompt re-init из backend.
     monkeypatch.setattr('builtins.input', lambda *a, **k: 'r')
-    choice = characteristics.handle_stale_prompt()
+    choice = persistence.handle_stale_prompt()
     assert choice == 'reload'
     # State теперь имеет money=1100 (web'овский) и свежий last_modified=t1.
     assert game.state.money == 1100.0
@@ -294,7 +296,7 @@ def test_scenario_log_event_sync_conflict_payload(
     inputs = iter([user_choice] + extra_inputs)
     monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
 
-    choice = characteristics.handle_stale_prompt()
+    choice = persistence.handle_stale_prompt()
     assert choice == expected_choice
 
     # log_event('sync_conflict', ...) ровно один раз с правильным payload.

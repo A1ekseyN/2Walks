@@ -56,7 +56,7 @@
 
 ---
 
-### 1.3. Разделить `functions.py` и `characteristics.py` по смыслу (зонтичная) `[M / M / partial (3 из 6 подзадач сделано, 0.2.3f)]`
+### 1.3. Разделить `functions.py` и `characteristics.py` по смыслу (зонтичная) `[M / M / partial (4 из 6 подзадач сделано: 1.3.1/2/2.1/3 done; 1.3.4 + 1.3.5 отложены)]`
 
 Обе изначально «помойки» — смешанная функциональность в одном файле. `functions.py` (~298 строк) содержит: timestamp helpers, energy regen, UI status_bar, day rollover, steps logic, formulas. `characteristics.py` (был ~509 строк, после 1.3.1+1.3.2 — ~215 строк): state container + save/load.
 
@@ -106,9 +106,17 @@
 
 **Можно ли повторно запускать аудит:** да — простой grep, тривиальная routine task. Если в будущем при copy-paste из старого кода всплывёт stale import — снова сделать audit за минуту.
 
-#### 1.3.3. Вынести save/load в `persistence.py` `[M / M / todo (связано с 1.4.2/1.4.3)]`
+#### 1.3.3. Вынести save/load в `persistence.py` `[M / M / done (20.05.2026, 0.2.4y; combined с 1.4.2)]`
 
 Move `save_characteristic`, `load_characteristic`, `load_data_from_google_sheet_or_csv` из characteristics.py в новый `persistence.py`. Связано с 1.4.x (унификация форматов) — лучше делать вместе либо после.
+
+**Реализовано (20.05.2026, 0.2.4y, combined с 1.4.2):**
+- Создан `persistence.py` (~330 строк) — 4 функции вынесены из characteristics.py + unified parser + `_DATETIME_FMT` / `_DATETIME_KEYS` constants.
+- `characteristics.py` сокращён 366 → ~125 строк — оставлены только container (`_GameContainer` / `game`) + lifecycle (`init_game_state` + `apply_steps_log_max_merge`).
+- Hard break — все импортёры переписаны: game.py / web/sync.py / gym.py / work.py / 3 test файла (`test_characteristics` / `test_sync_e2e` / `test_web_main` monkeypatch fixture).
+- Удалён stale `DATE_KEYS` constant (6-keys list был неиспользуемым; реально работает только `_DATETIME_KEYS` 3-keys).
+- Lazy imports внутри функций разрешают circular: characteristics.init_game_state → persistence.load_data_from_google_sheet_or_csv → google_sheets_db._rows_to_state_dict → persistence._parse_value (lazy внутри метода).
+- 29 новых тестов для `_parse_value` (см. 1.4.2). 1020 passed total, mypy 0 issues (67 source files).
 
 #### 1.3.4. Вынести UI helpers (status_bar, char_info, format_steps) `[L / S / todo (отложено — польза маргинальная)]`
 
@@ -136,7 +144,7 @@ Move 5–7 UI/display функций из functions.py в `ui_helpers.py` или
 
 ---
 
-### 1.4. Единый формат сохранения (зонтичная) `[M / M / todo]`
+### 1.4. Единый формат сохранения (зонтичная) `[M / M / partial (1.4.1 + 1.4.2 done; 1.4.3 JSON-blob todo)]`
 
 Сейчас параллельные форматы сохранения: `characteristic.csv` (ast.literal_eval), Google Sheets (гибридный парсинг), и был `characteristic.txt` (JSON, удалён в 1.4.1). Каждое новое поле требует поддержки в нескольких местах — отсюда баги с датами и типами (например 5.6.1 для adventure end_ts).
 
@@ -158,7 +166,14 @@ Move 5–7 UI/display функций из functions.py в `ui_helpers.py` или
 - CSV save/load — offline fallback, без изменений.
 - 530 tests pass, mypy 0 issues.
 
-#### 1.4.2. Унификация парсеров CSV ↔ Sheets `[M / S / todo]`
+#### 1.4.2. Унификация парсеров CSV ↔ Sheets `[M / S / done (20.05.2026, 0.2.4y; combined с 1.3.3)]`
+
+**Реализовано (20.05.2026, 0.2.4y, combined с 1.3.3):**
+- Unified parser `persistence._parse_value(value, key=None) -> Any` — priority chain: non-string passthrough → empty→None → json.loads → ast.literal_eval → manual int/float/bool detection → datetime для DATE_KEYS → plain string fallback.
+- `load_characteristic()` (в persistence.py) использует `_parse_value` для каждой CSV-ячейки. Раньше — inline ~15 строк type-detection.
+- `google_sheets_db._rows_to_state_dict()` сократился с ~40 строк до 8 — делегирует в `_parse_value`. Раньше — дублированная hybrid-парсинг логика.
+- Format сейвов 100% backwards-compat — никаких изменений в записи / структуре Sheets/CSV.
+- 29 тестов для всех edge cases.
 
 После 1.4.1 у нас 2 формата с РАЗНЫМ парсингом:
 - CSV: `ast.literal_eval` для nested dict/list, плюс explicit conversion в `from_dict`.
