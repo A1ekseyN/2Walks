@@ -25,7 +25,7 @@ import time
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from characteristics import game
+from characteristics import apply_steps_log_max_merge, game
 from settings import debug_mode
 from state import GameState
 
@@ -330,6 +330,15 @@ def save_characteristic() -> Literal["OK", "STALE"]:
     """
     if game.state is None:
         raise RuntimeError("game.state не инициализирован — вызови init_game_state() до save_characteristic().")
+
+    # 4.48.5.3 (0.2.5c): defense против регрессии steps.today при save.
+    # Web RAM мог устареть относительно steps_log (max-merge выполняется только
+    # в try_reload_state на GET /, не на каждом mutation endpoint). Без этого
+    # max-merge web mutation писала state.steps.today из устаревшего snapshot'а,
+    # затирая bigger value в Sheets → реальная регрессия (диагноз 20.05.2026).
+    # Silent-fail внутри если steps_log недоступен — не блокируем save.
+    apply_steps_log_max_merge(game.state)
+
     state_dict = game.state.to_dict()
     if debug_mode:
         print(f'Сохраняем данные: {state_dict}')

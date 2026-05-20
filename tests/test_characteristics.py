@@ -143,6 +143,104 @@ def test_save_characteristic_returns_ok_on_clean_save(monkeypatch, tmp_path):
     assert game.state.last_loaded_snapshot['last_modified'] == 1700000000.0
 
 
+# ----- 4.48.5.3 (0.2.5c): max-merge перед save (защита от регрессии steps.today) -----
+
+def test_save_max_merges_steps_today_from_log_before_persist(monkeypatch, tmp_path):
+    """Перед save_safe вызывается apply_steps_log_max_merge. Если в steps_log
+    есть запись с bigger value чем state.steps.today — RAM поднимается, в Sheets
+    идёт уже свежее значение. Защита от регрессии (диагноз 20.05.2026)."""
+    from persistence import save_characteristic
+    import google_sheets_db
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    s.steps.today = 100  # web RAM думает что сегодня 100
+    init_game_state(s)
+    monkeypatch.chdir(tmp_path)
+
+    # Mock StepsLogRepo.for_day → возвращает entry с 500 (другой процесс ввёл).
+    monkeypatch.setattr(
+        google_sheets_db.StepsLogRepo, "for_day",
+        lambda self, date_str, user_id=None: [{'steps': 500}],
+    )
+
+    # Capture state_dict sent to save_safe.
+    saved_dicts = []
+    def fake_save_safe(self, state_dict, expected_last_modified):
+        saved_dicts.append(dict(state_dict))
+        state_dict['last_modified'] = 1700000000.0
+        return "OK"
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe", fake_save_safe)
+
+    save_characteristic()
+
+    # RAM поднялся до 500 (max-merge).
+    assert game.state.steps.today == 500
+    # В Sheets ушло 500 (не 100 = регрессия).
+    assert saved_dicts[0]['steps_today'] == 500
+
+
+def test_save_max_merge_no_regression_when_ram_higher(monkeypatch, tmp_path):
+    """Если RAM содержит большее значение чем log — max-merge no-op, save идёт с RAM."""
+    from persistence import save_characteristic
+    import google_sheets_db
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    s.steps.today = 1000  # RAM свежий
+    init_game_state(s)
+    monkeypatch.chdir(tmp_path)
+
+    # Log содержит меньше — max-merge не должен снижать.
+    monkeypatch.setattr(
+        google_sheets_db.StepsLogRepo, "for_day",
+        lambda self, date_str, user_id=None: [{'steps': 500}],
+    )
+
+    saved_dicts = []
+    def fake_save_safe(self, state_dict, expected_last_modified):
+        saved_dicts.append(dict(state_dict))
+        state_dict['last_modified'] = 1700000000.0
+        return "OK"
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe", fake_save_safe)
+
+    save_characteristic()
+
+    # RAM остался 1000 (max-merge не снижает).
+    assert game.state.steps.today == 1000
+    assert saved_dicts[0]['steps_today'] == 1000
+
+
+def test_save_max_merge_silent_fail_when_log_unavailable(monkeypatch, tmp_path):
+    """Если StepsLogRepo бросает — max-merge silent-fail, save продолжается с RAM."""
+    from persistence import save_characteristic
+    import google_sheets_db
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    s.steps.today = 100
+    init_game_state(s)
+    monkeypatch.chdir(tmp_path)
+
+    def failing_for_day(self, date_str, user_id=None):
+        raise RuntimeError("Sheets unavailable")
+    monkeypatch.setattr(google_sheets_db.StepsLogRepo, "for_day", failing_for_day)
+
+    saved_dicts = []
+    def fake_save_safe(self, state_dict, expected_last_modified):
+        saved_dicts.append(dict(state_dict))
+        state_dict['last_modified'] = 1700000000.0
+        return "OK"
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe", fake_save_safe)
+
+    status = save_characteristic()
+
+    # Save прошёл со старым значением (offline-tolerance).
+    assert status == "OK"
+    assert game.state.steps.today == 100
+    assert saved_dicts[0]['steps_today'] == 100
+
+
 def test_save_characteristic_returns_stale_no_state_mutation(monkeypatch, tmp_path):
     """STALE: state.last_modified не меняется, snapshot не меняется, CSV не пишется."""
     from persistence import save_characteristic

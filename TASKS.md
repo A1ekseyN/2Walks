@@ -2679,6 +2679,18 @@ sudo systemctl status 2walks    # verify
 
 **Тесты:** 6 новых (3 STALE rollback + 1 OK happy-path для adventure + 2 endpoint tests для full-page и fragment STALE). 1 existing test обновлён (mock возвращает "OK" явно). 1051 passed total, mypy 0 issues (68 source files).
 
+#### 4.48.5.3. Защита от регрессии state.steps.today при save `[H / XS / done (20.05.2026, 0.2.5c)]`
+
+**Реальный инцидент 20.05.2026:** игрок в CLI увидел STALE diff `steps.today: 2,878 → 2,171 (-707)` — Sheets откатился на меньшее значение чем CLI знал из max-merge'а steps_log.
+
+**Root cause:** web RAM содержал устаревший state.steps.today=2,171 (web load был ДО появления entry 2,878 в steps_log). `apply_steps_log_max_merge` запускается ТОЛЬКО в `try_reload_state` на GET /, не на каждом mutation endpoint. Когда web mutation запустила `persist_state_to_cloud` → save_safe записала stale value поверх свежего в Sheets. Optimistic concurrency (4.54) не помогла — web корректно прошёл pre-check, просто записал stale value со свежим last_modified.
+
+**Fix A (Variant A per design discussion):** в `save_characteristic` ПЕРЕД формированием state_dict вызывается `apply_steps_log_max_merge(game.state)` — гарантия что любой save пишет в Sheets текущий максимум по log'у. Реализация ~5 строк (импорт + вызов). Silent-fail если steps_log недоступен (offline-tolerance).
+
+**Тесты:** 3 новых в `tests/test_characteristics.py` (max-merge before save / no regression when RAM higher / silent fail). 1056 passed. **Стоимость:** +1 Sheets API call (~500ms) на save.
+
+**Альтернативы рассмотрены:** B (max-merge на каждом render — too expensive), C (helper в `_state_dict_to_blob_rows` — глубоко в репозитории), D (не сохранять steps_today в Sheets — большой refactor), E (auto-resolve STALE регрессии — прячет проблему).
+
 #### 4.48.5.2. Navigation overlay при F5 / pull-to-refresh `[L / XS / done (20.05.2026, 0.2.5b)]`
 
 **Контекст:** игрок жаловался: «при заходе на web в новый день страница как будто зависает на 3-5 секунд». Объективно — `try_reload_state` делает 4 Sheets round-trip'а при rollover (load game_state + read steps_log + load_meta + save_safe write), total 3.5-5 сек. Native browser spinner на iPhone Safari еле виден.
