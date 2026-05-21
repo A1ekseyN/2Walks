@@ -15,6 +15,7 @@ import pytest
 
 from google_sheets_db import (
     GameStateRepo,
+    HistoryLogRepo,
     StepsLogRepo,
     _blob_rows_to_state_dict,
     _format_steps_entry,
@@ -438,6 +439,83 @@ def test_save_safe_legacy_first_save_passes(monkeypatch):
     assert status == "OK"
     # last_modified теперь реальный
     assert state_dict['last_modified'] > 0.0
+
+
+# ----- HistoryLogRepo.since (4.2 / 0.2.5e) -----
+
+def test_history_since_filters_old_events(monkeypatch):
+    """Events с ts < since не возвращаются."""
+    ws = MagicMock()
+    ws.get_values.return_value = [
+        ['ts', 'datetime', 'user_id', 'game_version', 'event_type', 'payload_json'],
+        [100.0, '2026-05-20 10:00:00', 'alex', '0.2.5d', 'work_done', '{"hours": 1}'],
+        [200.0, '2026-05-20 11:00:00', 'alex', '0.2.5d', 'skill_upgraded', '{"skill": "stamina"}'],
+        [300.0, '2026-05-20 12:00:00', 'alex', '0.2.5d', 'save', '{}'],
+    ]
+    repo = HistoryLogRepo()
+    monkeypatch.setattr(repo, '_ensure_sheet', lambda: ws)
+
+    events = repo.since(150.0)
+    assert len(events) == 2
+    assert events[0]['ts'] == 200.0
+    assert events[1]['ts'] == 300.0
+
+
+def test_history_since_parses_payload_json(monkeypatch):
+    """Payload-колонка парсится из JSON-string в dict."""
+    ws = MagicMock()
+    ws.get_values.return_value = [
+        ['ts', 'datetime', 'user_id', 'game_version', 'event_type', 'payload_json'],
+        [100.0, '2026-05-20 10:00:00', 'alex', '0.2.5d', 'work_done',
+         '{"vacancy": "watchman", "hours": 4, "salary": 40.0}'],
+    ]
+    repo = HistoryLogRepo()
+    monkeypatch.setattr(repo, '_ensure_sheet', lambda: ws)
+
+    events = repo.since(50.0)
+    assert events[0]['type'] == 'work_done'
+    assert events[0]['payload'] == {'vacancy': 'watchman', 'hours': 4, 'salary': 40.0}
+
+
+def test_history_since_silent_fail_on_network_error(monkeypatch):
+    """Sheets error → пустой list (report не критичен)."""
+    repo = HistoryLogRepo()
+    def failing(self):
+        raise RuntimeError("Sheets unavailable")
+    monkeypatch.setattr(HistoryLogRepo, '_ensure_sheet', failing)
+
+    assert repo.since(100.0) == []
+
+
+def test_history_since_skips_invalid_ts(monkeypatch):
+    """Row с невалидным ts (не float-parseable) — пропускается."""
+    ws = MagicMock()
+    ws.get_values.return_value = [
+        ['ts', 'datetime', 'user_id', 'game_version', 'event_type', 'payload_json'],
+        ['not-a-number', '2026-05-20', 'alex', '0.2.5d', 'work_done', '{}'],
+        [200.0, '2026-05-20', 'alex', '0.2.5d', 'skill_upgraded', '{}'],
+    ]
+    repo = HistoryLogRepo()
+    monkeypatch.setattr(repo, '_ensure_sheet', lambda: ws)
+
+    events = repo.since(100.0)
+    assert len(events) == 1
+    assert events[0]['type'] == 'skill_upgraded'
+
+
+def test_history_since_handles_invalid_payload_json(monkeypatch):
+    """Невалидный JSON payload → пустой dict, но event возвращается."""
+    ws = MagicMock()
+    ws.get_values.return_value = [
+        ['ts', 'datetime', 'user_id', 'game_version', 'event_type', 'payload_json'],
+        [100.0, '2026-05-20', 'alex', '0.2.5d', 'work_done', 'not-a-json'],
+    ]
+    repo = HistoryLogRepo()
+    monkeypatch.setattr(repo, '_ensure_sheet', lambda: ws)
+
+    events = repo.since(50.0)
+    assert len(events) == 1
+    assert events[0]['payload'] == {}
 
 
 # ----- StepsLogRepo (mock gspread) -----

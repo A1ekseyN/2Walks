@@ -52,6 +52,14 @@ def play():
     if state is None:
         raise RuntimeError("game.state не инициализирован — вызови init_game_state() до play().")
 
+    # 4.2 — «Пока тебя не было» report. Печатается единожды перед main loop'ом
+    # если в Sheets `history` есть события с `ts >= prior_timestamp_last_enter`.
+    # Очищает list после печати чтобы не повторяться.
+    if state.startup_report:
+        from report import format_report_cli
+        print('\n' + format_report_cli(state.startup_report, state.startup_report_since_ts))
+        state.startup_report = []
+
     while True:
         # Adventure пересоздаётся каждый цикл, чтобы adventure_requirements увидели
         # актуальную прокачку move_optimization_adventure (см. TASKS.md 2.3).

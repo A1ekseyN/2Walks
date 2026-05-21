@@ -236,6 +236,16 @@ class GameState:
     # обработки.
     finalize_stale: bool = field(default=False, repr=False, compare=False)
 
+    # 4.2 — «Пока тебя не было» report. Накапливается в init_game_state из
+    # Sheets `history` лист (события с `ts >= prior_timestamp_last_enter`).
+    # **Runtime-only** — НЕ сериализуется. CLI печатает через
+    # report.format_report_cli перед main loop'ом и очищает. Web рендерит
+    # banner через template и очищает после первого render'а.
+    # `startup_report_since_ts` — момент prior_timestamp_last_enter, нужен
+    # форматтеру для отображения «прошло Y часов».
+    startup_report: list = field(default_factory=list, repr=False, compare=False)
+    startup_report_since_ts: float = field(default=0.0, repr=False, compare=False)
+
     @classmethod
     def default_new_game(cls) -> "GameState":
         """Дефолтное состояние нового персонажа (energy=50, money=0, location=home)."""

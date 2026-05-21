@@ -65,6 +65,12 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     loaded = load_data_from_google_sheet_or_csv()
     s = GameState.from_dict(loaded)
 
+    # 4.2 — Capture prior_timestamp_last_enter ДО перезаписи. Используется
+    # для report «пока тебя не было» (events from history.jsonl с
+    # `ts >= prior_ts`). Должно быть ДО строки `s.timestamp_last_enter = now`
+    # иначе период будет пустой.
+    prior_ts = s.timestamp_last_enter
+
     # Legacy fixups, которые делались на module-level до 1.2:
     # - timestamp_last_enter всегда обновляется до текущего момента при загрузке.
     # - loc всегда сбрасывается в 'home' (загруженное значение игнорируется).
@@ -83,6 +89,17 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # максимума по записям лога за сегодня (web/iPhone/manual). Без этого CLI
     # не увидит ввод через web, если game_state лист ещё не обновлён.
     apply_steps_log_max_merge(s)
+
+    # 4.2 — Build «пока тебя не было» report. Silent-fail если Sheets history
+    # недоступен. Caller (CLI play / web _dashboard_context) рендерит и
+    # очищает list. Lazy import — report → google_sheets_db → может тянуть
+    # gspread, не нужен в тестах.
+    s.startup_report_since_ts = prior_ts
+    try:
+        from report import build_away_report
+        s.startup_report = build_away_report(prior_ts)
+    except Exception:  # noqa: BLE001 — report не критичен
+        s.startup_report = []
 
     # 4.54.1 — Snapshot для optimistic concurrency. Берётся ПОСЛЕ всех
     # post-load fixups (timestamp_last_enter / loc / energy_max / max-merge)

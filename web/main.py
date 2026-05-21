@@ -1042,7 +1042,24 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # 4.61 — Low quality warning для Stats area. Pre-computed dict с
         # broken (quality=0) и low (0 < quality < 20) listами equipped items.
         "low_quality_warning": _build_low_quality_warning(state),
+        # 4.2 — «Пока тебя не было» report. Pre-computed view с events
+        # списком + meta (since_dt, elapsed_label). has_events=False если
+        # пусто (template не рендерит banner). Очищается ниже после rendering.
+        "away_report": _build_away_report_view(state),
     }
+
+
+def _build_away_report_view(state) -> dict:
+    """4.2 — Pre-compute report view для template. Очищает state.startup_report
+    после первого build чтобы banner не появлялся на повторных F5."""
+    if not state.startup_report:
+        return {'has_events': False}
+    from report import build_report_view
+    view = build_report_view(state.startup_report, state.startup_report_since_ts)
+    # Clear после первого build — banner показывается единожды на uvicorn
+    # session. Следующий F5 не покажет (state.startup_report пустой).
+    state.startup_report = []
+    return view
 
 
 def _build_low_quality_warning(state) -> dict:

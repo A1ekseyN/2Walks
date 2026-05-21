@@ -762,18 +762,31 @@ TASKS.md также писал про "`drop.py:167`" — **неточность
 
 ---
 
-### 4.2. Отчёт "пока тебя не было" при входе в игру `[H / S / todo]`
+### 4.2. Отчёт "пока тебя не было" при входе в игру `[H / S / done (21.05.2026, 0.2.5e)]`
 
-Сейчас пропущенные события (тренировка закончилась, приключение дало дроп) видны только при `status_bar`. Сделать summary при старте:
+**Реализация (21.05.2026, 0.2.5e, Variant B per design discussion — read Sheets `history`):**
 
-```
-Пока тебя не было:
- - Завершена тренировка Stamina (уровень 4 -> 5)
- - Приключение walk_hard: выпал B-grade Ring +2 Speed
- - Работа: начислено 40 $
-```
+1. **Новый модуль `report.py`** — pure helpers:
+   - `INTERESTING_EVENT_TYPES` (frozenset) — 7 passive event types (work_done / skill_upgraded / adventure_done / drop / drop_auto_collected / drop_force_sold / level_up / new_day). Player actions (skill_alloc / bank_*) НЕ включены.
+   - `build_away_report(since_ts)` — читает Sheets history через `HistoryLogRepo.since`, фильтрует interesting. Silent-fail если Sheets unavailable.
+   - `format_report_cli(events, since_ts)` — colorama CLI block с рамкой.
+   - `build_report_view(events, since_ts)` — pre-computed dict для web template.
 
-Логика уже есть в `work_check_done()` / `skill_training_check_done()` / `adventure_check_done()`, нужно только собирать события в список и печатать одним блоком.
+2. **`HistoryLogRepo.since(ts)`** в `google_sheets_db.py` — full read через `get_values(value_render_option=UNFORMATTED)` (UNFORMATTED критично для precision — те же грабли что в 4.48.5.4 с last_modified).
+
+3. **Runtime-only поля** в `state.GameState`: `startup_report: list[dict]` + `startup_report_since_ts: float` (НЕ сериализуются).
+
+4. **`characteristics.py:init_game_state`** — capture `prior_ts = s.timestamp_last_enter` ДО перезаписи на `now`, потом после load + max-merge → `build_away_report(prior_ts)` → store в `s.startup_report`. Try/except — report не критичен.
+
+5. **CLI** (`game.py:play()`) — перед main loop tick'ом если startup_report non-empty → print → clear.
+
+6. **Web** (`_dashboard_context`) — context-key `away_report` через `_build_away_report_view(state)` (вызывает build_report_view + clear startup_report). Banner template в `_status_fragment.html` с azure border-left, header «🕒 Пока тебя не было», elapsed_label, items list.
+
+**Тесты:** 38 новых — `test_report.py` (30: types coverage + format + helpers + build), `test_sheets_repo.py` (5: HistoryLogRepo.since edge cases), `test_web_main.py` (3: banner render / absent / cleared). 1095 passed total, mypy 0 issues (70 source files).
+
+**Cost:** +1 Sheets API call (~500-700 ms) на init_game_state — для web one-time на uvicorn startup, для CLI один раз per session.
+
+**Display trigger:** только если есть хотя бы 1 interesting event между prior_ts и now (per user choice). Пустой report не показывается — не загромождает UI при быстрых перезапусках.
 
 ---
 

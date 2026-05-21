@@ -473,6 +473,47 @@ class HistoryLogRepo:
         ]
         ws.append_row(row, value_input_option=ValueInputOption.raw)
 
+    def since(self, ts: float) -> list[dict]:
+        """4.2 (0.2.5e) — Возвращает все events с `ts >= since` для report
+        «пока тебя не было». Используется на старте CLI / web init.
+
+        Полный read всех rows (через `get_all_values`) + Python-filter. Для
+        тысяч rows ~500-700 мс. UNFORMATTED для ts чтобы избежать precision
+        loss (как с last_modified — см. 4.48.5.4 / 0.2.5d).
+
+        Returns list of dicts: `{'ts': float, 'datetime': str, 'user_id': str,
+        'game_version': str, 'type': str, 'payload': dict}`. На ошибке возвращает
+        пустой список (silent-fail, report — не критичная фича).
+        """
+        try:
+            ws = self._ensure_sheet()
+            rows = ws.get_values(value_render_option=ValueRenderOption.unformatted)
+        except Exception:  # noqa: BLE001
+            return []
+        events: list[dict] = []
+        for row in rows[1:]:  # skip header
+            if len(row) < 6:
+                continue
+            try:
+                event_ts = float(row[0])
+            except (TypeError, ValueError):
+                continue
+            if event_ts < ts:
+                continue
+            try:
+                payload = json.loads(row[5]) if row[5] else {}
+            except (json.JSONDecodeError, TypeError):
+                payload = {}
+            events.append({
+                'ts': event_ts,
+                'datetime': str(row[1]),
+                'user_id': str(row[2]),
+                'game_version': str(row[3]),
+                'type': str(row[4]),
+                'payload': payload,
+            })
+        return events
+
 
 # ----------------------------------------------------------------------------
 # Standalone smoke (запуск файла напрямую): show current state contents.

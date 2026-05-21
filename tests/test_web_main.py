@@ -129,6 +129,64 @@ def test_unknown_route_returns_404():
 
 # ----- GET / (dashboard) -----
 
+# ----- 4.2 (0.2.5e): «Пока тебя не было» banner -----
+
+def test_away_report_banner_renders_when_startup_report_set():
+    """state.startup_report non-empty → banner появляется в HTML."""
+    import time as time_mod
+    state = GameState.default_new_game()
+    state.startup_report = [
+        {'type': 'work_done',
+         'payload': {'vacancy': 'watchman', 'hours': 4, 'salary': 40.0}},
+        {'type': 'level_up', 'payload': {'from_level': 9, 'to_level': 10}},
+    ]
+    state.startup_report_since_ts = time_mod.time() - 3600  # 1 час назад
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    assert 'Пока тебя не было' in body
+    assert 'away-report' in body
+    assert 'Watchman' in body
+    assert 'Level up' in body
+    assert '1 ч' in body  # elapsed_label
+
+
+def test_away_report_banner_absent_when_empty():
+    """Без events → banner не рендерится."""
+    state = GameState.default_new_game()
+    state.startup_report = []
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    assert 'away-report' not in body
+    assert 'Пока тебя не было' not in body
+
+
+def test_away_report_cleared_after_render():
+    """После первого рендера state.startup_report очищается — следующий
+    F5 не покажет banner повторно."""
+    import time as time_mod
+    state = GameState.default_new_game()
+    state.startup_report = [
+        {'type': 'work_done',
+         'payload': {'vacancy': 'watchman', 'hours': 1, 'salary': 2.0}},
+    ]
+    state.startup_report_since_ts = time_mod.time() - 60
+    _setup_state(state)
+
+    with TestClient(app) as client:
+        first = client.get("/")
+        second = client.get("/")
+
+    assert 'Пока тебя не было' in first.text
+    assert 'Пока тебя не было' not in second.text
+    assert game.state.startup_report == []
+
+
 def test_dashboard_returns_html():
     _setup_state()
     with TestClient(app) as client:
