@@ -1558,29 +1558,31 @@ Gym training (top-tier base 95 эн) → 76 эн при skill=20.
 
 ---
 
-### 4.24. Разделить Luck на Drop Chance + Item Quality (нужно обсудить) `[M / M / todo]`
+### 4.24. Разделить Luck на Drop Chance + Item Quality `[M / M / rejected (21.05.2026 — обсудили, не нужно)]`
 
-**⚠️ Нужно обсудить — возможно отказаться от задачи.** Не очевидно, нужно ли разделение.
+**Решение (21.05.2026):** **Rejected.** Оставляем единый `luck_skill` влияющий на все 3 механики (drop chance / grade / quality).
 
-Сейчас единый `luck_skill` в `drop.py` влияет на три механики одновременно:
-1. **Шанс дропа** — `randint(1, 100 - luck_chr)` для global gate (выпадет ли вообще что-то).
-2. **Грейд дропа** — тот же `randint(1, 100 - luck_chr)` для grade-rolls (C / B / A / S / S+).
-3. **Качество предмета** — `randint(20 + luck_chr, 100)` в `item_quality()`. Прокачка Luck повышает минимум качества → лучше прочность и цена продажи.
+**Обоснование отказа:**
 
-**Идея:** разделить на два навыка:
-- `luck_skill` — только пункты 1 и 2 (drop chance + grade).
-- `quality_skill` (новый) — только пункт 3 (минимальное качество).
+1. **Quality сам по себе слаб как gameplay lever.** Quality влияет на:
+   - Price (sell) — но у нас уже есть Trader (4.28) который удваивает sell. Дублирование economy lever.
+   - Износ — quality 100 vs 50 не катастрофическая разница, особенно с Repair (4.59.1).
+   - Bonus — **НЕ влияет** (после 4.61 binary cliff: только quality=0 vs >0 matter).
+   Отдельный skill для quality = 21-й навык без значимого нового outcome.
 
-**Pro:**
-- Игроку больше контроля: можно билдить под "много дешёвых вещей" или "редкие качественные".
-- +1 прокачиваемый навык — больше стимул ходить.
+2. **Урок Diablo 3 / PoE.** Blizzard признал что 2 loot stat'а путают игроков и **убрал** Magic Find Quantity в Reaper of Souls. PoE с 2 stat'ами считается «advanced» (новички путаются). 2Walks — cozy single-player, не competitive. Тренд RPG — упрощение loot stats, не разделение.
 
-**Contra:**
-- Усложняет понимание: два очень похожих по смыслу навыка.
-- Quality сам по себе не даёт значимого преимущества без 4.25 (где он реально monetizes).
-- Текущая интегрированность Luck — это фича, а не баг: один навык, понятный эффект.
+3. **Симметрия со Speed split (4.21) не работает 1:1.** Speed split решал реальную chicken-and-egg проблему: нельзя было прокачать energy regen без ускорения активностей. У Luck такой проблемы НЕТ — все 3 эффекта работают одинаково (luck up → больше / лучше / качественнее).
 
-**Решение:** обсудить позднее. Если решим делать — потребуется аккуратно мигрировать старые сейвы (скопировать `luck_skill` в `quality_skill` или начать с 0).
+4. **Есть более impactful альтернативы** (уже в TASKS, не блокируются 4.24):
+   - **4.25 Grade Upgrade Chance** (M/S/todo) — реальный gameplay impact: chance bump grade up в момент дропа (C→B, B→A, ...). Добавляет новый gameplay вместо разделения существующего.
+   - **4.19 Pity system** (M/M/todo) — гарантирует rare drops после N неудачных attempt'ов. Решает frustration без новых stats.
+
+**Когда переоткрыть:**
+- Если quality станет реально значимым (через 4.61.1 tiered partial bonus где quality напрямую влияет на bonus, или новая mechanic где quality — gateway к next grade).
+- Если появится много item types и игрок захочет distinct builds (далеко).
+
+**Что осталось как-есть:** единый `luck_skill` (gym) + `equipment_luck_bonus` + `state.char_level.skill_luck` через `current_luck(state)`. Все 3 механики (gate / grade / quality) используют этот единый показатель.
 
 ---
 
