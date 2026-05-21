@@ -97,7 +97,13 @@ class Shop:
     def shop_menu_food_and_water(self, item: dict, money: str, state: GameState) -> None:
         # Цикл retry на невалиде (1.5.4 — 0.2.1h).
         while True:
+            # 21.05.2026 — warning: items имеют characteristic='energy' но
+            # consume-механика ещё не реализована (задача 4.7.1). Купленные
+            # cheeseburger / coffee лежат мёртвым грузом в инвентаре, эффект
+            # +5/+25 energy НЕ применяется. Можно продать через Inventory.
             print('\nВы можете купить еду и другие расходные материалы.'
+                  f'\n{Fore.LIGHTYELLOW_EX}⚠ Расходники пока БЕЗ ЭФФЕКТА (consume mechanic ждёт задачу 4.7.1).'
+                  f'\n   Items лягут в инвентарь и могут быть проданы.{Style.RESET_ALL}'
                   f'\n{money}'
                   f'\n\t1. 🍔 Чизбургер (🔋: + 5) - {format_money(apply_money_saving(2, state))} $.'
                   f'\n\t2. ☕ Кофе (🔋: + 25) - {format_money(apply_money_saving(10, state))} $.'
@@ -165,11 +171,13 @@ class Shop:
                 '3': ('a-grade', 3, 100),
             }
             while True:
+                # 21.05.2026 — описание исправлено: бонус flat (+N к Stamina), не процент.
+                # `equipment_bonus.equipment_stamina_bonus` просто прибавляет `item['bonus'][0]`.
                 print('\nВ этом меню можно приобрести обувь: '
                       f'\n{money}'
-                      f'\n\t1. Кеды - C-Grade (+ 1 % шагов) (Цена: {format_money(apply_money_saving(25, state))} $)'
-                      f'\n\t2. Кеды - B-Grade (+ 2 % шагов) (Цена: {format_money(apply_money_saving(50, state))} $)'
-                      f'\n\t3. Кеды - A-Grade (+ 3 % шагов) (Цена: {format_money(apply_money_saving(100, state))} $)'
+                      f'\n\t1. Кеды - C-Grade (+ 1 к Stamina) (Цена: {format_money(apply_money_saving(25, state))} $)'
+                      f'\n\t2. Кеды - B-Grade (+ 2 к Stamina) (Цена: {format_money(apply_money_saving(50, state))} $)'
+                      f'\n\t3. Кеды - A-Grade (+ 3 к Stamina) (Цена: {format_money(apply_money_saving(100, state))} $)'
                       f'\n\t0. Назад')
                 ask = input('\nЧто вы хотите приобрести? \n>>> ')
                 if ask in shoe_specs:
@@ -187,7 +195,7 @@ class Shop:
                     shoe['quality'].append(100)
                     shoe['price'].append(price)
                     if _buy_item(state, shoe, shoe_cost):
-                        print(f'\nВы приобрели: Кеды - {grade.upper()} (+ {bonus} % шагов) за - {format_money(shoe_cost)} $.')
+                        print(f'\nВы приобрели: Кеды - {grade.upper()} (+ {bonus} к Stamina) за - {format_money(shoe_cost)} $.')
                         return
                     print(f'\nУ вас не достаточно денег. Не хватает 💰: {format_money(shoe_cost - state.money)} $.')
                     return

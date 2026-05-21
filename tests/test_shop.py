@@ -112,6 +112,33 @@ def test_shop_menu_food_insufficient_money(monkeypatch, capsys):
     assert 'не достаточно денег' in out.lower()
 
 
+def test_shop_menu_food_shows_no_effect_warning(monkeypatch, capsys):
+    """21.05.2026 — Полиш: warning что расходники без consume mechanic (4.7.1)."""
+    state = GameState.default_new_game()
+    state.money = 100
+    inputs = iter(['0', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Shop.shop_menu_food_and_water(self=None, item=_empty_item(), money='m', state=state)
+    out = capsys.readouterr().out
+    assert 'без эффекта' in out.lower() or 'БЕЗ ЭФФЕКТА' in out
+    assert '4.7.1' in out
+
+
+def test_shop_menu_shoes_display_uses_flat_stamina_not_percent(monkeypatch, capsys):
+    """21.05.2026 — Полиш: shoes показывают «+N к Stamina» (flat), не «+N % шагов»."""
+    state = GameState.default_new_game()
+    state.money = 100
+    # 5 → раздел "Обувь"; 0 → назад из clothes_shoes; 0 → назад из shop_menu_clothes.
+    inputs = iter(['5', '0', '0', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
+
+    Shop.shop_menu_clothes(self=None, item=_empty_item(), money='m', state=state)
+    out = capsys.readouterr().out
+    assert 'к Stamina' in out
+    assert '% шагов' not in out  # старый misleading текст не должен остаться
+
+
 def test_shop_menu_clothes_buy_shoes(monkeypatch, capsys):
     state = GameState.default_new_game()
     state.money = 25
