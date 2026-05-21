@@ -150,10 +150,9 @@
 
         <div class="stat-row" style="margin-top: 0.5rem;">
             <span class="stat-label">⭐ Level</span>
-            <span>{{ char_level }}{% if char_level_up_skills > 0 %} <small>(+{{ char_level_up_skills }} skill points)</small>{% endif %}</span>
+            <span>{{ char_level }} <small>({{ "%.2f"|format(char_level_progress) }} %)</small>{% if char_level_up_skills > 0 %} <small>(+{{ char_level_up_skills }} skill points)</small>{% endif %}</span>
         </div>
         <progress value="{{ char_level_progress }}" max="100"></progress>
-        <small>Прогресс до следующего уровня: {{ "%.2f"|format(char_level_progress) }} %</small>
 
         {# 4.61 — Warning о низком quality / сломанных equipped items.
            Показывается только когда есть items с quality < 20% (включая broken=0). #}
