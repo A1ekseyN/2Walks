@@ -65,14 +65,14 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     loaded = load_data_from_google_sheet_or_csv()
     s = GameState.from_dict(loaded)
 
-    # 4.2 — Capture prior_timestamp_last_enter ДО перезаписи. Используется
-    # для report «пока тебя не было» (events from history.jsonl с
-    # `ts >= prior_ts`). Должно быть ДО строки `s.timestamp_last_enter = now`
-    # иначе период будет пустой.
+    # 4.2 — Capture prior_timestamp_last_enter (= last save time). Используется
+    # для report «пока тебя не было» (events from Sheets history с
+    # `ts >= prior_ts`). С 4.2.1 / 0.2.5r (22.05.2026) overwrite на now() убран —
+    # `timestamp_last_enter` теперь обновляется ТОЛЬКО в save_characteristic,
+    # что correctly отражает web-активность (которая раньше не сдвигала marker).
     prior_ts = s.timestamp_last_enter
 
     # Legacy fixups, которые делались на module-level до 1.2:
-    # - timestamp_last_enter всегда обновляется до текущего момента при загрузке.
     # - loc всегда сбрасывается в 'home' (загруженное значение игнорируется).
     # - energy_max — обновляем кэш-поле через compute_energy_max (4.48.4.1 / 0.2.1g);
     #   логика игры читает значение через `bonus.compute_energy_max(state)`, поле
@@ -80,7 +80,6 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # Day rollover detection — единственная точка в functions.save_game_date_last_enter()
     # на первом тике main loop, через state.date_last_enter (legacy save.txt
     # удалён в задаче 2.1, версия 0.2.0k).
-    s.timestamp_last_enter = datetime.now().timestamp()
     s.loc = 'home'
     from bonus import compute_energy_max  # lazy — bonus импортирует equipment_bonus
     s.energy_max = compute_energy_max(s)

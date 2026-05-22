@@ -339,6 +339,15 @@ def save_characteristic() -> Literal["OK", "STALE"]:
     # Silent-fail внутри если steps_log недоступен — не блокируем save.
     apply_steps_log_max_merge(game.state)
 
+    # 4.2.1 (0.2.5r, 22.05.2026): `timestamp_last_enter` отслеживает «last user
+    # activity» (не «session start» как раньше). Каждый save (CLI mutation,
+    # web POST, auto-finalize) сдвигает marker → next-launch report window
+    # стартует с момента последней реальной активности, а не с момента запуска
+    # последнего CLI-процесса. До фикса web сессии не обновляли marker
+    # (init_game_state переписывал только при CLI startup), → CLI наутро после
+    # активного web-вечера показывал «прошло X дн» от вчерашнего CLI запуска.
+    game.state.timestamp_last_enter = datetime.now().timestamp()
+
     state_dict = game.state.to_dict()
     if debug_mode:
         print(f'Сохраняем данные: {state_dict}')

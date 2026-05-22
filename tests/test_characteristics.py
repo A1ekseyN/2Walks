@@ -241,6 +241,78 @@ def test_save_max_merge_silent_fail_when_log_unavailable(monkeypatch, tmp_path):
     assert saved_dicts[0]['steps_today'] == 100
 
 
+def test_save_characteristic_updates_timestamp_last_enter_to_now(monkeypatch, tmp_path):
+    """4.2.1 (0.2.5r): save_characteristic ставит timestamp_last_enter = now() —
+    каждый save (CLI / web mutation / auto-finalize) сдвигает marker, чтобы
+    next-launch report корректно посчитал window от last activity (раньше web
+    mutations не сдвигали marker → CLI report показывал прошло X дн от
+    предыдущего CLI запуска)."""
+    import time
+    from persistence import save_characteristic
+    import google_sheets_db
+
+    _reset_game_container()
+    s = GameState.default_new_game()
+    # Симулируем устаревший timestamp (вчерашний CLI запуск).
+    s.timestamp_last_enter = 1.0  # ~1970
+    init_game_state(s)
+    monkeypatch.chdir(tmp_path)
+
+    saved_dicts = []
+    def fake_save_safe(self, state_dict, expected_last_modified):
+        saved_dicts.append(dict(state_dict))
+        state_dict['last_modified'] = 1700000000.0
+        return "OK"
+    monkeypatch.setattr(google_sheets_db.GameStateRepo, "save_safe", fake_save_safe)
+
+    before = time.time()
+    save_characteristic()
+    after = time.time()
+
+    # RAM получил свежий timestamp.
+    assert before <= game.state.timestamp_last_enter <= after
+    # В Sheets ушёл тот же свежий timestamp.
+    assert before <= saved_dicts[0]['timestamp_last_enter'] <= after
+
+
+def test_init_game_state_preserves_loaded_timestamp_last_enter(monkeypatch, tmp_path):
+    """4.2.1 (0.2.5r): init_game_state НЕ перезаписывает timestamp_last_enter
+    при загрузке из Sheets — он остаётся на «last save time» из Sheets, и
+    bumps только на следующем save. Это позволяет prior_ts в report корректно
+    отражать момент последней активности (CLI или web), а не момент запуска
+    текущего процесса."""
+    from persistence import save_characteristic
+    import google_sheets_db
+    import characteristics as char_mod
+
+    _reset_game_container()
+    monkeypatch.chdir(tmp_path)
+
+    # Мокаем load_data_from_google_sheet_or_csv — симулируем Sheets с конкретным
+    # timestamp (e.g. user закрыл web-сессию час назад).
+    loaded_timestamp = 1700000000.5  # фиксированное значение для проверки
+    sample_dict = GameState.default_new_game().to_dict()
+    sample_dict['timestamp_last_enter'] = loaded_timestamp
+
+    import persistence as persistence_mod
+    monkeypatch.setattr(persistence_mod, "load_data_from_google_sheet_or_csv",
+                        lambda: sample_dict)
+    # init_game_state импортирует lazy внутри функции — патчим оба места.
+    monkeypatch.setattr(
+        "persistence.load_data_from_google_sheet_or_csv",
+        lambda: sample_dict,
+    )
+
+    # init без аргумента → пойдёт через load path.
+    from characteristics import init_game_state as init_fn
+    init_fn()
+
+    # Loaded value сохранён (а не перезаписан на now() как было до 0.2.5r).
+    assert game.state.timestamp_last_enter == loaded_timestamp
+    # И startup_report_since_ts тоже = loaded value (prior_ts capture работает).
+    assert game.state.startup_report_since_ts == loaded_timestamp
+
+
 def test_save_characteristic_returns_stale_no_state_mutation(monkeypatch, tmp_path):
     """STALE: state.last_modified не меняется, snapshot не меняется, CSV не пишется."""
     from persistence import save_characteristic
