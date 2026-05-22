@@ -509,3 +509,121 @@ class TestGymTriumphs:
         sm_unlocks = [u for u in unlocked if u['triumph_id'] == 'skill_master']
         assert state.triumphs['skill_master']['tier'] == 5
         assert sm_unlocks[-1]['is_capstone'] is True
+
+
+# ===========================================================================
+# 4.62.1.5 — Work / Hard Worker (1 aggregate + 4 per-vacancy)
+# ===========================================================================
+
+class TestWorkTriumphs:
+    """🏭 Work — event-based через work_done payload (hours + vacancy)."""
+
+    EXPECTED_TIERS = [100, 500, 1000, 5000, 10000]
+    PER_VACANCY = (
+        ('watchman', 'watchman'),
+        ('factory', 'factory'),
+        ('courier_foot', 'courier_foot'),
+        ('forwarder', 'forwarder'),
+    )
+
+    def test_all_5_in_catalog(self):
+        assert 'hard_worker' in TRIUMPHS
+        for triumph_id, _ in self.PER_VACANCY:
+            assert triumph_id in TRIUMPHS
+
+    def test_all_5_share_category_tiers_and_hook(self):
+        for triumph_id in ('hard_worker', *(t for t, _ in self.PER_VACANCY)):
+            spec = TRIUMPHS[triumph_id]
+            assert spec['category'] == 'work'
+            assert spec['tiers'] == self.EXPECTED_TIERS
+            assert spec['event_hooks'] == ['work_done']
+            # All event-based, не metric-based.
+            assert 'metric' not in spec
+
+    def test_hard_worker_no_filter(self):
+        """Aggregate без event_filter — считает все vacancy."""
+        assert 'event_filter' not in TRIUMPHS['hard_worker']
+
+    def test_per_vacancy_filters_correct(self):
+        """Каждый per-vacancy имеет event_filter по своему vacancy key."""
+        for triumph_id, vacancy_key in self.PER_VACANCY:
+            spec = TRIUMPHS[triumph_id]
+            assert 'event_filter' in spec
+            # Filter accepts matching vacancy.
+            assert spec['event_filter']({'vacancy': vacancy_key}) is True
+            # Filter rejects other vacancies.
+            other = 'forwarder' if vacancy_key != 'forwarder' else 'watchman'
+            assert spec['event_filter']({'vacancy': other}) is False
+
+    # ----- Counter accumulation -----
+
+    def test_hard_worker_accumulates_all_vacancies(self):
+        """Hard Worker считает hours по всем 4 vacancies."""
+        state = GameState.default_new_game()
+        register_event(state, 'work_done', hours=50, vacancy='watchman')
+        register_event(state, 'work_done', hours=30, vacancy='factory')
+        register_event(state, 'work_done', hours=20, vacancy='forwarder')
+        assert state.triumphs['hard_worker']['count'] == 100
+
+    def test_per_vacancy_isolated_count(self):
+        """Per-vacancy considers только свои events."""
+        state = GameState.default_new_game()
+        register_event(state, 'work_done', hours=100, vacancy='watchman')
+        register_event(state, 'work_done', hours=50, vacancy='factory')
+        assert state.triumphs['watchman']['count'] == 100
+        assert state.triumphs['factory']['count'] == 50
+        # Courier / Forwarder не получили events.
+        assert state.triumphs.get('courier_foot', {}).get('count', 0) == 0
+        assert state.triumphs.get('forwarder', {}).get('count', 0) == 0
+
+    # ----- Tier unlocks -----
+
+    def test_hard_worker_no_unlock_below_first_tier(self):
+        """99 ч → no unlock (tier 1=100)."""
+        state = GameState.default_new_game()
+        register_event(state, 'work_done', hours=99, vacancy='watchman')
+        assert state.triumphs.get('hard_worker', {}).get('tier', 0) == 0
+
+    def test_hard_worker_unlock_tier_1_at_100(self):
+        state = GameState.default_new_game()
+        register_event(state, 'work_done', hours=100, vacancy='watchman')
+        assert state.triumphs['hard_worker']['tier'] == 1
+
+    def test_hard_worker_player_snapshot_unlocks_tier_3(self):
+        """Real-world симуляция 22.05.2026: 1109 ч watchman (637 завершённых +
+        472 pending после finalize) → tier 3 (1000) unlock."""
+        state = GameState.default_new_game()
+        register_event(state, 'work_done', hours=637, vacancy='watchman')
+        register_event(state, 'work_done', hours=472, vacancy='watchman')
+        assert state.triumphs['hard_worker']['count'] == 1109
+        assert state.triumphs['hard_worker']['tier'] == 3
+        # Watchman per-vacancy тоже tier 3 (тот же threshold, всё watchman).
+        assert state.triumphs['watchman']['tier'] == 3
+
+    def test_per_vacancy_capstone_at_10k(self):
+        state = GameState.default_new_game()
+        unlocked = register_event(state, 'work_done', hours=10_000, vacancy='forwarder')
+        forwarder_unlocks = [u for u in unlocked if u['triumph_id'] == 'forwarder']
+        assert state.triumphs['forwarder']['tier'] == 5
+        assert forwarder_unlocks[-1]['is_capstone'] is True
+
+    def test_missing_hours_payload_no_increment(self):
+        """Event без hours (или 0) — counter не растёт."""
+        state = GameState.default_new_game()
+        register_event(state, 'work_done', vacancy='watchman')  # no hours
+        assert state.triumphs.get('hard_worker', {}).get('count', 0) == 0
+        register_event(state, 'work_done', hours=0, vacancy='watchman')  # 0
+        assert state.triumphs.get('hard_worker', {}).get('count', 0) == 0
+
+    def test_aggregate_unlocks_when_split_across_vacancies(self):
+        """Hard Worker capstone достигается даже если grind распределён."""
+        state = GameState.default_new_game()
+        register_event(state, 'work_done', hours=3000, vacancy='watchman')
+        register_event(state, 'work_done', hours=3000, vacancy='factory')
+        register_event(state, 'work_done', hours=2000, vacancy='courier_foot')
+        register_event(state, 'work_done', hours=2000, vacancy='forwarder')
+        # Sum = 10_000 → Hard Worker capstone.
+        assert state.triumphs['hard_worker']['tier'] == 5
+        # Но per-vacancy capstone не достигнут (no single vacancy hit 10k).
+        for triumph_id, _ in self.PER_VACANCY:
+            assert state.triumphs.get(triumph_id, {}).get('tier', 0) < 5

@@ -316,6 +316,65 @@ TRIUMPHS: dict[str, dict] = {
         'tiers': [50, 100, 250, 500, 1000],
         'metric': lambda s: sum(getattr(s.gym, f) for f in _GYM_SKILL_FIELDS),
     },
+
+    # ----- 🏭 Work / Hard Worker (4.62.1.5, 22.05.2026) -----
+    # Event-based через `work_done` payload (vacancy + hours + salary). Payload
+    # стабилен с самого начала work_done логирования (4.6 / 0.2.4) → backfill
+    # из Sheets history лист автоматически работает.
+    #
+    # Aggregate Hard Worker = sum hours по всем 4 вакансиям; per-vacancy =
+    # filter по `payload['vacancy']`. Тiers `[100, 500, 1000, 5000, 10000]`
+    # одинаковые для всех 5 triumph'ов (choice 22.05.2026 — simplicity over
+    # difficulty scaling). Player snapshot CLI local jsonl: 637h watchman +
+    # 472h pending = 1109h после finalize → Hard Worker tier 3 (1000) сразу
+    # backfill, Watchman tier 3 backfill, capstone (10k) realistic при 6+
+    # месяцев consistent grind. Server events добавят больше (CLI/web split).
+
+    # Aggregate — total hours across all vacancies.
+    'hard_worker': {
+        'name': 'Hard Worker',
+        'category': 'work',
+        'tiers': [100, 500, 1000, 5000, 10000],
+        'event_hooks': ['work_done'],
+        'count_delta': lambda p: int(p.get('hours', 0) or 0),
+    },
+
+    # Per-vacancy — same tiers, filtered by payload['vacancy'].
+    # Triumph id = vacancy key из work.py (work_requirements). Названия по-русски
+    # симметрично UI в work.py:check_requirements (Сторож / Завод / Курьер /
+    # Экспедитор).
+    'watchman': {
+        'name': 'Сторож',
+        'category': 'work',
+        'tiers': [100, 500, 1000, 5000, 10000],
+        'event_hooks': ['work_done'],
+        'event_filter': lambda p: p.get('vacancy') == 'watchman',
+        'count_delta': lambda p: int(p.get('hours', 0) or 0),
+    },
+    'factory': {
+        'name': 'Заводчанин',
+        'category': 'work',
+        'tiers': [100, 500, 1000, 5000, 10000],
+        'event_hooks': ['work_done'],
+        'event_filter': lambda p: p.get('vacancy') == 'factory',
+        'count_delta': lambda p: int(p.get('hours', 0) or 0),
+    },
+    'courier_foot': {
+        'name': 'Курьер',
+        'category': 'work',
+        'tiers': [100, 500, 1000, 5000, 10000],
+        'event_hooks': ['work_done'],
+        'event_filter': lambda p: p.get('vacancy') == 'courier_foot',
+        'count_delta': lambda p: int(p.get('hours', 0) or 0),
+    },
+    'forwarder': {
+        'name': 'Экспедитор',
+        'category': 'work',
+        'tiers': [100, 500, 1000, 5000, 10000],
+        'event_hooks': ['work_done'],
+        'event_filter': lambda p: p.get('vacancy') == 'forwarder',
+        'count_delta': lambda p: int(p.get('hours', 0) or 0),
+    },
 }
 
 

@@ -4508,14 +4508,18 @@ CLI shell для будущих категорий. Empty state когда catal
 
 **Тесты:** counter increment в actions.try_spend, split correctness (energy за work не дает прогресс per-adventure triumph), persist.
 
-##### 4.62.1.5. Work triumphs (general + per-vacancy) `[L / M / todo (blocked by 4.62.0)]`
+##### 4.62.1.5. Work triumphs (general + per-vacancy) `[L / M / done (22.05.2026, 0.2.5t)]`
 
-**Категория `work`. Event-based с accumulator (hours).**
+**Категория `work`. Event-based** через `work_done` payload (vacancy + hours). Engine `event_filter` (из 4.62.0.2) переиспользован — никаких изменений в engine.
 
-- **Hard Worker (total hours)** — tiers `[10, 100, 1000, 10000]`. Capstone: **+5% к ЗП** (stack с earnings_boost 4.23) или title.
-- **Per-vacancy hours** (watchman / factory / courier_foot / forwarder) — tiers `[10, 50, 100, 500]` каждая. Capstone vacancy-specific: +1 к related stat.
-- Hook: event_hooks=['work_done'], accumulator `count += payload['hours']`.
-- *Balance TBD:* vacancy-specific stat — Watchman→stamina, Factory→energy_max, Courier→speed, Forwarder→luck. Может cause «обязательная прокачка всех» — балансировать через high tier threshold (500h).
+Финальный дизайн (choice 22.05.2026):
+
+- **Hard Worker** (aggregate) — event_hooks=['work_done'] без filter, `count_delta=lambda p: int(p.get('hours', 0))`. Tiers `[100, 500, 1000, 5000, 10000]`.
+- **4 per-vacancy** — id = vacancy key, name по-русски (симметрично UI Work menu):
+  - **Сторож** (watchman) / **Заводчанин** (factory) / **Курьер** (courier_foot) / **Экспедитор** (forwarder)
+  - event_filter `lambda p: p.get('vacancy') == X`, тiers одинаковые `[100, 500, 1000, 5000, 10000]`.
+
+**Rejected** (на момент 4.62.1.5): per-vacancy скейлинг tiers по difficulty (Forwarder 30 эн/ч vs Watchman 4 эн/ч) — отклонено, simplicity over realism (capstone 10k для всех = endgame goal); per-vacancy capstone bonuses → перенесено в 4.62.2.1 Bonus integration phase. 12 новых тестов в TestWorkTriumphs. Backfill работает автоматически из Sheets history (payload format стабилен с 0.2.4).
 
 ##### 4.62.1.6. Gym / Skill triumphs `[L / M / done (22.05.2026, 0.2.5s)]`
 
