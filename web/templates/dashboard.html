@@ -22,6 +22,30 @@
         .stat-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
         .stat-row .stat-label { font-weight: 600; }
         .item-row { font-size: 0.9em; }
+        /* 22.05.2026 — Inventory items: жёсткий стэк (текст на полной строке,
+           кнопки на следующей) + line separator. Решает плохую читаемость на
+           iPhone где text + buttons не помещались в одну строку. Применяется
+           ТОЛЬКО к Inventory section — Equipment row короче (grade_short) и
+           помещается с одной кнопкой «Снять». */
+        #inventory .item-row {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.4rem;
+            padding-bottom: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid var(--pico-muted-border-color, #e5e7eb);
+        }
+        #inventory .item-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        #inventory .inv-buttons {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
+        #inventory .inv-buttons form { margin: 0; }
         .equipment-empty { color: var(--pico-muted-color); font-style: italic; }
         section { margin-bottom: 1.25rem; }
 

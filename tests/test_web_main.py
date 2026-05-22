@@ -454,7 +454,8 @@ def test_inventory_renders_items():
         response = client.get("/status")
     body = response.text
     assert "Ring" in body
-    assert "s-grade" in body
+    # 22.05.2026 — Inventory тоже использует grade_short: 's-grade' → 'S'.
+    assert "<em>S</em>" in body
     assert "+4" in body
     assert "Luck" in body
     # 4.48.6 — price теперь через format_money (с trader skill applied).
@@ -491,9 +492,69 @@ def test_equipment_filled_slot_shows_item_details():
         response = client.get("/status")
     body = response.text
     assert "Helmet" in body
-    assert "a-grade" in body
+    # 22.05.2026 — grade shows as short form 'A' (через grade_short helper),
+    # не как 'a-grade'. Mobile-friendly UI.
+    assert "<em>A</em>" in body
     assert "+3" in body
     assert "Stamina" in body
+
+
+def test_grade_short_helper_all_grades():
+    """22.05.2026 — grade_short converts 'c-grade'/'b-grade'/.../'s+grade' → 'C'/'B'/.../'S+'."""
+    from web.main import grade_short
+    assert grade_short('c-grade') == 'C'
+    assert grade_short('b-grade') == 'B'
+    assert grade_short('a-grade') == 'A'
+    assert grade_short('s-grade') == 'S'
+    assert grade_short('s+grade') == 'S+'
+    # Edge cases.
+    assert grade_short(None) == '?'
+    assert grade_short('') == '?'
+    # Fallback на upper для unknown grade.
+    assert grade_short('mythic') == 'MYTHIC'
+
+
+def test_inventory_uses_column_layout_and_inv_buttons_wrapper():
+    """22.05.2026 — Inventory rows используют .inv-buttons wrapper (stack-layout
+    для mobile) + grade_short. CSS селектор `#inventory .item-row` применяет
+    column flex + line separator."""
+    state = GameState.default_new_game()
+    state.inventory = [{
+        'item_name': ['Helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['energy_max'], 'bonus': [3], 'quality': [97.8], 'price': [146],
+    }]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    # Inventory section + кнопки в .inv-buttons wrapper.
+    assert 'id="inventory"' in body
+    assert 'class="inv-buttons"' in body
+    # grade short в inventory.
+    assert '<em>A</em>' in body
+    # CSS правила в head.
+    assert '#inventory .item-row' in body
+    assert '#inventory .inv-buttons' in body
+
+
+def test_equipment_s_plus_grade_shows_as_short_form():
+    """22.05.2026 — s+grade в equipment отображается как 'S+', не 's+grade'."""
+    state = GameState.default_new_game()
+    state.equipment.head = {
+        'item_name': ['Helmet'],
+        'item_type': ['helmet'],
+        'grade': ['s+grade'],
+        'characteristic': ['stamina'],
+        'bonus': [5],
+        'quality': [75.6],
+        'price': [378],
+    }
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert "<em>S+</em>" in body
+    assert "s+grade" not in body  # старый формат не должен остаться
 
 
 # ----- Progress bars (active sessions) -----
@@ -1179,7 +1240,8 @@ def test_inventory_items_still_in_dom_when_collapsed():
     body = response.text
     # Item в DOM несмотря на свёрнутость.
     assert "Ring" in body
-    assert "s-grade" in body
+    # 22.05.2026 — Inventory grade_short: 's-grade' → 'S'.
+    assert "<em>S</em>" in body
     assert "+4" in body
 
 

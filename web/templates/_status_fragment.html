@@ -657,7 +657,7 @@
                     <strong>{{ slot.slot_label }}:</strong>
                     {% if slot.item %}
                         {% if is_broken %}<span style="color: var(--pico-color-red-700, #b91c1c); font-weight: bold;">🔨 СЛОМАН</span>{% endif %}
-                        {{ slot.item['item_name'][0].title() }} <em>{{ slot.item['grade'][0] }}</em>
+                        {{ slot.item['item_name'][0].title() }} <em>{{ grade_short(slot.item['grade'][0]) }}</em>
                         {% if is_broken %}+0{% else %}+{{ slot.item['bonus'][0] }}{% endif %} {{ slot.item['characteristic'][0].title() }}
                         (Q: {{ "%.1f"|format(slot.item['quality'][0]) if slot.item['quality'][0] is number else slot.item['quality'][0] }})
                     {% else %}
@@ -667,7 +667,7 @@
                 {% if slot.item %}
                     {% if slot.can_unequip %}
                     <form hx-post="/web/equipment/unwear" hx-target="#status-bar" hx-swap="innerHTML"
-                          hx-confirm="Снять «{{ slot.item['item_type'][0]|title }} {{ slot.item['grade'][0] }}»? Уйдёт в инвентарь."
+                          hx-confirm="Снять «{{ slot.item['item_type'][0]|title }} {{ grade_short(slot.item['grade'][0]) }}»? Уйдёт в инвентарь."
                           style="margin: 0;">
                         <input type="hidden" name="slot_attr" value="{{ slot.slot_attr }}">
                         <input type="hidden" name="sort" value="{{ inventory_sort }}">
@@ -858,21 +858,24 @@
         {% endif %}
 
         {% if inventory_view['items'] %}
+            {# 22.05.2026 — mobile-friendly стэк: текст на полной строке,
+               кнопки в .inv-buttons на следующей строке. Линия-разделитель
+               между items (CSS в dashboard.html). grade_short для consistency
+               с Equipment. #}
             {% for item in inventory_view['items'] %}
-                <div class="item-row" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                    <span style="flex: 1;">
-                        {{ loop.index }}. {{ item.item_type|title }} <em>{{ item.grade }}</em>
+                <div class="item-row">
+                    <span>
+                        {{ loop.index }}. {{ item.item_type|title }} <em>{{ grade_short(item.grade) }}</em>
                         +{{ item.bonus }} {{ item.characteristic|title }}
                         (Q: {{ "%.1f"|format(item.quality) if item.quality is number else item.quality }})
                         — {{ format_money(item.sell_price) }} $
                     </span>
 
+                    <div class="inv-buttons">
                     {% if pending_drop_view.active %}
-                    {# 4.50.2 — sell-existing-and-keep-new кнопка при active pending.
-                       Имеет приоритет над обычным sell — pending-resolve flow. #}
+                    {# 4.50.2 — sell-existing-and-keep-new кнопка при active pending. #}
                     <form hx-post="/web/drop/sell_existing" hx-target="#status-bar" hx-swap="innerHTML"
-                          hx-confirm="Продать «{{ item.item_type|title }} {{ item.grade }}» за {{ item.price_raw }} $ и положить находку в инвентарь?"
-                          style="margin: 0;">
+                          hx-confirm="Продать «{{ item.item_type|title }} {{ grade_short(item.grade) }}» за {{ item.price_raw }} $ и положить находку в инвентарь?">
                         <input type="hidden" name="index" value="{{ item.orig_index }}">
                         <button type="submit" class="secondary outline"
                                 style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
@@ -884,8 +887,7 @@
                     {% if item.is_equipment %}
                         {% for slot_attr in item.eligible_slots %}
                         <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML"
-                              hx-confirm="Надеть «{{ item.item_type|title }} {{ item.grade }}» в слот «{{ slot_attr.replace('finger_01', 'Палец 1').replace('finger_02', 'Палец 2').replace('head', 'Голова').replace('neck', 'Шея').replace('torso', 'Торс').replace('foots', 'Ступни') }}»?"
-                              style="margin: 0;">
+                              hx-confirm="Надеть «{{ item.item_type|title }} {{ grade_short(item.grade) }}» в слот «{{ slot_attr.replace('finger_01', 'Палец 1').replace('finger_02', 'Палец 2').replace('head', 'Голова').replace('neck', 'Шея').replace('torso', 'Торс').replace('foots', 'Ступни') }}»?">
                             <input type="hidden" name="inventory_index" value="{{ item.orig_index }}">
                             <input type="hidden" name="slot_attr" value="{{ slot_attr }}">
                             <input type="hidden" name="sort" value="{{ inventory_sort }}">
@@ -904,8 +906,7 @@
                     {% endif %}
                     {# 4.48.6 — Sell button (всегда видна, кроме active pending). #}
                     <form hx-post="/web/inventory/sell" hx-target="#status-bar" hx-swap="innerHTML"
-                          hx-confirm="Продать «{{ item.item_type|title }} {{ item.grade }}» за {{ format_money(item.sell_price) }} $?"
-                          style="margin: 0;">
+                          hx-confirm="Продать «{{ item.item_type|title }} {{ grade_short(item.grade) }}» за {{ format_money(item.sell_price) }} $?">
                         <input type="hidden" name="index" value="{{ item.orig_index }}">
                         <input type="hidden" name="sort" value="{{ inventory_sort }}">
                         <button type="submit" class="secondary outline"
@@ -914,6 +915,7 @@
                         </button>
                     </form>
                     {% endif %}
+                    </div>
                 </div>
             {% endfor %}
         {% else %}

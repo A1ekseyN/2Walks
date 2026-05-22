@@ -1487,6 +1487,28 @@ _GRADE_LABELS: dict[str, str] = {
     's+grade':  'S+ Grade',
 }
 
+# 22.05.2026 — Short grade labels для mobile-friendly UI секций (Equipment,
+# Inventory rows) где места мало. Полные «S+ Grade» переносятся на новую
+# строку на iPhone screens. Используется через Jinja global `grade_short`.
+_GRADE_SHORT: dict[str, str] = {
+    'c-grade':  'C',
+    'b-grade':  'B',
+    'a-grade':  'A',
+    's-grade':  'S',
+    's+grade':  'S+',
+}
+
+
+def grade_short(grade: Optional[str]) -> str:
+    """Jinja helper: 's+grade' → 'S+', 'c-grade' → 'C'. Fallback на upper()."""
+    if not grade:
+        return '?'
+    return _GRADE_SHORT.get(grade, grade.upper())
+
+
+# 22.05.2026 — Register grade_short как Jinja global (после function definition).
+templates.env.globals["grade_short"] = grade_short
+
 
 class AdventureStartRequest(BaseModel):
     """Body для POST /api/adventure/start."""
