@@ -31,6 +31,7 @@ from google_sheets_db import GameStateRepo, StepsLogRepo
 from gym import skill_training_check_done
 from inventory import inventory_menu
 from level import CharLevel
+from triumphs_menu import open_triumphs_menu
 from locations import (
     home_location,
     gym_location,
@@ -159,6 +160,8 @@ def play():
                 'e': lambda: Equipment.equipment_view(self=None, state=state),
                 'c': lambda: char_info(state),
                 'u': lambda: CharLevel(state).menu_skill_point_allocation(),
+                # 4.62.0.3 — Triumphs menu
+                't': lambda: open_triumphs_menu(state),
                 # Сохранение / загрузка
                 'l': load_from_cloud,
                 's': save_game_local_and_cloud,
@@ -167,7 +170,7 @@ def play():
 
             LAYOUT_RU_TO_EN = {
                 'ь': 'm', 'ш': 'i', 'у': 'e', 'с': 'c', 'г': 'u',
-                'д': 'l', 'ы': 's', 'й': 'q',
+                'д': 'l', 'ы': 's', 'й': 'q', 'е': 't',
             }
             for cyr, lat in LAYOUT_RU_TO_EN.items():
                 if lat in COMMANDS:
@@ -204,7 +207,8 @@ def play():
                       f'i. 🎒 Инвентарь // '
                       f'e. 🎒 Экипировка // '
                       f'c. Характеристики // '
-                      f'u. Level'
+                      f'u. Level // '
+                      f't. 🏆 Triumphs'
                       f'\n\tl. ☁ Load from Cloud'
                       f'\n\ts. 💾 Save Game'
                       f'\n\tq/e. 💾 + 🚪 Save & Exit')

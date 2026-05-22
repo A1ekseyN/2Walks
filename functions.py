@@ -125,6 +125,17 @@ def status_bar(state: GameState) -> None:
     if state.adventure.active:
         Adventure.adventure_check_done(self=None, state=state)
 
+    # 4.62.0.3 — Pinned triumphs (≤3). Empty string если нет pinned или catalog
+    # пустой — печатать ничего не нужно. Lazy import — triumphs_menu тянет
+    # colorama и не нужен в большинстве path'ов.
+    try:
+        from triumphs_menu import render_pinned_status_bar
+        pinned = render_pinned_status_bar(state)
+        if pinned:
+            print(pinned)
+    except Exception:  # noqa: BLE001 — status_bar не должен ломать game loop
+        pass
+
 
 def _max_merge_today_from_log(state: GameState, date_str: str) -> None:
     """Поднимает `state.steps.today` до максимума записей в `steps_log` за

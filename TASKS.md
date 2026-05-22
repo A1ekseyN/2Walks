@@ -4446,7 +4446,7 @@ def log_event(event_type, **payload):
 
 **Тесты:** event-based counter increment, idempotency (повторный event не двигает tier), metric-based recheck, multi-tier unlock (один event пересекает несколько tier'ов сразу), score calc, format_progress_bar (parallelograms + separators), backfill_from_history (parse jsonl + accumulate per event_type, idempotent при повторном вызове).
 
-##### 4.62.0.3. Menu skeleton + display `[L / S / todo (blocked by 4.62.0.2)]`
+##### 4.62.0.3. Menu skeleton + display `[L / S / done (22.05.2026, 0.2.5l)]`
 
 CLI shell для будущих категорий. Empty state когда catalog пустой.
 
