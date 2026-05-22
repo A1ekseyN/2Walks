@@ -129,16 +129,18 @@ def _render_triumph_line(state, triumph_id: str) -> str:
     tiers = progress['tiers']
 
     if progress['is_capstone']:
-        bar = _format_progress_bar(current_value, current_value, width=10)
+        bar = _format_progress_bar(current_value, current_value, width=15)
         tier_label = f'{Fore.LIGHTYELLOW_EX}Capstone ({total_tiers}/{total_tiers}){Style.RESET_ALL}'
         target_str = f'{current_value:,}'
     else:
         next_threshold = progress['next_threshold']
+        # 22.05.2026 — width=15 даёт clean 3 cells per tier для 5-tier triumph'ов
+        # (типичный case Marathoner / Adventurer). Для 4-tier — 4-4-4-3.
         bar = _format_progress_bar(
             current_value,
-            tiers[-1],  # max threshold для proportional fill
+            tiers[-1],
             tier_thresholds=tiers,
-            width=12,
+            width=15,
         )
         tier_label = f'Tier {current_tier}/{total_tiers}'
         target_str = f'{current_value:,}/{next_threshold:,}'

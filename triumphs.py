@@ -298,26 +298,22 @@ def _format_progress_bar(
         filled = max(0, min(filled, width))
         return _FILLED * filled + _EMPTY * (width - filled)
 
-    # Multi-tier with separators: для каждого tier-segment вычисляем сколько
-    # cells'ей он занимает (пропорционально threshold ratio).
+    # Multi-tier with separators: **equal-sized segments** (22.05.2026 UX fix).
+    # Каждый tier = равное количество cells, независимо от threshold span.
+    # Tier — это unit of progress; одинаковый visual weight для всех tier'ов
+    # лучше отражает gameplay (закрыть все = одинаковая ценность). Раньше был
+    # proportional (большие thresholds = больше cells) — мелкие tier'ы
+    # терялись (для Marathoner 100k/500k/1M get 1 cell each due to round-down).
     tiers = sorted(tier_thresholds)
     if tiers[-1] <= 0:
         return _EMPTY * width
-    # Cells per tier — пропорционально размеру tier'а.
-    cells_per_tier: list[int] = []
-    prev_threshold = 0
-    remaining_width = width
-    for i, threshold in enumerate(tiers):
-        tier_span = threshold - prev_threshold
-        if i == len(tiers) - 1:
-            cells = remaining_width  # last tier — все оставшееся
-        else:
-            cells = max(1, round(tier_span / tiers[-1] * width))
-            cells = min(cells, remaining_width - (len(tiers) - i - 1))
-            cells = max(1, cells)
-        cells_per_tier.append(cells)
-        remaining_width -= cells
-        prev_threshold = threshold
+    n_tiers = len(tiers)
+    # Distribute cells equally; первые `remainder` tier'ов получают +1 cell.
+    base_cells = width // n_tiers
+    remainder = width - base_cells * n_tiers
+    cells_per_tier = [base_cells + (1 if i < remainder else 0) for i in range(n_tiers)]
+    # Ensure min 1 cell per tier (когда width < n_tiers).
+    cells_per_tier = [max(1, c) for c in cells_per_tier]
 
     # Заполняем каждый tier-segment + separators между.
     segments = []
@@ -329,9 +325,11 @@ def _format_progress_bar(
             tier_filled = tier_cells
         elif current <= prev_threshold:
             tier_filled = 0
-        else:
+        elif tier_span > 0:
             tier_filled = round((current - prev_threshold) / tier_span * tier_cells)
             tier_filled = max(0, min(tier_filled, tier_cells))
+        else:
+            tier_filled = 0
         segments.append(_FILLED * tier_filled + _EMPTY * (tier_cells - tier_filled))
         prev_threshold = threshold
 

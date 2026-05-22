@@ -267,12 +267,59 @@ def test_format_progress_bar_zero_target():
 
 
 def test_format_progress_bar_multi_tier_with_separators():
-    """Multi-tier: separators между tier-segments."""
+    """Multi-tier: separators между tier-segments (equal-sized 22.05.2026 fix)."""
     bar = _format_progress_bar(30, 500, tier_thresholds=[10, 50, 100, 500], width=12)
     # Должен содержать `│` separators (3 штуки между 4 tier'ами).
     assert bar.count('│') == 3
-    # Tier 1 (10) полностью filled, tier 2 (50) частично.
+    # Tier 1 (10) полностью filled (30 >= 10), tier 2 (50) частично.
     assert bar.startswith('▰')
+
+
+def test_format_progress_bar_multi_tier_equal_sized():
+    """22.05.2026 — equal-sized segments: каждый tier = равное число cells.
+
+    Для Marathoner-like: 5 tiers, width=15 → 3 cells per tier.
+    """
+    # Все tiers unlocked (current >= max).
+    bar = _format_progress_bar(10_000_000, 10_000_000,
+                                tier_thresholds=[100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
+                                width=15)
+    # 5 tiers × 3 cells = 15 cells + 4 separators = 19 chars.
+    assert len(bar) == 19
+    assert bar.count('│') == 4
+    # Все cells filled.
+    assert bar.count('▰') == 15
+    assert bar.count('▱') == 0
+
+
+def test_format_progress_bar_multi_tier_partial_in_one():
+    """5 tiers, 3 done, partial in 4th."""
+    # User scenario: 1.79M в Marathoner [100k, 500k, 1M, 5M, 10M].
+    bar = _format_progress_bar(1_791_812, 10_000_000,
+                                tier_thresholds=[100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
+                                width=15)
+    # 5 segments separated by 4 │.
+    segments = bar.split('│')
+    assert len(segments) == 5
+    # Tier 1, 2, 3: fully filled (3 cells each).
+    assert segments[0] == '▰▰▰'
+    assert segments[1] == '▰▰▰'
+    assert segments[2] == '▰▰▰'
+    # Tier 4 (5M): partial — (1.79M - 1M) / (5M - 1M) = 0.197 → round(0.197 * 3) = 1 cell filled.
+    assert segments[3] == '▰▱▱'
+    # Tier 5: empty.
+    assert segments[4] == '▱▱▱'
+
+
+def test_format_progress_bar_uneven_distribution():
+    """4 tiers width=10 → 3+3+2+2 (remainder=2 → first 2 tiers get +1)."""
+    bar = _format_progress_bar(0, 100, tier_thresholds=[25, 50, 75, 100], width=10)
+    segments = bar.split('│')
+    assert len(segments) == 4
+    assert len(segments[0]) == 3  # base 2 + remainder 1
+    assert len(segments[1]) == 3
+    assert len(segments[2]) == 2
+    assert len(segments[3]) == 2
 
 
 def test_format_progress_bar_multi_tier_single_tier_falls_back():
