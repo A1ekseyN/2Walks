@@ -4517,15 +4517,16 @@ CLI shell для будущих категорий. Empty state когда catal
 - Hook: event_hooks=['work_done'], accumulator `count += payload['hours']`.
 - *Balance TBD:* vacancy-specific stat — Watchman→stamina, Factory→energy_max, Courier→speed, Forwarder→luck. Может cause «обязательная прокачка всех» — балансировать через high tier threshold (500h).
 
-##### 4.62.1.6. Gym / Skill triumphs `[L / M / todo (blocked by 4.62.0)]`
+##### 4.62.1.6. Gym / Skill triumphs `[L / M / done (22.05.2026, 0.2.5s)]`
 
-**Категория `gym`. Metric-based (multiple metrics).**
+**Категория `gym`. Metric-based** через `state.gym.<field>` напрямую (без backfill, auto-unlock через `init_metric_check`).
 
-- **Athlete (any skill to N)** — tiers `[5, 10, 20, 30]`. Метрика — max over all 20 skills.
-- **Skill mastery per-skill** — 20 триумфов (по одному на каждый Gym skill: stamina / energy_max / speed / luck / ... / backpack). Tiers `[30, 50, 100]`. Capstone per-skill: skill-specific bonus.
-- **Total skills levels** — sum по 20 skills. Tiers `[50, 200, 500, 1000, 5000]`. Capstone: title «Master of All Trades».
-- **Skill diversity** — все 20 skills ≥ N. Tiers `[5, 10]`. Bonus: discourage «only-stamina» билды.
-- *Balance TBD:* per-skill triumphs — 20 штук может быть overwhelming. Может group в 1 generic + per-skill только на capstone tier.
+Финальный дизайн (choice 22.05.2026 — пользователь предпочёл **simplicity** over more triumph types):
+
+- **20 per-skill triumphs** — id = field name из `state.GymSkills` (stamina / energy_max_skill / speed_skill / luck_skill / etc.), name = title из `_GYM_SKILL_DISPLAY` (web/main.py — единый источник UI). Tiers `[10, 15, 20, 25, 30]` для всех 20 (tight pacing +5 levels per tier).
+- **Skill Master** (aggregate) — `metric=lambda s: sum(getattr(s.gym, f) for f in _GYM_SKILL_FIELDS)`, tiers `[50, 100, 250, 500, 1000]`. Capstone 1000 = avg 50/skill = deep endgame goal.
+
+**Rejected** (на момент 4.62.1.6, потенциально вернутся): Skill Diversity (все ≥ N) — отклонено, aggregate sum уже косвенно поощряет diversity; Athlete (max single skill) — отклонено как излишнее. Helper `_GYM_SKILL_FIELDS: tuple[str, ...]` в `triumphs_data.py` — единый источник правды для aggregate metric + тестов. Legacy fields `mechanics` / `it_technologies` из `GymSkills` исключены (не trainable). 14 новых тестов в TestGymTriumphs.
 
 ##### 4.62.1.7. Drops triumphs `[L / S / todo (blocked by 4.62.0)]`
 

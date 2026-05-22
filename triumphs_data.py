@@ -36,6 +36,21 @@ TRIUMPHS = {
 POINTS_PER_TIER: int = 10
 
 
+# 20 trainable Gym skill field names (источник правды — `_GYM_SKILL_DISPLAY`
+# в web/main.py + state.GymSkills). Используется в (1) Skill Master aggregate
+# metric (sum по всем 20) и (2) тестах catalog'а для validate всех per-skill.
+# Mechanics / it_technologies из state.GymSkills намеренно исключены —
+# legacy fields, не trainable через Gym menu.
+_GYM_SKILL_FIELDS: tuple[str, ...] = (
+    'stamina', 'energy_max_skill', 'energy_regen_skill', 'speed_skill', 'luck_skill',
+    'move_optimization_adventure', 'move_optimization_gym', 'move_optimization_work',
+    'energy_optimization_adventure', 'energy_optimization_gym', 'energy_optimization_work',
+    'neatness_in_using_things', 'money_saving', 'earnings_boost', 'trader',
+    'banking_interest_rate', 'loan_capacity', 'loan_interest_reduction',
+    'inspiration', 'backpack_skill',
+)
+
+
 TRIUMPHS: dict[str, dict] = {
     # ----- 🏃 Steps (4.62.1.1, 22.05.2026) -----
     # Marathoner — metric-based, читает state.steps.total_used (ПОТРАЧЕННЫЕ
@@ -175,6 +190,131 @@ TRIUMPHS: dict[str, dict] = {
         'category': 'adventures',
         'tiers': [10, 50, 100, 500, 1000],
         'metric': lambda state: state.adventure.counters.get('walk_30k', 0),
+    },
+
+    # ----- 🏋 Gym / Skill Mastery (4.62.1.6, 22.05.2026) -----
+    # 20 per-skill metric-based triumphs (tier зависит от level каждого skill'а)
+    # + 1 aggregate "Skill Master" на sum всех 20.
+    #
+    # Per-skill tiers [10, 15, 20, 25, 30] (choice 22.05.2026 — tight pacing,
+    # каждый next tier = +5 levels). Triumph ID = field name в state.GymSkills,
+    # name = title из _GYM_SKILL_DISPLAY (web/main.py — единый источник UI).
+    # Metric-based — auto-unlock через init_metric_check на старте без backfill.
+    #
+    # Aggregate Skill Master tiers [50, 100, 250, 500, 1000] (choice 22.05.2026).
+    # Current player snapshot: sum=133, 14/20 prokachano → tiers 1-2 backfill
+    # мгновенно. Capstone 1000 = avg 50/skill = deep endgame goal (sum 600 =
+    # "все 20 to lvl 30" уже unlock'нет 4 tier'а — capstone стимулирует grind
+    # за пределами этого).
+
+    # ----- 20 per-skill (Tier = current skill level) -----
+    'stamina': {
+        'name': 'Stamina', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.stamina,
+    },
+    'energy_max_skill': {
+        'name': 'Energy Max', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.energy_max_skill,
+    },
+    'energy_regen_skill': {
+        'name': 'Регенерация энергии', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.energy_regen_skill,
+    },
+    'speed_skill': {
+        'name': 'Speed', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.speed_skill,
+    },
+    'luck_skill': {
+        'name': 'Luck', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.luck_skill,
+    },
+    'move_optimization_adventure': {
+        'name': 'Move Optimization (Adventure)', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.move_optimization_adventure,
+    },
+    'move_optimization_gym': {
+        'name': 'Move Optimization (Gym)', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.move_optimization_gym,
+    },
+    'move_optimization_work': {
+        'name': 'Move Optimization (Work)', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.move_optimization_work,
+    },
+    'energy_optimization_adventure': {
+        'name': 'Экономия энергии в Adventure', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.energy_optimization_adventure,
+    },
+    'energy_optimization_gym': {
+        'name': 'Экономия энергии в Gym', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.energy_optimization_gym,
+    },
+    'energy_optimization_work': {
+        'name': 'Экономия энергии в Work', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.energy_optimization_work,
+    },
+    'neatness_in_using_things': {
+        'name': 'Neatness', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.neatness_in_using_things,
+    },
+    'money_saving': {
+        'name': 'Экономия денег', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.money_saving,
+    },
+    'earnings_boost': {
+        'name': 'Бонус к зарплате', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.earnings_boost,
+    },
+    'trader': {
+        'name': 'Торговец', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.trader,
+    },
+    'banking_interest_rate': {
+        'name': 'Банковская ставка', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.banking_interest_rate,
+    },
+    'loan_capacity': {
+        'name': 'Кредитный лимит', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.loan_capacity,
+    },
+    'loan_interest_reduction': {
+        'name': 'Снижение ставки по кредиту', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.loan_interest_reduction,
+    },
+    'inspiration': {
+        'name': 'Обучение', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.inspiration,
+    },
+    'backpack_skill': {
+        'name': 'Размер инвентаря', 'category': 'gym',
+        'tiers': [10, 15, 20, 25, 30],
+        'metric': lambda s: s.gym.backpack_skill,
+    },
+
+    # ----- Aggregate (sum по всем 20 skills) -----
+    'skill_master': {
+        'name': 'Skill Master',
+        'category': 'gym',
+        'tiers': [50, 100, 250, 500, 1000],
+        'metric': lambda s: sum(getattr(s.gym, f) for f in _GYM_SKILL_FIELDS),
     },
 }
 

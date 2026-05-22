@@ -368,3 +368,144 @@ class TestAdventureTriumphs:
         assert 'adventurer' in triumph_ids
         assert 'stroller' in triumph_ids
         assert 'hiker' in triumph_ids
+
+
+# ===========================================================================
+# 4.62.1.6 — Gym / Skill Mastery (20 per-skill + Skill Master aggregate)
+# ===========================================================================
+
+class TestGymTriumphs:
+    """🏋 Gym — 20 metric-based per-skill triumphs + 1 aggregate Skill Master."""
+
+    PER_SKILL_TIERS = [10, 15, 20, 25, 30]
+    AGGREGATE_TIERS = [50, 100, 250, 500, 1000]
+
+    def test_all_20_per_skill_in_catalog(self):
+        from triumphs_data import _GYM_SKILL_FIELDS
+        assert len(_GYM_SKILL_FIELDS) == 20
+        for field in _GYM_SKILL_FIELDS:
+            assert field in TRIUMPHS, f'Per-skill triumph {field!r} missing'
+
+    def test_skill_master_in_catalog(self):
+        assert 'skill_master' in TRIUMPHS
+        spec = TRIUMPHS['skill_master']
+        assert spec['name'] == 'Skill Master'
+        assert spec['category'] == 'gym'
+        assert spec['tiers'] == self.AGGREGATE_TIERS
+        assert 'metric' in spec
+
+    def test_all_21_share_category_and_are_metric_based(self):
+        from triumphs_data import _GYM_SKILL_FIELDS
+        for triumph_id in (*_GYM_SKILL_FIELDS, 'skill_master'):
+            spec = TRIUMPHS[triumph_id]
+            assert spec['category'] == 'gym'
+            assert 'metric' in spec
+            assert 'event_hooks' not in spec
+
+    def test_per_skill_tiers_consistent(self):
+        from triumphs_data import _GYM_SKILL_FIELDS
+        for field in _GYM_SKILL_FIELDS:
+            assert TRIUMPHS[field]['tiers'] == self.PER_SKILL_TIERS
+
+    def test_per_skill_metric_reads_correct_field(self):
+        """Каждый per-skill metric читает state.gym.<field>."""
+        from triumphs_data import _GYM_SKILL_FIELDS
+        state = GameState.default_new_game()
+        # Уникальное значение для каждого field — поймаем wrong-getattr.
+        for i, field in enumerate(_GYM_SKILL_FIELDS, start=1):
+            setattr(state.gym, field, i)
+        for i, field in enumerate(_GYM_SKILL_FIELDS, start=1):
+            assert TRIUMPHS[field]['metric'](state) == i, f'{field} lambda читает не свой field'
+
+    def test_per_skill_no_unlock_below_first_tier(self):
+        """Stamina=5 → no unlock (tier 1=10)."""
+        state = GameState.default_new_game()
+        state.gym.stamina = 5
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs.get('stamina', {}).get('tier', 0) == 0
+
+    def test_per_skill_unlock_tier_1(self):
+        """Stamina=10 → tier 1."""
+        state = GameState.default_new_game()
+        state.gym.stamina = 10
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs['stamina']['tier'] == 1
+
+    def test_per_skill_capstone_at_30(self):
+        """Luck=30 → tier 5 (capstone)."""
+        state = GameState.default_new_game()
+        state.gym.luck_skill = 30
+        unlocked = register_event(state, 'work_done', hours=1)
+        luck_unlocks = [u for u in unlocked if u['triumph_id'] == 'luck_skill']
+        assert state.triumphs['luck_skill']['tier'] == 5
+        assert luck_unlocks[-1]['is_capstone'] is True
+
+    def test_per_skill_multiple_tiers_at_once(self):
+        """Stamina=18 → tiers 1+2 (10, 15)."""
+        state = GameState.default_new_game()
+        state.gym.stamina = 18
+        unlocked = register_event(state, 'work_done', hours=1)
+        stamina_unlocks = [u for u in unlocked if u['triumph_id'] == 'stamina']
+        assert len(stamina_unlocks) == 2
+        assert state.triumphs['stamina']['tier'] == 2
+
+    # ----- Skill Master aggregate -----
+
+    def test_skill_master_metric_sums_all_20(self):
+        from triumphs_data import _GYM_SKILL_FIELDS
+        state = GameState.default_new_game()
+        # +1 в каждый skill → sum=20.
+        for field in _GYM_SKILL_FIELDS:
+            setattr(state.gym, field, 1)
+        assert TRIUMPHS['skill_master']['metric'](state) == 20
+
+    def test_skill_master_sums_correctly_with_varied_levels(self):
+        state = GameState.default_new_game()
+        state.gym.stamina = 18
+        state.gym.energy_max_skill = 15
+        state.gym.luck_skill = 12
+        # Остальные = 0. Sum = 45.
+        assert TRIUMPHS['skill_master']['metric'](state) == 45
+
+    def test_skill_master_no_unlock_below_first_tier(self):
+        """Sum=49 → no unlock (tier 1=50)."""
+        state = GameState.default_new_game()
+        state.gym.stamina = 30
+        state.gym.luck_skill = 19  # 30+19=49
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs.get('skill_master', {}).get('tier', 0) == 0
+
+    def test_skill_master_unlock_tier_2_at_player_snapshot(self):
+        """Симуляция реального snapshot'а игрока (22.05.2026, sum=133): tier 2
+        backfill'ится через init_metric_check без любых events."""
+        from triumphs import init_metric_check
+        state = GameState.default_new_game()
+        state.gym.stamina = 18
+        state.gym.energy_max_skill = 15
+        state.gym.energy_regen_skill = 3
+        state.gym.speed_skill = 14
+        state.gym.luck_skill = 12
+        state.gym.move_optimization_adventure = 9
+        state.gym.move_optimization_gym = 13
+        state.gym.move_optimization_work = 16
+        state.gym.energy_optimization_gym = 5
+        state.gym.neatness_in_using_things = 13
+        state.gym.money_saving = 2
+        state.gym.earnings_boost = 2
+        state.gym.inspiration = 7
+        state.gym.backpack_skill = 4
+        # Sum=133.
+        assert TRIUMPHS['skill_master']['metric'](state) == 133
+        init_metric_check(state)
+        # Tiers 50 + 100 unlocked, не 250.
+        assert state.triumphs['skill_master']['tier'] == 2
+
+    def test_skill_master_capstone_at_1000(self):
+        from triumphs_data import _GYM_SKILL_FIELDS
+        state = GameState.default_new_game()
+        for field in _GYM_SKILL_FIELDS:
+            setattr(state.gym, field, 50)  # sum=1000
+        unlocked = register_event(state, 'work_done', hours=1)
+        sm_unlocks = [u for u in unlocked if u['triumph_id'] == 'skill_master']
+        assert state.triumphs['skill_master']['tier'] == 5
+        assert sm_unlocks[-1]['is_capstone'] is True
