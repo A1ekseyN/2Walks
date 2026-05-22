@@ -17,6 +17,7 @@ from triumphs import (
     _format_progress_bar,
     backfill_from_history,
     get_progress,
+    init_metric_check,
     register_event,
     total_score,
 )
@@ -346,6 +347,46 @@ def test_backfill_triggers_tier_unlocks(mock_catalog, tmp_path):
     backfill_from_history(state, history_jsonl_path=str(history))
 
     assert state.triumphs['adventurer']['tier'] == 1
+
+
+# --- init_metric_check (22.05.2026 UX fix) ---
+
+def test_init_metric_check_unlocks_metric_based(mock_catalog):
+    """init_metric_check unlock'ает metric-based triumphs без log_event."""
+    state = GameState.default_new_game()
+    state.steps.total_used = 500_000
+
+    unlocked = init_metric_check(state)
+
+    marathoner_unlocks = [u for u in unlocked if u['triumph_id'] == 'marathoner']
+    assert len(marathoner_unlocks) == 2  # tier 1 (10k) + tier 2 (100k) из mock_catalog
+    assert state.triumphs['marathoner']['tier'] == 2
+
+
+def test_init_metric_check_skips_event_based(mock_catalog):
+    """init_metric_check НЕ трогает event-based counters."""
+    state = GameState.default_new_game()
+    # adventurer / worker — event-based, не должны быть affected.
+    init_metric_check(state)
+    assert state.triumphs.get('adventurer', {}).get('count', 0) == 0
+    assert state.triumphs.get('worker', {}).get('count', 0) == 0
+
+
+def test_init_metric_check_idempotent(mock_catalog):
+    """Повторный вызов с тем же state не unlock'ает уже-unlocked."""
+    state = GameState.default_new_game()
+    state.steps.total_used = 500_000
+
+    first = init_metric_check(state)
+    assert len(first) == 2
+
+    second = init_metric_check(state)
+    assert second == []  # ничего нового
+
+
+def test_init_metric_check_none_state():
+    """Defensive: None state → no-op."""
+    assert init_metric_check(None) == []
 
 
 def test_backfill_skips_corrupt_lines(mock_catalog, tmp_path):

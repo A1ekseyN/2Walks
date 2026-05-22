@@ -4470,15 +4470,16 @@ CLI shell для будущих категорий. Empty state когда catal
 
 Каждая категория — независимая задача. Можно делать в любом порядке. **Recommended start order:** 4.62.1.1 Steps → 4.62.1.8 Level → 4.62.1.2 Adventures (от simplest metric к event-based).
 
-##### 4.62.1.1. Steps triumphs (Marathoner) `[L / XS / todo (blocked by 4.62.0)]`
+##### 4.62.1.1. Steps triumphs (Marathoner) `[L / XS / done (22.05.2026, 0.2.5m)]`
 
 **Категория `steps`. Metric-based** (`state.steps.total_used`).
 
-- **Marathoner** — tiers `[10_000, 100_000, 1_000_000, 10_000_000]`. Capstone: title «Marathoner».
+- **Marathoner** — tiers `[100_000, 500_000, 1_000_000, 5_000_000, 10_000_000]` (5 tier'ов, обсуждено 22.05.2026 — лучший pacing чем initial 4-tier 10k/100k/1M/10M).
 - Hook: metric-based (read on any register_event).
-- Balance check: текущий total_used = 1.8M шагов за ~6 месяцев → 1M tier очень mid-game, 10M ~через год. OK.
+- **Tier rationale:** 100k = первый meaningful milestone (1-2 недели casual vs 10k за 1 день). 500k разбивает middle gap. 5M = late-game gate перед 10M capstone (старый 1M→10M 10x jump был too sparse).
+- Capstone (10M): title «Marathoner».
 
-**Тесты:** tier unlock при достижении threshold, idempotency, score increment, progress bar formatting.
+**Реализовано:** 9 тестов в новом `tests/test_triumphs_catalog.py` (структура / metric / no-unlock / single + multi-tier unlock / capstone / score / progress в текущем tier'е / idempotency). У игрока с `total_used=1.8M` — мгновенно unlock'аются tiers 1+2+3 при первом register_event (score +30). Backfill не нужен (metric-based). 1161 passed, mypy 0 issues.
 
 ##### 4.62.1.2. Adventures triumphs (Adventurer general) `[L / XS / todo (blocked by 4.62.0)]`
 

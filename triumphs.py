@@ -215,6 +215,40 @@ def get_progress(state, triumph_id: str) -> Optional[dict]:
     }
 
 
+def init_metric_check(state) -> list[dict]:
+    """4.62.1.1 fix (22.05.2026) — Metric-based recheck для всех metric triumph'ов.
+
+    Вызывается из `init_game_state` после load — auto-unlock metric-based
+    triumph'ов на старте игры (без необходимости ждать первого log_event).
+    Решает UX-проблему: игрок открывает Triumphs menu и видит Marathoner
+    unlocked сразу, а не «нужно потыкать чтобы триггернуть recheck».
+
+    Event-based triumphs НЕ трогаются (их counters обновляются только при
+    реальных event'ах через register_event).
+
+    Returns list newly-unlocked dicts (для opcional notifications в caller'е).
+    Идемпотентен — повторный вызов с тем же state не unlock'ает уже-unlocked.
+    """
+    if state is None:
+        return []
+    unlocked: list[dict] = []
+    for triumph_id, spec in TRIUMPHS.items():
+        if 'metric' not in spec:
+            continue
+        spec_with_id = dict(spec)
+        spec_with_id['_id'] = triumph_id
+        current = _read_current_value(state, spec_with_id)
+        newly = _check_tier_unlocks(state, triumph_id, spec, current)
+        for tier_idx in newly:
+            unlocked.append({
+                'triumph_id': triumph_id,
+                'tier_index': tier_idx,
+                'name': spec.get('name', triumph_id),
+                'is_capstone': tier_idx == len(spec.get('tiers', [])),
+            })
+    return unlocked
+
+
 def total_score(state) -> int:
     """Sum points по unlocked tiers всех triumph'ов в catalog'е."""
     total = 0

@@ -90,6 +90,16 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # не увидит ввод через web, если game_state лист ещё не обновлён.
     apply_steps_log_max_merge(s)
 
+    # 4.62.1.1 fix (22.05.2026) — auto-unlock metric-based triumphs на старте
+    # (без необходимости ждать первого register_event через log_event).
+    # Решает UX: открыл Triumphs menu → видишь unlock'и сразу, не «потыкай».
+    # Silent-fail — triumphs не критичный feature.
+    try:
+        from triumphs import init_metric_check
+        init_metric_check(s)
+    except Exception:  # noqa: BLE001
+        pass
+
     # 4.2 — Build «пока тебя не было» report. Silent-fail если Sheets history
     # недоступен. Caller (CLI play / web _dashboard_context) рендерит и
     # очищает list. Lazy import — report → google_sheets_db → может тянуть

@@ -41,8 +41,9 @@ def _check_first_launch_backfill_prompt(state) -> bool:
     Условия:
     - state.triumphs_backfill_dismissed == False (игрок ещё не выбрал «Skip»)
     - history.jsonl существует и не пустой
-    - state.triumphs пустой ИЛИ имеет minimal entries (Marathoner может быть
-      auto-unlocked metric'ом, но event-based counters = 0 → стоит предложить)
+    - В catalog'е есть event-based triumphs (если их нет — backfill нечего
+      делать, metric-based triumphs auto-unlock'аются на старте через
+      init_metric_check — см. 4.62.1.1 fix 22.05.2026).
 
     Returns True если prompt был показан и обработан (any choice).
     """
@@ -55,6 +56,12 @@ def _check_first_launch_backfill_prompt(state) -> bool:
     except OSError:
         return False
     if size == 0:
+        return False
+    # 22.05.2026 — Skip prompt если в catalog нет event-based triumphs.
+    # Backfill бесполезен для metric-based (они auto-unlock через
+    # init_metric_check / register_event), показывать prompt = confusing UX.
+    has_event_based = any('event_hooks' in spec for spec in TRIUMPHS.values())
+    if not has_event_based:
         return False
 
     # Counting events для UX (~ how many lines в file). Cheap.

@@ -67,16 +67,20 @@ def _stub_steps_log_for_day(monkeypatch, request):
 
 @pytest.fixture(autouse=True)
 def _disable_triumphs_register_event_for_non_triumphs_tests(monkeypatch, request):
-    """4.62.0.2 — `triumphs.register_event` no-op для тестов кроме `test_triumphs.py`.
+    """4.62.0.2 — `triumphs.register_event` no-op для тестов кроме triumphs-tests.
 
     Engine вызывается из `history.log_event` (hook) на каждом event'е. Без
     мока тесты которые делают log_event mock или обходят его — могут случайно
     мутировать state.triumphs (если catalog не пустой). Также защищает от
     side-effects если catalog (4.62.1.x) добавится.
 
-    `test_triumphs.py` тестирует сам engine — там register_event должен работать.
+    Skip:
+    - `test_triumphs.py` — тестирует сам engine, register_event должен работать.
+    - `test_triumphs_catalog.py` — тестирует catalog entries (4.62.1.x) через
+      реальный register_event с metric/event hooks.
     """
-    if request.node.fspath.basename == 'test_triumphs.py':
+    skip = {'test_triumphs.py', 'test_triumphs_catalog.py'}
+    if request.node.fspath.basename in skip:
         return
     import triumphs
     monkeypatch.setattr(triumphs, 'register_event',

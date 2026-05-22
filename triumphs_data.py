@@ -36,8 +36,28 @@ TRIUMPHS = {
 POINTS_PER_TIER: int = 10
 
 
-# Пустой catalog — заполняется в 4.62.1.x по одной категории за раз.
-TRIUMPHS: dict[str, dict] = {}
+TRIUMPHS: dict[str, dict] = {
+    # ----- 🏃 Steps (4.62.1.1, 22.05.2026) -----
+    # Marathoner — metric-based, читает state.steps.total_used (ПОТРАЧЕННЫЕ
+    # шаги, не walked). Поощряет активную игру: work / training / adventures.
+    # Симметрично с другими активными metric'ами (Trader / Earnings Boost).
+    #
+    # Tiers chosen 22.05.2026:
+    # - 100k: первый meaningful milestone (1-2 недели casual play). 10k был бы
+    #   too easy (achievable за 1 день + 1 shift).
+    # - 500k: intermediate gate в середине (3-4 месяца). Раньше gap 100k→1M
+    #   был too big.
+    # - 1M: solid mid-game milestone.
+    # - 5M: late-game gate перед capstone. Split 1M→10M на 1M→5M→10M для
+    #   pacing'а (старый 10x jump был too sparse).
+    # - 10M: capstone (~5+ years для casual игрока).
+    'marathoner': {
+        'name': 'Marathoner',
+        'category': 'steps',
+        'tiers': [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
+        'metric': lambda state: state.steps.total_used,
+    },
+}
 
 
 # Категории для меню grouping (упорядоченные). Расширяются по мере добавления

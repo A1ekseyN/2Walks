@@ -56,6 +56,30 @@ def test_prompt_skipped_when_history_file_missing(tmp_path, monkeypatch, capsys)
     assert result is False
 
 
+def test_prompt_skipped_when_no_event_based_in_catalog(tmp_path, monkeypatch, capsys):
+    """22.05.2026 fix — Skip prompt если в catalog только metric-based triumphs.
+    Backfill бесполезен для metric-based, prompt = confusing UX."""
+    state = GameState.default_new_game()
+    _mock_history_file(tmp_path, monkeypatch, events=[
+        {'type': 'adventure_done', 'payload': {}}
+    ])
+    # Catalog только с metric-based — backfill нечего делать.
+    catalog = {
+        'marathoner': {
+            'name': 'Marathoner', 'category': 'steps',
+            'tiers': [100], 'metric': lambda s: s.steps.total_used,
+        },
+    }
+    monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+    import triumphs_menu
+    monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+
+    result = _check_first_launch_backfill_prompt(state)
+    assert result is False
+    out = capsys.readouterr().out
+    assert 'Найдена существующая история' not in out
+
+
 def test_prompt_skipped_when_history_file_empty(tmp_path, monkeypatch, capsys):
     """Пустой history.jsonl → no prompt."""
     state = GameState.default_new_game()
@@ -66,12 +90,23 @@ def test_prompt_skipped_when_history_file_empty(tmp_path, monkeypatch, capsys):
 
 
 def test_prompt_shows_when_history_exists_and_not_dismissed(tmp_path, monkeypatch, capsys):
-    """history.jsonl с events + dismissed=False → prompt появляется."""
+    """history.jsonl с events + dismissed=False + есть event-based triumph
+    в catalog'е → prompt появляется."""
     state = GameState.default_new_game()
     _mock_history_file(tmp_path, monkeypatch, events=[
         {'type': 'adventure_done', 'payload': {}},
         {'type': 'work_done', 'payload': {'hours': 4}},
     ])
+    # Нужен event-based triumph чтобы prompt прошёл проверку 22.05.2026 fix.
+    catalog = {
+        'adventurer': {
+            'name': 'Adventurer', 'category': 'adventures',
+            'tiers': [10], 'event_hooks': ['adventure_done'],
+        },
+    }
+    monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+    import triumphs_menu
+    monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
     monkeypatch.setattr('builtins.input', lambda *a, **k: 'n')  # «Позже»
 
     result = _check_first_launch_backfill_prompt(state)
@@ -87,6 +122,16 @@ def test_prompt_skip_sets_dismissed_flag(tmp_path, monkeypatch, capsys):
     """Choice «s» → state.triumphs_backfill_dismissed = True."""
     state = GameState.default_new_game()
     _mock_history_file(tmp_path, monkeypatch, events=[{'type': 'adventure_done', 'payload': {}}])
+    # Event-based в catalog'е (иначе prompt skip'нется по 22.05.2026 fix).
+    catalog = {
+        'adventurer': {
+            'name': 'Adventurer', 'category': 'adventures',
+            'tiers': [10], 'event_hooks': ['adventure_done'],
+        },
+    }
+    monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+    import triumphs_menu
+    monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
     monkeypatch.setattr('builtins.input', lambda *a, **k: 's')
     # Mock save_characteristic чтобы не пытался писать в Sheets.
     import persistence
