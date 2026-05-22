@@ -4334,6 +4334,36 @@ Worker:     ▰▰▱▱▱▱▱▱▱▱ 25h/100h (25%)
 
 **Helper:** при implementation создать `triumphs._format_progress_bar(current, target, tier_thresholds=None, width=10)` — pure function в triumphs.py module.
 
+#### Backfill existing progress (зафиксировано 22.05.2026)
+
+**Игра имеет 6+ месяцев накопленного state** (state.steps.total_used ≈ 1.8M, char_level ≈ 10, заполненный inventory). При добавлении Triumphs system важно как обработать existing progress.
+
+**Выбран Variant C — Hybrid (auto metrics + optional history backfill):**
+
+1. **Metric-based триумфы** (Marathoner, Veteran, Athlete) — **auto-unlock сразу** при добавлении в catalog. Engine читает `state.steps.total_used` / `state.char_level.level` / `state.gym.*` на каждом `register_event` (любом event'е) и unlock'ает соответствующие tier'ы. Игрок при включении Triumphs **видит сразу Marathoner tier 3/4 (1M unlocked)**, Veteran tier 2/5 (level 10) и т.д.
+
+2. **Event-based counters** (Adventurer total / Drops / Hard Worker hours / Forge repairs) — **по умолчанию start with 0**. Прошлая история не teryяется, но не auto-imported.
+
+3. **Optional backfill prompt** (one-time на первом launch'е после adding triumph engine):
+   ```
+   ✨ Найдена существующая история (history.jsonl, N events).
+   Backfill triumph event counters из истории? (Может занять ~30 сек)
+   [Y Да] [N Позже] [S Не показывать снова]
+   ```
+   - **Y** → engine сканит `history.jsonl` + Sheets `history` (если доступен), accumulate'ит event counters retroactively.
+   - **N** → counters остаются 0, prompt появится на следующем launch'е.
+   - **S** → `state.triumphs_backfill_dismissed = True`, prompt больше не появляется.
+
+4. **Manual sync** доступен в Triumph menu: «🔄 Sync from history» — игрок может trigger backfill вручную в любой момент (после dismiss / при добавлении новой category / etc).
+
+**Implementation:**
+- Engine (4.62.0.2) — auto metric check включён по умолчанию (любой `register_event` → recheck metrics).
+- Engine (4.62.0.2) — helper `triumphs.backfill_from_history(state, history_jsonl_path=None) -> dict[id→int]` для event counter rebuild. Pure: читает file, аккумулирует counters в memory dict.
+- Menu (4.62.0.3) — first-launch prompt + dismiss flag.
+- **Новое state поле:** `state.triumphs_backfill_dismissed: bool = False` (runtime persisted — round-trip).
+
+**Per-category override:** при реализации каждой 4.62.1.x категории можно решить, использует ли она backfill (default — да) или просто start fresh (некоторые triumphs возможно лучше начать с 0 — например «first S+» as milestone не имеет смысла backfill'ить).
+
 #### Event hook architecture (зафиксировано 22.05.2026)
 
 **Выбран Option 1: Auto hook в `history.log_event`.** После того как `log_event(type, **payload)` запишет event в `jsonl` + Sheets, она вызывает `triumphs.register_event(game.state, type, **payload)`. **Все 15-20 existing call sites НЕ меняются** — log_event уже передаёт payload, engine получит всё необходимое.
@@ -4409,11 +4439,12 @@ def log_event(event_type, **payload):
 - `get_progress(state, triumph_id) -> dict` — `{current_tier, next_tier_threshold, current_value, progress_pct, is_capstone}`.
 - `total_score(state) -> int` — sum points по unlocked tiers (POINTS_PER_TIER constant).
 - `_format_progress_bar(current, target, tier_thresholds=None, width=10) -> str` — pure helper, parallelogram `▰▱` + tier separators `│`. См. visual design выше.
+- `backfill_from_history(state, history_jsonl_path=None) -> dict[id, int]` — pure helper. Сканит `history.jsonl` + optionally Sheets `history`, аккумулирует event counters retroactively. Returns dict «triumph_id → backfilled_count» для UI feedback («backfill добавил +X к Adventurer / +Y к Hard Worker»). См. Backfill design block выше.
 - Hook в `history.py:log_event` — добавить `triumphs.register_event(game.state, event_type, **payload)` после write. ~3 строки, единственное изменение в existing code.
 
 **Pytest fixture:** triumphs.register_event no-op для tests (как уже сделано для history.log_event) — чтобы не загрязнять реальный state.
 
-**Тесты:** event-based counter increment, idempotency (повторный event не двигает tier), metric-based recheck, multi-tier unlock (один event пересекает несколько tier'ов сразу), score calc, format_progress_bar (parallelograms + separators).
+**Тесты:** event-based counter increment, idempotency (повторный event не двигает tier), metric-based recheck, multi-tier unlock (один event пересекает несколько tier'ов сразу), score calc, format_progress_bar (parallelograms + separators), backfill_from_history (parse jsonl + accumulate per event_type, idempotent при повторном вызове).
 
 ##### 4.62.0.3. Menu skeleton + display `[L / S / todo (blocked by 4.62.0.2)]`
 
@@ -4425,9 +4456,13 @@ CLI shell для будущих категорий. Empty state когда catal
 - Progress bar отображается через `_format_progress_bar` helper.
 - Status_bar — добавить секцию `🏆 Pinned:` (если есть pinned, иначе skip).
 - Empty state message: «🏆 Triumphs появятся когда вы начнёте играть — следите за прогрессом тут».
+- **First-launch backfill prompt** (см. Backfill design выше): при первом входе в Triumph menu (когда `state.triumphs == {}` и `state.triumphs_backfill_dismissed == False`) — prompt «✨ Найдена существующая история — backfill counters?» с опциями Y/N/S (Skip навсегда). На Y вызывается `triumphs.backfill_from_history(state)` + show feedback.
+- **Manual sync** в menu: всегда доступная команда «🔄 Sync from history» для re-trigger backfill (например после adding new category).
 - Web: skip пока (отдельная задача 4.62.7).
 
-**Тесты:** menu opens, empty catalog не падает, navigation назад работает, pin/unpin (когда catalog появится) tested в 4.62.4.
+**Зависимость:** требует state поле `triumphs_backfill_dismissed: bool = False` — добавить либо в 4.62.0.1 (если ещё не закрыто) либо в этой задаче.
+
+**Тесты:** menu opens, empty catalog не падает, navigation назад работает, prompt появляется при first-launch если history.jsonl существует, dismiss persists через flag, manual sync команда работает. Pin/unpin tested в 4.62.4.
 
 ---
 
