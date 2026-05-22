@@ -4383,17 +4383,21 @@ def log_event(event_type, **payload):
 
 ### Phase 1 — Foundation
 
-##### 4.62.0.1. State schema + persistence `[L / S / todo (foundation)]`
+##### 4.62.0.1. State schema + persistence `[L / S / done (22.05.2026, 0.2.5j)]`
 
 Добавляет triumph-related поля в `GameState` и обеспечивает round-trip через все persist layers. Catalog пустой — это просто schema.
 
-- `state.triumphs: dict[str, dict]` — `id → {tier: int (current unlocked, 0 = none), unlocked_at: dict[tier→str-datetime], count: int (для event-based counters)}`. Default `{}`.
-- `state.pinned_triumphs: list[str]` — id'шники закреплённых триумфов, cap 3. Default `[]`.
-- `state.title: Optional[str]` — текущий выбранный титул (`None` = без титула). Default `None`.
-- Round-trip в `state.py:to_dict / from_dict` через flat-keys `'triumphs'` / `'pinned_triumphs'` / `'title'` (uses JSON serialization внутри blob layout 1.4.3).
-- Default'ы для legacy сейвов: `{} / [] / None` (backwards-compat).
+**Реализовано (22.05.2026, 0.2.5j):**
+- `state.triumphs: dict[str, dict]` — `id → {tier: int, unlocked_at: dict[tier→str-datetime], count: int}`. Default `{}`.
+- `state.pinned_triumphs: list[str]` — IDs (≤3), cap enforced в pin operation (не в schema). Default `[]`.
+- `state.title: Optional[str]` — selected title. Default `None`.
+- `to_dict()` добавляет flat-keys 'triumphs' / 'pinned_triumphs' / 'title'.
+- `from_dict()` парсит с defaults для legacy сейвов (`{} / [] / None`).
+- `update_from_dict()` обновляет три поля in-place (для Load from Cloud flow).
 
-**Тесты:** new game default values, round-trip через `to_dict → from_dict`, persist в state.json + Sheets blob layout. Legacy save без `triumphs` поля → default empty.
+**Тесты:** 10 новых в `tests/test_state.py` — defaults / round-trip / legacy compat / in-place update / round-trip через state.json (persistence layer). `test_default_state_to_dict_has_all_legacy_keys` обновлён. 1109 passed, mypy 0 issues.
+
+**Следующий шаг:** 4.62.0.2 Engine (register_event + check_unlock + format_progress_bar + hook в log_event).
 
 ##### 4.62.0.2. Engine: register_event + check_unlock + helpers `[L / M / todo (blocked by 4.62.0.1)]`
 

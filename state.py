@@ -199,6 +199,28 @@ class GameState:
     # Round-trip через flat-key 'equipment_presets' ({} для legacy сейвов).
     equipment_presets: dict[str, dict[str, Optional[dict]]] = field(default_factory=dict)
 
+    # 4.62.0.1 — Triumphs / Achievements system (зонтичная 4.62, Phase 1
+    # foundation). Структура одного триумфа в dict: `{'tier': int (current
+    # unlocked tier index, 0 = none unlocked), 'unlocked_at': dict[str→str]
+    # (tier-index → ISO datetime when unlocked), 'count': int (для event-based
+    # accumulator counters)}`. `tier` отражает HIGHEST unlocked tier; UI
+    # вычисляет «осталось до next tier'а» через `triumphs_data.TRIUMPHS[id]['tiers']`.
+    # Round-trip через flat-key 'triumphs' (JSON nested dict, default {} для
+    # legacy сейвов до 4.62.0.1).
+    triumphs: dict[str, dict] = field(default_factory=dict)
+
+    # 4.62.0.1 — IDs закреплённых триумфов (≤ 3) для приоритетного отображения
+    # в status_bar / web pinned banner. Игрок управляет через 4.62.4 Pinned UI.
+    # Cap enforced в pin operation, не в schema. Round-trip через flat-key
+    # 'pinned_triumphs' ([] для legacy сейвов).
+    pinned_triumphs: list[str] = field(default_factory=list)
+
+    # 4.62.0.1 — Selected title из unlocked seals (4.62.3). None если игрок
+    # не выбрал титул или ни один seal не открыт. Отображается в status_bar
+    # рядом с именем персонажа (CLI) или badge'ом в web header. Round-trip
+    # через flat-key 'title' (None для legacy).
+    title: Optional[str] = None
+
     # 4.54.1 — Optimistic concurrency через timestamp. `last_modified` —
     # Unix-ts момента последнего успешного save в Sheets; round-trip'ится
     # как обычное поле. На load в Sheets отсутствующий ключ → default 0.0
@@ -394,6 +416,10 @@ class GameState:
             pending_drop=d.get('pending_drop') or None,
             # 4.63.2 — Equipment presets. {} для legacy сейвов до 0.2.4r.
             equipment_presets=dict(d.get('equipment_presets') or {}),
+            # 4.62.0.1 — Triumphs system. {} / [] / None для legacy сейвов.
+            triumphs=dict(d.get('triumphs') or {}),
+            pinned_triumphs=list(d.get('pinned_triumphs') or []),
+            title=d.get('title') if d.get('title') else None,
             # 4.54.1 — Optimistic concurrency timestamp. Default 0.0 для legacy
             # сейвов до 4.54 — первый save_safe запишет реальный time.time().
             last_modified=float(d.get('last_modified') or 0.0),
@@ -425,6 +451,10 @@ class GameState:
         self.inventory = new.inventory
         self.pending_drop = new.pending_drop
         self.equipment_presets = new.equipment_presets
+        # 4.62.0.1 — Triumphs system update.
+        self.triumphs = new.triumphs
+        self.pinned_triumphs = new.pinned_triumphs
+        self.title = new.title
         # 4.54.1 — last_modified подхватывается из свежего load'а Sheets.
         # last_loaded_snapshot обновлять здесь нельзя — caller (try_reload_state
         # или init_game_state) должен явно вызвать take_snapshot() после того
@@ -546,6 +576,11 @@ class GameState:
             'bank_deposit_last_interest_ts': self.bank.deposit_last_interest_ts,
             'bank_loan_amount': self.bank.loan_amount,
             'bank_loan_last_interest_ts': self.bank.loan_last_interest_ts,
+
+            # 4.62.0.1 — Triumphs system (Phase 1 foundation для зонтичной 4.62).
+            'triumphs': self.triumphs,
+            'pinned_triumphs': self.pinned_triumphs,
+            'title': self.title,
 
             # 4.54.1 — Optimistic concurrency timestamp (round-trip с Sheets).
             # `last_loaded_snapshot` НЕ сериализуется — runtime-only diff helper.

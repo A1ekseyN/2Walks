@@ -357,6 +357,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         # Bank (4.49.0.0 / 4.49.2.1)
         'bank_deposit_amount', 'bank_deposit_last_interest_ts',
         'bank_loan_amount', 'bank_loan_last_interest_ts',
+        # 4.62.0.1 — Triumphs system (Phase 1 foundation для зонтичной 4.62)
+        'triumphs', 'pinned_triumphs', 'title',
         # 4.54.1 — Optimistic concurrency
         'last_modified',
     }
@@ -383,6 +385,127 @@ def test_legacy_save_without_backpack_skill_defaults_to_zero():
     del d['backpack_skill']  # имитируем legacy save до 0.2.4b
     s2 = GameState.from_dict(d)
     assert s2.gym.backpack_skill == 0
+
+
+# ----- 4.62.0.1 — Triumphs system schema + persistence -----
+
+def test_triumphs_default_empty_dict():
+    """Новая игра: triumphs = {} (нет unlocked)."""
+    s = GameState.default_new_game()
+    assert s.triumphs == {}
+
+
+def test_pinned_triumphs_default_empty_list():
+    """Новая игра: pinned_triumphs = []."""
+    s = GameState.default_new_game()
+    assert s.pinned_triumphs == []
+
+
+def test_title_default_none():
+    """Новая игра: title = None."""
+    s = GameState.default_new_game()
+    assert s.title is None
+
+
+def test_triumphs_round_trip_basic():
+    """Round-trip: triumphs dict survives to_dict → from_dict."""
+    s1 = GameState.default_new_game()
+    s1.triumphs = {
+        'marathoner': {'tier': 2, 'unlocked_at': {'0': '2026-05-22 10:00:00', '1': '2026-05-22 11:00:00'}, 'count': 0},
+        'adventurer': {'tier': 1, 'unlocked_at': {'0': '2026-05-22 12:00:00'}, 'count': 15},
+    }
+    d = s1.to_dict()
+    assert d['triumphs'] == s1.triumphs
+
+    s2 = GameState.from_dict(d)
+    assert s2.triumphs == s1.triumphs
+    assert s2.triumphs['marathoner']['tier'] == 2
+    assert s2.triumphs['adventurer']['count'] == 15
+
+
+def test_pinned_triumphs_round_trip():
+    """Round-trip: pinned_triumphs list survives."""
+    s1 = GameState.default_new_game()
+    s1.pinned_triumphs = ['marathoner', 'adventurer', 'treasure_hunter']
+
+    d = s1.to_dict()
+    assert d['pinned_triumphs'] == ['marathoner', 'adventurer', 'treasure_hunter']
+
+    s2 = GameState.from_dict(d)
+    assert s2.pinned_triumphs == ['marathoner', 'adventurer', 'treasure_hunter']
+
+
+def test_title_round_trip():
+    """Round-trip: title string survives."""
+    s1 = GameState.default_new_game()
+    s1.title = 'Marathoner'
+
+    d = s1.to_dict()
+    assert d['title'] == 'Marathoner'
+
+    s2 = GameState.from_dict(d)
+    assert s2.title == 'Marathoner'
+
+
+def test_legacy_save_without_triumphs_defaults_to_empty():
+    """Старый сейв без полей triumphs / pinned_triumphs / title — default empty."""
+    s1 = GameState.default_new_game()
+    d = s1.to_dict()
+    # Имитируем legacy save до 4.62.0.1.
+    del d['triumphs']
+    del d['pinned_triumphs']
+    del d['title']
+
+    s2 = GameState.from_dict(d)
+    assert s2.triumphs == {}
+    assert s2.pinned_triumphs == []
+    assert s2.title is None
+
+
+def test_triumphs_update_from_dict_in_place():
+    """update_from_dict обновляет triumph-поля in-place (не создаёт новый instance)."""
+    s = GameState.default_new_game()
+    original_id = id(s)
+
+    s.update_from_dict({
+        'triumphs': {'marathoner': {'tier': 1, 'unlocked_at': {'0': '2026-05-22'}, 'count': 0}},
+        'pinned_triumphs': ['marathoner'],
+        'title': 'Marathoner',
+    })
+
+    assert id(s) == original_id  # same instance, in-place
+    assert s.triumphs == {'marathoner': {'tier': 1, 'unlocked_at': {'0': '2026-05-22'}, 'count': 0}}
+    assert s.pinned_triumphs == ['marathoner']
+    assert s.title == 'Marathoner'
+
+
+def test_triumphs_round_trip_through_state_json(tmp_path, monkeypatch):
+    """Round-trip через state.json (persistence layer) — проверка JSON-сериализации
+    nested dict + list (важно для blob layout 1.4.3)."""
+    import json
+    from persistence import STATE_JSON_PATH, _json_default, load_state_json
+
+    monkeypatch.chdir(tmp_path)
+    s1 = GameState.default_new_game()
+    s1.triumphs = {
+        'marathoner': {'tier': 3, 'unlocked_at': {'0': '2026-05-22 10:00:00', '1': '2026-05-22 11:00:00', '2': '2026-05-22 12:00:00'}, 'count': 0},
+    }
+    s1.pinned_triumphs = ['marathoner']
+    s1.title = 'Marathoner'
+
+    # Write via _json_default (same as save_characteristic).
+    d = s1.to_dict()
+    (tmp_path / STATE_JSON_PATH).write_text(
+        json.dumps(d, ensure_ascii=False, default=_json_default),
+        encoding='utf-8',
+    )
+    # Read via load_state_json.
+    loaded = load_state_json()
+    s2 = GameState.from_dict(loaded)
+
+    assert s2.triumphs == s1.triumphs
+    assert s2.pinned_triumphs == s1.pinned_triumphs
+    assert s2.title == s1.title
 
 
 def test_pending_drop_round_trip_none():
