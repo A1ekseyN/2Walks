@@ -4498,7 +4498,7 @@ CLI shell для будущих категорий. Empty state когда catal
 - *Why split:* поощряет ходить разные walks, не только endgame.
 - Balance TBD: walk_easy 10/50/200/1000 ok? walk_30k 10 уже = ~5h playtime. Возможно более маленькие tiers для high-tier walks.
 
-##### 4.62.1.4. Energy triumphs (total + split) `[L / M / todo (blocked by 4.62.0)]`
+##### 4.62.1.4. Energy triumphs (total + split) `[L / M / done (22.05.2026, 0.2.5p)]`
 
 **Категория `energy`. Mixed (event-based + accumulators).**
 

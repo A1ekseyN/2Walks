@@ -57,6 +57,59 @@ TRIUMPHS: dict[str, dict] = {
         'tiers': [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
         'metric': lambda state: state.steps.total_used,
     },
+
+    # ----- 🔋 Energy (4.62.1.4, 22.05.2026) -----
+    # Approach B: event-based через cost_energy в payload existing log_event'ов.
+    # Backfill из history.jsonl автоматически работает (cost_energy уже в
+    # payload work_start/extend/skill_train_start/adventure_start/item_repaired;
+    # item_crafted получил cost_energy 22.05.2026 — patch в forge.py).
+    #
+    # Tiers [1k/5k/10k/50k] выбраны 22.05.2026: 1k = ~1-2 недели casual play
+    # (first milestone), 5k = ~1.5 месяца mid-game, 10k = ~3 месяца solid,
+    # 50k = ~1.5-2 года capstone. Симметрично pacing'у Marathoner.
+    # Per-split (Workhorse/Disciplined/Pathfinder) используют те же tiers что
+    # total (Endurance) — по выбору 22.05.2026, simplicity over realism.
+
+    # Total energy spent — все 6 event types с cost_energy.
+    'endurance': {
+        'name': 'Endurance',
+        'category': 'energy',
+        'tiers': [1_000, 5_000, 10_000, 50_000],
+        'event_hooks': [
+            'work_start', 'work_extend',
+            'skill_train_start',
+            'adventure_start',
+            'item_repaired', 'item_crafted',
+        ],
+        'count_delta': lambda p: int(p.get('cost_energy', 0) or 0),
+    },
+
+    # Per-source: только work events.
+    'workhorse': {
+        'name': 'Workhorse',
+        'category': 'energy',
+        'tiers': [1_000, 5_000, 10_000, 50_000],
+        'event_hooks': ['work_start', 'work_extend'],
+        'count_delta': lambda p: int(p.get('cost_energy', 0) or 0),
+    },
+
+    # Per-source: только gym training events.
+    'disciplined': {
+        'name': 'Disciplined',
+        'category': 'energy',
+        'tiers': [1_000, 5_000, 10_000, 50_000],
+        'event_hooks': ['skill_train_start'],
+        'count_delta': lambda p: int(p.get('cost_energy', 0) or 0),
+    },
+
+    # Per-source: только adventure events.
+    'pathfinder': {
+        'name': 'Pathfinder',
+        'category': 'energy',
+        'tiers': [1_000, 5_000, 10_000, 50_000],
+        'event_hooks': ['adventure_start'],
+        'count_delta': lambda p: int(p.get('cost_energy', 0) or 0),
+    },
 }
 
 

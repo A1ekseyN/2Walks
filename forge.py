@@ -490,6 +490,10 @@ def craft_item(state: GameState, item_a: dict, item_b: dict) -> Optional[dict]:
         new_quality=new_quality,
         new_price=new_item['price'][0],
         was_equipped=n_equipped_sources,
+        # 4.62.1.4 (22.05.2026) — cost_* в payload для Triumphs energy tracking.
+        cost_steps=steps,
+        cost_money=money,
+        cost_energy=energy,
     )
     return new_item
 
