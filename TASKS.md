@@ -4287,7 +4287,7 @@ Display: «🔨 СЛОМАН» marker остаётся для quality=0; для 
 
 ---
 
-### 4.62. Triumphs / Достижения (зонтичная — объединяет 4.4 + 4.44) `[H / L / todo (L → H 21.05.2026 — расширен brainstorm каталога 4.62.6, ключевая фича для long-term engagement)]`
+### 4.62. Triumphs / Достижения (зонтичная — объединяет 4.4 + 4.44) `[H / L+ / todo (refactored 22.05.2026 — ~23 granular подзадач: Phase 1 foundation, Phase 2 catalog по 1 категории, Phase 3 meta, Phase 4 bonuses, Phase 5 web, Phase 6 optional)]`
 
 **Объединяет 4.4 (базовый список) + 4.44 (расширенная система с бонусами + Goals)** в одну механику, концептуально вдохновлённую **Destiny 2 Triumphs**. Достижения = система-наградитель за milestones игрока с tiered структурой, категориями, score-метрикой, опциональными бонусами на части триумфов и pin/tracked-механикой (заменяет custom Goals из 4.44).
 
@@ -4315,100 +4315,329 @@ Display: «🔨 СЛОМАН» marker остаётся для quality=0; для 
 - **4.37 Pets** (todo) — natural fit для категории «Питомцы».
 - **4.5 Daily / weekly quests** (todo) — overlap минимальный: quests = time-limited tasks, triumphs = permanent milestones. Не дублирует.
 
-#### Подзадачи
+#### Visual design — progress bars (зафиксировано 22.05.2026)
 
-##### 4.62.0. Infra: state schema + log_event hooks + меню skeleton `[L / M / todo (blocked by nothing)]`
+**CLI display style:** Unicode **parallelograms** `▰` (U+25B0 BLACK PARALLELOGRAM) + `▱` (U+25B1 WHITE PARALLELOGRAM) — symbol set из Claude Code compacting mode. Distinct, modern, не industrial.
 
-**Создаёт базовый движок триумфов без catalog'а.**
+**Tier separators (`│`) видны в bar** для multi-tier triumphs — игрок сразу видит «осталось до next tier'а X».
 
-- `state.triumphs: dict[str, dict]` — id → `{tier: int (current unlocked, 0 = none), unlocked_at: dict[tier→datetime]}`. Round-trip в `from_dict` / `to_dict`.
-- `state.pinned_triumphs: list[str]` (≤ 3) — id'шники закреплённых триумфов.
-- `state.title: Optional[str]` — текущий выбранный титул (None = без).
-- Triumph engine — модуль `triumphs.py`:
-  - `register_event(state, event_type, **payload)` — на каждый `log_event` вызывается parallel, проверяет какие триумфы триггерятся этим event'ом и инкрементирует прогресс. Идемпотентный (повторный event не двигает tier).
-  - `check_unlock(state, triumph_id)` — возвращает (newly_unlocked_tier or None, new_total_score).
-  - Pure helpers: `get_progress(state, triumph_id) -> dict` (current_tier, next_tier_threshold, current_count).
-- Меню «Triumphs» — каркас (пустой каталог). Pattern: новая location или sub-menu в Home?
-- Score calc — sum points по unlocked tiers (constant POINTS_PER_TIER в MVP).
-- Persist через round-trip flat keys в Sheets / CSV.
-
-**Тесты:** infra без catalog'а — round-trip, idempotency, score sum, pin/unpin (≤ 3).
-
-##### 4.62.1. MVP catalog (20-30 триумфов, без бонусов) `[L / M / todo (blocked by 4.62.0)]`
-
-**Заполняет каталог реальным контентом.** Только trophy + score, **никаких gameplay-эффектов** — поэтапная реализация.
-
-**Categories MVP (6):**
-- 🏃 **Шаги** — 10k / 100k / 1M / 10M total used
-- 🗺️ **Adventures** — 10 / 50 / 100 / 500 / 1000 (любые adventures)
-- 💎 **Дропы** — первый B / первый A / первый S / первый S+ + 10 / 100 S-grade items
-- 🏋️ **Gym** — прокачать любой skill до 5 / 10 / 20 / 30
-- 🏭 **Work** — отработать 10 / 100 / 1000 часов
-- 📈 **Уровень** — char_level 5 / 10 / 25 / 50 / 100
-
-Caталог = static dict в `triumphs_data.py` (по pattern `adventure_data.py` / `skill_training_data.py`):
-
-```python
-TRIUMPHS = {
-    'steps_total': {
-        'name': 'Marathoner',
-        'category': 'steps',
-        'tiers': [10_000, 100_000, 1_000_000, 10_000_000],
-        'metric': 'state.steps.total_used',
-        'event_hooks': ['steps_spent'],  # триггеры из log_event
-    },
-    ...
-}
+Примеры:
+```
+Marathoner: ▰▰▰▰▱▱▱▱▱▱ 400k/1M (40%)            ← single-progress (within current tier)
+Adventurer: ▰▰▰│▱▱│▱▱│▱▱│▱▱ 30/500 (Tier 1/5)   ← multi-tier с separators
+Worker:     ▰▰▱▱▱▱▱▱▱▱ 25h/100h (25%)
 ```
 
-**Тесты:** для каждой категории — happy path (накопил, tier unlock), idempotency, score increments.
+**Применение:** CLI Triumph menu (полный список + detail view) + status_bar (pinned triumphs ≤ 3).
 
-##### 4.62.2. Bonus integration на части триумфов `[L / M / todo (blocked by 4.62.1, partial-blocked by 4.58 Active buffs)]`
+**Web:** при реализации web-секции Triumphs (4.62.x) — решить между HTML `<progress>` (consistency с Level progress bar) или тех же unicode символов (visual consistency с CLI). Решить отдельно при реализации web slice.
 
-**На ~5-10 триумфах вешаем gameplay-эффекты.** Стратегия — **бонус только на капстоунах** (max tier категории) — это даёт ощущение «закрыл всю категорию = получил награду».
+**Helper:** при implementation создать `triumphs._format_progress_bar(current, target, tier_thresholds=None, width=10)` — pure function в triumphs.py module.
 
-**Типы бонусов:**
-- **Постоянные** — добавляются как `bonus_<name>(state)` функции, читают `state.triumphs` и возвращают +N. Интегрируются в существующие helper'ы (например `total_bonus_steps(state)` суммирует и triumph-bonus).
-- **Временные** — через **4.58 Active buffs** (зависимость). Если 4.58 не готов — реализуем только постоянные, временные defer.
+#### Event hook architecture (зафиксировано 22.05.2026)
 
-**Примеры (для обсуждения):**
-- Marathoner капстоун (10M шагов) → +5% к Stamina навсегда.
-- Adventurer капстоун (1000 приключений) → +1 max инвентаря.
-- Treasure Hunter (10 S-grade items) → +1% к luck постоянно.
-- Veteran Worker (1000 часов) → +5% к зарплате (стек с earnings_boost).
+**Выбран Option 1: Auto hook в `history.log_event`.** После того как `log_event(type, **payload)` запишет event в `jsonl` + Sheets, она вызывает `triumphs.register_event(game.state, type, **payload)`. **Все 15-20 existing call sites НЕ меняются** — log_event уже передаёт payload, engine получит всё необходимое.
 
-**Тесты:** unlock триггерит bonus, бонус виден в status_bar, save/load preserves.
+```python
+# history.py:log_event — модифицируется ОДИН раз
+def log_event(event_type, **payload):
+    _write_to_jsonl(event)
+    _write_to_sheets_async(event)
+    # NEW: auto-hook в triumphs engine
+    from triumphs import register_event
+    from characteristics import game
+    if game.state:
+        register_event(game.state, event_type, **payload)
+```
 
-##### 4.62.3. Seals + Titles (мета-триумфы) `[L / S / todo (blocked by 4.62.1)]`
+**Engine `register_event` делает 2 вещи на каждом вызове:**
+1. **Event-based триумфы** — инкрементирует counter для triumph'ов которые подписаны на этот event_type
+2. **Metric-based триумфы** — пересчитывает все metric-based triumphs против current state (любой event = perfect moment recheck)
+
+**Поддерживает оба типа:**
+| Triumph | Тип | Источник |
+|---|---|---|
+| Marathoner (1M шагов) | metric | `state.steps.total_used` |
+| Athlete (skill 30) | metric | `state.gym.<skill>` |
+| Veteran (level 25) | metric | `state.char_level.level` |
+| Adventurer (1000 walks) | event | Count `log_event('adventure_done')` |
+| Treasure Hunter (10 S-grade) | event | Count `log_event('drop', grade='s-grade')` |
+| Hard Worker (1000h) | mixed | Accumulate `log_event('work_done', hours=N)` |
+
+**Альтернативы (отвергнуты):**
+- Explicit calls в каждом модуле — duplication + easy забыть подключить новый event
+- Metric-poll в `_dashboard_context` — работает только для metric-based, пропускает event-based + быстрые multi-event прогрессы
+
+#### Подзадачи
+
+**Структура (refactored 22.05.2026 — granular breakdown для incremental implementation):**
+
+- **Phase 1 — Foundation:** 4.62.0.1 / 4.62.0.2 / 4.62.0.3 (state schema + engine + menu). Должны идти строго по порядку.
+- **Phase 2 — Catalog categories** (по одной за раз, в любом порядке, балансируется локально): 4.62.1.1 … 4.62.1.14.
+- **Phase 3 — Meta features:** 4.62.3 Seals + Titles, 4.62.4 Pinned/Tracked.
+- **Phase 4 — Bonuses:** 4.62.2.1 постоянные, 4.62.2.2 active skill rewards (blocked by 4.58).
+- **Phase 5 — Web UI:** 4.62.7.
+- **Phase 6 — Optional:** 4.62.5 Hidden / Secret.
+
+---
+
+### Phase 1 — Foundation
+
+##### 4.62.0.1. State schema + persistence `[L / S / todo (foundation)]`
+
+Добавляет triumph-related поля в `GameState` и обеспечивает round-trip через все persist layers. Catalog пустой — это просто schema.
+
+- `state.triumphs: dict[str, dict]` — `id → {tier: int (current unlocked, 0 = none), unlocked_at: dict[tier→str-datetime], count: int (для event-based counters)}`. Default `{}`.
+- `state.pinned_triumphs: list[str]` — id'шники закреплённых триумфов, cap 3. Default `[]`.
+- `state.title: Optional[str]` — текущий выбранный титул (`None` = без титула). Default `None`.
+- Round-trip в `state.py:to_dict / from_dict` через flat-keys `'triumphs'` / `'pinned_triumphs'` / `'title'` (uses JSON serialization внутри blob layout 1.4.3).
+- Default'ы для legacy сейвов: `{} / [] / None` (backwards-compat).
+
+**Тесты:** new game default values, round-trip через `to_dict → from_dict`, persist в state.json + Sheets blob layout. Legacy save без `triumphs` поля → default empty.
+
+##### 4.62.0.2. Engine: register_event + check_unlock + helpers `[L / M / todo (blocked by 4.62.0.1)]`
+
+Новый модуль `triumphs.py` — pure logic без UI.
+
+- `INTERESTING_EVENT_TYPES`-like константа (или dynamic из TRIUMPHS catalog).
+- `register_event(state, event_type, **payload) -> list[dict]` — главный entry point. Вызывается из `history.log_event` после write. Делает 2 вещи: (1) event-based counter increment для всех триумфов с `event_hooks` matching event_type, (2) recheck metric-based триумфов (read `state.steps.total_used` / `state.char_level.level` / etc). Возвращает list of newly unlocked tiers (для notifications).
+- `check_unlock(state, triumph_id, current_value) -> Optional[int]` — internal helper. Идемпотентный: повторный вызов с same value возвращает None если tier уже unlocked.
+- `get_progress(state, triumph_id) -> dict` — `{current_tier, next_tier_threshold, current_value, progress_pct, is_capstone}`.
+- `total_score(state) -> int` — sum points по unlocked tiers (POINTS_PER_TIER constant).
+- `_format_progress_bar(current, target, tier_thresholds=None, width=10) -> str` — pure helper, parallelogram `▰▱` + tier separators `│`. См. visual design выше.
+- Hook в `history.py:log_event` — добавить `triumphs.register_event(game.state, event_type, **payload)` после write. ~3 строки, единственное изменение в existing code.
+
+**Pytest fixture:** triumphs.register_event no-op для tests (как уже сделано для history.log_event) — чтобы не загрязнять реальный state.
+
+**Тесты:** event-based counter increment, idempotency (повторный event не двигает tier), metric-based recheck, multi-tier unlock (один event пересекает несколько tier'ов сразу), score calc, format_progress_bar (parallelograms + separators).
+
+##### 4.62.0.3. Menu skeleton + display `[L / S / todo (blocked by 4.62.0.2)]`
+
+CLI shell для будущих категорий. Empty state когда catalog пустой.
+
+- Новый пункт `🏆 Triumphs` в main menu (`game.py:COMMANDS`).
+- Новый module `triumphs_menu.py` (или внутри triumphs.py — UI отдельно от engine, как `locations.py` vs `actions.py`).
+- Display: list of categories (empty until catalog filled in 4.62.1.x). Каждая категория collapsible — see triumphs внутри.
+- Progress bar отображается через `_format_progress_bar` helper.
+- Status_bar — добавить секцию `🏆 Pinned:` (если есть pinned, иначе skip).
+- Empty state message: «🏆 Triumphs появятся когда вы начнёте играть — следите за прогрессом тут».
+- Web: skip пока (отдельная задача 4.62.7).
+
+**Тесты:** menu opens, empty catalog не падает, navigation назад работает, pin/unpin (когда catalog появится) tested в 4.62.4.
+
+---
+
+### Phase 2 — Catalog categories (по одной за раз)
+
+Каждая категория — независимая задача. Можно делать в любом порядке. **Recommended start order:** 4.62.1.1 Steps → 4.62.1.8 Level → 4.62.1.2 Adventures (от simplest metric к event-based).
+
+##### 4.62.1.1. Steps triumphs (Marathoner) `[L / XS / todo (blocked by 4.62.0)]`
+
+**Категория `steps`. Metric-based** (`state.steps.total_used`).
+
+- **Marathoner** — tiers `[10_000, 100_000, 1_000_000, 10_000_000]`. Capstone: title «Marathoner».
+- Hook: metric-based (read on any register_event).
+- Balance check: текущий total_used = 1.8M шагов за ~6 месяцев → 1M tier очень mid-game, 10M ~через год. OK.
+
+**Тесты:** tier unlock при достижении threshold, idempotency, score increment, progress bar formatting.
+
+##### 4.62.1.2. Adventures triumphs (Adventurer general) `[L / XS / todo (blocked by 4.62.0)]`
+
+**Категория `adventures`. Event-based** (`log_event('adventure_done')` counter).
+
+- **Adventurer** — tiers `[10, 50, 100, 500, 1000]`. Capstone: title «Adventurer».
+- Hook: event_hooks=['adventure_done'].
+- Balance: 100 adventures = casual mid-game milestone; 1000 = endgame dedicated.
+
+##### 4.62.1.3. Adventures per-walk triumphs `[L / S / todo (blocked by 4.62.1.2)]`
+
+**Категория `adventures`. Event-based** с payload filter.
+
+- 7 триумфов: walk_easy / normal / hard / 15k / 20k / 25k / 30k. Tiers `[10, 50, 200, 1000]` каждый.
+- Hook: event_hooks=['adventure_done'], filter `payload['name'] == 'walk_X'`.
+- *Why split:* поощряет ходить разные walks, не только endgame.
+- Balance TBD: walk_easy 10/50/200/1000 ok? walk_30k 10 уже = ~5h playtime. Возможно более маленькие tiers для high-tier walks.
+
+##### 4.62.1.4. Energy triumphs (total + split) `[L / M / todo (blocked by 4.62.0)]`
+
+**Категория `energy`. Mixed (event-based + accumulators).**
+
+- **Total energy spent** — tiers `[10_000, 50_000, 200_000, 1_000_000]`. Capstone: **+5 max energy** или **+2 regen** (балансировать).
+- **Energy per Adventure** / **per Training** / **per Work** — tiers `[5_000, 25_000, 100_000]`.
+- **Tracking:** новые counters `state.energy_spent_total / state.energy_spent_adventure / state.energy_spent_training / state.energy_spent_work`. Hook в `actions.try_spend` (mutation) — increment counter. Persist через round-trip.
+- *Balance TBD:* +5 max energy = ~8% от 65 — meaningful но не game-breaking. +2 regen = noticeable speed-up. Choose one (или вынести в bonus integration 4.62.2.1).
+
+**Тесты:** counter increment в actions.try_spend, split correctness (energy за work не дает прогресс per-adventure triumph), persist.
+
+##### 4.62.1.5. Work triumphs (general + per-vacancy) `[L / M / todo (blocked by 4.62.0)]`
+
+**Категория `work`. Event-based с accumulator (hours).**
+
+- **Hard Worker (total hours)** — tiers `[10, 100, 1000, 10000]`. Capstone: **+5% к ЗП** (stack с earnings_boost 4.23) или title.
+- **Per-vacancy hours** (watchman / factory / courier_foot / forwarder) — tiers `[10, 50, 100, 500]` каждая. Capstone vacancy-specific: +1 к related stat.
+- Hook: event_hooks=['work_done'], accumulator `count += payload['hours']`.
+- *Balance TBD:* vacancy-specific stat — Watchman→stamina, Factory→energy_max, Courier→speed, Forwarder→luck. Может cause «обязательная прокачка всех» — балансировать через high tier threshold (500h).
+
+##### 4.62.1.6. Gym / Skill triumphs `[L / M / todo (blocked by 4.62.0)]`
+
+**Категория `gym`. Metric-based (multiple metrics).**
+
+- **Athlete (any skill to N)** — tiers `[5, 10, 20, 30]`. Метрика — max over all 20 skills.
+- **Skill mastery per-skill** — 20 триумфов (по одному на каждый Gym skill: stamina / energy_max / speed / luck / ... / backpack). Tiers `[30, 50, 100]`. Capstone per-skill: skill-specific bonus.
+- **Total skills levels** — sum по 20 skills. Tiers `[50, 200, 500, 1000, 5000]`. Capstone: title «Master of All Trades».
+- **Skill diversity** — все 20 skills ≥ N. Tiers `[5, 10]`. Bonus: discourage «only-stamina» билды.
+- *Balance TBD:* per-skill triumphs — 20 штук может быть overwhelming. Может group в 1 generic + per-skill только на capstone tier.
+
+##### 4.62.1.7. Drops triumphs `[L / S / todo (blocked by 4.62.0)]`
+
+**Категория `drops`. Event-based с payload filter.**
+
+- **Treasure Hunter** — first B / A / S / S+ drop (4 milestone tiers, не cumulative count). Один-shot триумфы.
+- **Connoisseur** — 10 / 100 S-grade items dropped. Cumulative.
+- **Lucky** — 10 / 50 S+ drops.
+- Hook: event_hooks=['drop'], filter `payload['item']['grade'][0]`.
+
+##### 4.62.1.8. Level / progression triumphs `[L / XS / todo (blocked by 4.62.0)]`
+
+**Категория `progression`. Metric-based** (`state.char_level.level`).
+
+- **Veteran** — tiers `[5, 10, 25, 50, 100]`. Capstone: title.
+- Hook: metric-based.
+
+##### 4.62.1.9. Streak / consistency triumphs `[L / M / todo (blocked by 4.62.0)]`
+
+**Категория `streak`. Mixed (counter + streak tracker).**
+
+- **Daily streak record** — longest consecutive дней с 10k+ шагов. Tiers `[7, 30, 100, 365]`. Requires daily_bonus chain tracking. New field `state.daily_streak_record: int` (max of all-time streak).
+- **Total days played** — counter уникальных дней с хотя бы 1 entry в `steps_log`. Tiers `[7, 30, 100, 365, 1000, 3650]`. New field `state.days_played_count: int`. **Trigger:** новый день detected (`save_game_date_last_enter`) → increment если в этот день был хотя бы один input/event.
+- Capstone (1000 days): title «Loyal» / «Veteran» + permanent +5% bonus.
+
+##### 4.62.1.10. Bank triumphs `[L / M / todo (blocked by 4.62.0)]`
+
+**Категория `bank`. Event-based + accumulators.**
+
+- **Total deposit interest earned** — sum capitalized процентов. Counter в state. Tiers `[100, 1_000, 10_000, 100_000]`. Capstone: +N% к banking_interest_rate.
+- **Total loans repaid** — count closed loans. Tiers `[1, 5, 25, 100]`. Trophy.
+- **Max single deposit** — biggest deposit amount в один момент. Tiers `[1_000, 10_000, 100_000, 1_000_000]`. Trophy.
+- Hook: event_hooks=['deposit_*', 'repay_*'].
+
+##### 4.62.1.11. Forge triumphs `[L / S / todo (blocked by 4.62.0)]`
+
+**Категория `forge`. Event-based.**
+
+- **Total repairs done** — counter. Tiers `[10, 100, 1000]`. Capstone: +N% к neatness_in_using_things.
+- **Total items crafted** — counter. Tiers `[1, 10, 100]`. Trophy.
+- **First S+ item crafted** — one-shot milestone.
+- Hook: event_hooks=['item_repaired', 'item_crafted'].
+
+##### 4.62.1.12. Money spent on Gym `[L / XS / todo (blocked by 4.62.0)]`
+
+**Категория `money`. Event-based accumulator.**
+
+- **Investor** — total $ потрачено на gym skill training. Tiers `[1_000, 10_000, 100_000, 1_000_000]`. Capstone: +5% к money_saving.
+- Hook: новый event `log_event('gym_payment', amount=cost)` в `gym.skill_training` ИЛИ hook в `actions.try_spend(money=N)` с context flag. Решить при implementation.
+
+##### 4.62.1.13. Lifestyle triumphs (optional) `[L / S / todo (blocked by 4.62.0)]`
+
+**Категория `lifestyle`. Time-of-day based.**
+
+- **Early walker** — 10k+ шагов до noon в N дней. Trophy.
+- **Evening walker** — same для evening (18:00+).
+- **Weekend warrior** — 50k+ шагов за выходные. Trophy.
+- Hook: `steps_log` time-of-day analysis. Сложнее — нужен timestamp анализ.
+
+##### 4.62.1.14. Collection triumphs (optional) `[L / M / todo (blocked by 4.62.0)]`
+
+**Категория `collection`. State scan.**
+
+- **Unique combos** — за разнообразие (item_type × characteristic combinations collected). Trophy.
+- **Max quality** — first item quality 90+ / 100. Trophy.
+- **Max grade** — first S+ item ever owned (Inventory + Equipment). Trophy.
+- Hook: state scan на любом drop / craft / buy event.
+
+---
+
+### Phase 3 — Meta features
+
+##### 4.62.3. Seals + Titles (мета-триумфы) `[L / S / todo (blocked by 4-5 категорий из 4.62.1.x)]`
 
 **Закрыл все триумфы категории → получил титул** (косметика).
 
 - `state.title: Optional[str]` — выбранный титул (из unlocked).
 - Меню Triumphs: подсекция «Titles» — список доступных, выбор активного.
 - Display: status_bar строка «Вы находитесь в локации» расширяется до «<титул> в локации X» если title != None. Web: badge рядом с user.
-- Список (MVP, 6 категорий → 6 титулов): Marathoner / Adventurer / Treasure Hunter / Athlete / Hard Worker / Veteran.
+- Список (MVP, по категориям): Marathoner / Adventurer / Treasure Hunter / Athlete / Hard Worker / Veteran / Banker / Blacksmith / Loyal / Master of All Trades.
 
 **Тесты:** все tiers категории unlock → seal triggers, title в state.
 
-##### 4.62.4. Pinned / Tracked triumphs `[L / S / todo (blocked by 4.62.1)]`
+##### 4.62.4. Pinned / Tracked triumphs `[L / S / todo (blocked by 4.62.0.3)]`
 
 **Заменяет custom Goals из 4.44.** Игрок выбирает 1-3 триумфа для приоритетного показа.
 
 - `state.pinned_triumphs: list[str]` (cap = 3).
 - UI: в меню Triumphs — кнопка `📌 Pin / Unpin` на каждом триумфе.
-- Display: pinned триумфы видны крупнее в начале меню; опционально — секция в status_bar или Home location.
+- Display: pinned триумфы видны крупнее в начале меню; секция в status_bar (compact view: 3 строки с progress bars).
 - При unlock pinned-триумфа toast становится более заметным.
 
 **Тесты:** pin / unpin, cap=3, persistence.
 
-##### 4.62.5. Hidden / Secret triumphs `[L / S / todo (defer, опционально)]`
+---
 
-**Triumphs которые видны только после unlock'а** — для surprise discovery. Defer до конца MVP.
+### Phase 4 — Bonus integration
+
+##### 4.62.2.1. Постоянные bonuses на capstones `[L / M / todo (blocked by 4-5 категорий)]`
+
+**На capstones категорий вешаем постоянные gameplay-эффекты.** Strategy — бонус только на максимальный tier категории.
+
+- Каждый capstone bonus — функция `bonus_<name>(state) -> int` в `triumphs.py`. Читает `state.triumphs[id]['tier']` и возвращает `+N` если capstone unlocked.
+- Интегрируется в existing helper'ы (например `total_bonus_steps(state)` суммирует triumph-bonus alongside stamina/equipment/daily/level).
+- Реализуется после того как 5+ категорий из 4.62.1.x ready (нечего bonus'ить без unlocked capstones).
+
+**Примеры (для обсуждения при implementation):**
+- Marathoner капстоун (10M) → +5% к Stamina permanent
+- Adventurer (1000) → +1 max inventory capacity
+- Treasure Hunter (10 S-grade) → +1% to luck permanent
+- Veteran Worker (1000h) → +5% к зарплате (stack с earnings_boost)
+
+**Тесты:** unlock триггерит bonus, бонус виден в status_bar / character info, save/load preserves.
+
+##### 4.62.2.2. Active skill rewards `[L / M / todo (blocked by 4.58 Active buffs + 4-5 категорий)]`
+
+**Через 4.58 Active buffs** — некоторые triumph capstones unlock'ают active skills. Long-cooldown (23+ часов), бонус нужный прямо сейчас (см. design discussion в 4.58).
+
+**Примеры:**
+- **🔥 Streak Saver** (cooldown 7 дней) — за 1M потраченных шагов. Восстанавливает daily_bonus streak.
+- **🎁 Lucky Day** (cooldown 24h) — за 10 S-grade дропов. +50% Luck на следующее приключение.
+- **💸 Premium Shift** (cooldown 24h) — за 1000 рабочих часов. +50% ЗП на следующую смену.
+
+---
+
+### Phase 5 — Web UI
+
+##### 4.62.7. Web section для Triumphs `[L / M / todo (blocked by ~5 категорий + 4.62.4)]`
+
+Web-секция отображения Triumphs параллельно с CLI.
+
+- `<section id="triumphs">` в `_status_fragment.html` — collapsible details. Banner pinned triumphs (≤ 3) over collapsed section.
+- Pinned area сверху Stats (компактно — 3 строки с progress bars).
+- Pre-computed view: `web/main.py:_build_triumphs_view(state)` — list categories + progress + tier status.
+- Решить визуальный стиль progress: HTML `<progress>` (consistency с Level) или unicode `▰▱` (consistency с CLI).
+- При implementation 1.3.6 (web/main.py split) — `web/routes/triumphs.py` + `web/views/triumphs.py`.
+
+---
+
+### Phase 6 — Optional / deferred
+
+##### 4.62.5. Hidden / Secret triumphs `[L / S / todo (defer)]`
+
+**Triumphs которые видны только после unlock'а** — для surprise discovery. Defer до конца основной реализации.
 
 - `TRIUMPHS[id]['hidden'] = True` — в меню показывается как `???` с count `0/?`.
 - При unlock — visible с full name.
 
-##### 4.62.6. Extended catalog candidates (brainstorm 21.05.2026) `[L / M / todo (для каталога после MVP)]`
+##### 4.62.6. Extended catalog candidates (brainstorm reference) `[reference — мигрировано в 4.62.1.x granular tasks (22.05.2026)]`
+
+**⚠️ Это reference brainstorm от 21.05.2026.** Идеи перенесены в granular задачи 4.62.1.4 (energy split) / 4.62.1.5 (work per-vacancy) / 4.62.1.9 (streak/days played) / 4.62.1.10 (bank) / 4.62.1.11 (forge) / 4.62.1.13 (lifestyle) / 4.62.1.14 (collection) — см. Phase 2 Catalog categories выше. Этот блок оставлен как **дизайн-source** для контекста и balance discussion при implementation конкретных задач.
 
 **Brainstorm дополнительных триумфов** для каталога beyond MVP. Идеи зафиксированы 21.05.2026 для расширения после 4.62.1 (initial catalog). **Баланс bonus-эффектов — обсуждать при реализации каждого** (currently — rough proposals, subject to design discussion).
 
