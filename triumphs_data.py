@@ -110,6 +110,72 @@ TRIUMPHS: dict[str, dict] = {
         'event_hooks': ['adventure_start'],
         'count_delta': lambda p: int(p.get('cost_energy', 0) or 0),
     },
+
+    # ----- 🗺 Adventures (4.62.1.2 + 4.62.1.3, 22.05.2026) -----
+    # Metric-based — читает state.adventure.counters напрямую. Эти counters
+    # уже обновляются в Adventure.adventure_check_done после каждой завершённой
+    # прогулки за всё время игры (6+ месяцев у Oleksii) → мгновенный auto-unlock
+    # через init_metric_check без backfill из history. Event-based подход не
+    # нужен — counters это и есть persistent metric.
+    #
+    # Tiers одинаковые [10/50/100/500/1000] для всех 8 — симметрично с Energy
+    # decision (simplicity over realism). Per-walk capstones (особенно
+    # walk_30k = 1000 прохождений = 30M шагов) намеренно very-long-term
+    # endgame goals.
+
+    # Adventurer — sum across all 7 walk types. Mainstream триумф для активной
+    # игры (общий показатель «сколько раз ходил гулять»).
+    'adventurer': {
+        'name': 'Adventurer',
+        'category': 'adventures',
+        'tiers': [10, 50, 100, 500, 1000],
+        'metric': lambda state: sum(state.adventure.counters.values()),
+    },
+
+    # Per-walk (7 штук) — точечный счётчик для каждого walk type.
+    # Тематическая прогрессия по сложности (Stroller easy → Conqueror endgame).
+    'stroller': {
+        'name': 'Stroller',
+        'category': 'adventures',
+        'tiers': [10, 50, 100, 500, 1000],
+        'metric': lambda state: state.adventure.counters.get('walk_easy', 0),
+    },
+    'hiker': {
+        'name': 'Hiker',
+        'category': 'adventures',
+        'tiers': [10, 50, 100, 500, 1000],
+        'metric': lambda state: state.adventure.counters.get('walk_normal', 0),
+    },
+    'trekker': {
+        'name': 'Trekker',
+        'category': 'adventures',
+        'tiers': [10, 50, 100, 500, 1000],
+        'metric': lambda state: state.adventure.counters.get('walk_hard', 0),
+    },
+    'roamer': {
+        'name': 'Roamer',
+        'category': 'adventures',
+        'tiers': [10, 50, 100, 500, 1000],
+        'metric': lambda state: state.adventure.counters.get('walk_15k', 0),
+    },
+    'voyager': {
+        'name': 'Voyager',
+        'category': 'adventures',
+        'tiers': [10, 50, 100, 500, 1000],
+        'metric': lambda state: state.adventure.counters.get('walk_20k', 0),
+    },
+    'explorer': {
+        'name': 'Explorer',
+        'category': 'adventures',
+        'tiers': [10, 50, 100, 500, 1000],
+        'metric': lambda state: state.adventure.counters.get('walk_25k', 0),
+    },
+    'conqueror': {
+        'name': 'Conqueror',
+        'category': 'adventures',
+        'tiers': [10, 50, 100, 500, 1000],
+        'metric': lambda state: state.adventure.counters.get('walk_30k', 0),
+    },
 }
 
 

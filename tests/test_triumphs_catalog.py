@@ -219,3 +219,152 @@ class TestEnergyTriumphs:
         assert state.triumphs.get('endurance', {}).get('count', 0) == 0
         register_event(state, 'work_start', cost_energy=0, vacancy='watchman')  # 0 explicit
         assert state.triumphs.get('endurance', {}).get('count', 0) == 0
+
+
+# ===========================================================================
+# 4.62.1.2 + 4.62.1.3 — Adventures (Adventurer + 7 per-walk)
+# ===========================================================================
+
+class TestAdventureTriumphs:
+    """🗺 Adventures — metric-based через state.adventure.counters."""
+
+    PER_WALK = (
+        ('stroller', 'walk_easy'),
+        ('hiker', 'walk_normal'),
+        ('trekker', 'walk_hard'),
+        ('roamer', 'walk_15k'),
+        ('voyager', 'walk_20k'),
+        ('explorer', 'walk_25k'),
+        ('conqueror', 'walk_30k'),
+    )
+
+    EXPECTED_TIERS = [10, 50, 100, 500, 1000]
+
+    # ----- Catalog structure -----
+
+    def test_all_8_in_catalog(self):
+        assert 'adventurer' in TRIUMPHS
+        for triumph_id, _ in self.PER_WALK:
+            assert triumph_id in TRIUMPHS
+
+    def test_all_8_same_tiers_and_category(self):
+        """Все одинаковые [10/50/100/500/1000], category=adventures."""
+        for triumph_id in ('adventurer', *(t for t, _ in self.PER_WALK)):
+            spec = TRIUMPHS[triumph_id]
+            assert spec['tiers'] == self.EXPECTED_TIERS
+            assert spec['category'] == 'adventures'
+
+    def test_all_8_are_metric_based(self):
+        """Все 8 metric-based (event_hooks отсутствует)."""
+        for triumph_id in ('adventurer', *(t for t, _ in self.PER_WALK)):
+            spec = TRIUMPHS[triumph_id]
+            assert 'metric' in spec
+            assert 'event_hooks' not in spec
+
+    # ----- Metric lambdas -----
+
+    def test_adventurer_metric_sums_all_counters(self):
+        """Adventurer = sum of all 7 per-walk counters."""
+        state = GameState.default_new_game()
+        state.adventure.counters = {
+            'walk_easy': 10, 'walk_normal': 5, 'walk_hard': 3,
+            'walk_15k': 2, 'walk_20k': 1, 'walk_25k': 0, 'walk_30k': 0,
+        }
+        assert TRIUMPHS['adventurer']['metric'](state) == 21
+
+    def test_per_walk_metrics_read_correct_counter(self):
+        """Каждый per-walk triumph читает свой counter."""
+        state = GameState.default_new_game()
+        state.adventure.counters = {
+            'walk_easy': 11, 'walk_normal': 22, 'walk_hard': 33,
+            'walk_15k': 44, 'walk_20k': 55, 'walk_25k': 66, 'walk_30k': 77,
+        }
+        expected = {
+            'stroller': 11, 'hiker': 22, 'trekker': 33, 'roamer': 44,
+            'voyager': 55, 'explorer': 66, 'conqueror': 77,
+        }
+        for triumph_id, walk_key in self.PER_WALK:
+            assert TRIUMPHS[triumph_id]['metric'](state) == expected[triumph_id]
+
+    # ----- Unlocks -----
+
+    def test_adventurer_no_unlock_below_first_tier(self):
+        """sum=5 → no unlock (tier 1 = 10)."""
+        state = GameState.default_new_game()
+        state.adventure.counters['walk_easy'] = 5
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs.get('adventurer', {}).get('tier', 0) == 0
+
+    def test_adventurer_unlock_tier_1(self):
+        """sum=10 → tier 1."""
+        state = GameState.default_new_game()
+        state.adventure.counters['walk_easy'] = 10
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs['adventurer']['tier'] == 1
+
+    def test_adventurer_multiple_tiers_at_once(self):
+        """sum=120 (10 + 50 + 100 thresholds reached, not 500) → tier 3."""
+        state = GameState.default_new_game()
+        state.adventure.counters = {
+            'walk_easy': 50, 'walk_normal': 30, 'walk_hard': 20,
+            'walk_15k': 10, 'walk_20k': 5, 'walk_25k': 3, 'walk_30k': 2,
+        }  # sum=120
+        unlocked = register_event(state, 'work_done', hours=1)
+        adv_unlocks = [u for u in unlocked if u['triumph_id'] == 'adventurer']
+        assert len(adv_unlocks) == 3
+        assert state.triumphs['adventurer']['tier'] == 3
+        assert not any(u['is_capstone'] for u in adv_unlocks)
+
+    def test_adventurer_capstone_at_1000(self):
+        """sum=1000 → tier 5 (capstone)."""
+        state = GameState.default_new_game()
+        state.adventure.counters['walk_easy'] = 1000
+        unlocked = register_event(state, 'work_done', hours=1)
+        adv_unlocks = [u for u in unlocked if u['triumph_id'] == 'adventurer']
+        assert state.triumphs['adventurer']['tier'] == 5
+        assert adv_unlocks[-1]['is_capstone'] is True
+
+    def test_per_walk_unlock_isolated(self):
+        """walk_30k=10 → conqueror tier 1 unlock, остальные per-walk не растут."""
+        state = GameState.default_new_game()
+        state.adventure.counters['walk_30k'] = 10
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs['conqueror']['tier'] == 1
+        # Stroller etc — не unlocked (counters не задеты).
+        for triumph_id, _ in self.PER_WALK:
+            if triumph_id == 'conqueror':
+                continue
+            assert state.triumphs.get(triumph_id, {}).get('tier', 0) == 0
+
+    def test_per_walk_capstone_at_1000(self):
+        """walk_easy=1000 → stroller tier 5 (capstone)."""
+        state = GameState.default_new_game()
+        state.adventure.counters['walk_easy'] = 1000
+        unlocked = register_event(state, 'work_done', hours=1)
+        stroller_unlocks = [u for u in unlocked if u['triumph_id'] == 'stroller']
+        assert state.triumphs['stroller']['tier'] == 5
+        assert stroller_unlocks[-1]['is_capstone'] is True
+
+    def test_init_metric_check_auto_unlocks_on_existing_state(self):
+        """Симулирует existing player: counters накоплены → init_metric_check
+        auto-unlock'ает соответствующие triumph'ы без любых events."""
+        from triumphs import init_metric_check
+        state = GameState.default_new_game()
+        state.adventure.counters = {
+            'walk_easy': 50, 'walk_normal': 12, 'walk_hard': 5,
+            'walk_15k': 3, 'walk_20k': 2, 'walk_25k': 1, 'walk_30k': 0,
+        }  # sum=73
+        unlocked = init_metric_check(state)
+        # Adventurer sum=73 → tier 2 (10, 50).
+        assert state.triumphs['adventurer']['tier'] == 2
+        # Stroller (walk_easy=50) → tier 2 (10, 50).
+        assert state.triumphs['stroller']['tier'] == 2
+        # Hiker (walk_normal=12) → tier 1 (10).
+        assert state.triumphs['hiker']['tier'] == 1
+        # Trekker (walk_hard=5) → tier 0 (no unlock).
+        assert state.triumphs.get('trekker', {}).get('tier', 0) == 0
+        # Sanity: на каждом unlocked triumph'е есть запись в unlocked list.
+        triumph_ids = {u['triumph_id'] for u in unlocked}
+        assert 'adventurer' in triumph_ids
+        assert 'stroller' in triumph_ids
+        assert 'hiker' in triumph_ids

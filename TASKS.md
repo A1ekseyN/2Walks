@@ -4481,22 +4481,21 @@ CLI shell для будущих категорий. Empty state когда catal
 
 **Реализовано:** 9 тестов в новом `tests/test_triumphs_catalog.py` (структура / metric / no-unlock / single + multi-tier unlock / capstone / score / progress в текущем tier'е / idempotency). У игрока с `total_used=1.8M` — мгновенно unlock'аются tiers 1+2+3 при первом register_event (score +30). Backfill не нужен (metric-based). 1161 passed, mypy 0 issues.
 
-##### 4.62.1.2. Adventures triumphs (Adventurer general) `[L / XS / todo (blocked by 4.62.0)]`
+##### 4.62.1.2. Adventures triumphs (Adventurer general) `[L / XS / done (22.05.2026, 0.2.5q)]`
 
-**Категория `adventures`. Event-based** (`log_event('adventure_done')` counter).
+**Категория `adventures`. Metric-based** через `state.adventure.counters` (Approach pivot 22.05.2026 — counters уже накапливаются с самого начала проекта в `Adventure.adventure_check_done`, event-based не нужен).
 
-- **Adventurer** — tiers `[10, 50, 100, 500, 1000]`. Capstone: title «Adventurer».
-- Hook: event_hooks=['adventure_done'].
-- Balance: 100 adventures = casual mid-game milestone; 1000 = endgame dedicated.
+- **Adventurer** — `metric=lambda s: sum(s.adventure.counters.values())`. Tiers `[10, 50, 100, 500, 1000]`.
+- Capstone: title «Adventurer» (отложено до 4.62.3 Seals).
+- Auto-unlock через `init_metric_check` на старте — existing players мгновенно получают credit за 6+ месяцев игры.
 
-##### 4.62.1.3. Adventures per-walk triumphs `[L / S / todo (blocked by 4.62.1.2)]`
+##### 4.62.1.3. Adventures per-walk triumphs `[L / S / done (22.05.2026, 0.2.5q — закрыт вместе с 4.62.1.2)]`
 
-**Категория `adventures`. Event-based** с payload filter.
+**Категория `adventures`. Metric-based** через индивидуальные `state.adventure.counters.get('walk_X', 0)`.
 
-- 7 триумфов: walk_easy / normal / hard / 15k / 20k / 25k / 30k. Tiers `[10, 50, 200, 1000]` каждый.
-- Hook: event_hooks=['adventure_done'], filter `payload['name'] == 'walk_X'`.
-- *Why split:* поощряет ходить разные walks, не только endgame.
-- Balance TBD: walk_easy 10/50/200/1000 ok? walk_30k 10 уже = ~5h playtime. Возможно более маленькие tiers для high-tier walks.
+- 7 триумфов с тематической прогрессией: **Stroller** (walk_easy) → **Hiker** (walk_normal) → **Trekker** (walk_hard) → **Roamer** (walk_15k) → **Voyager** (walk_20k) → **Explorer** (walk_25k) → **Conqueror** (walk_30k endgame).
+- Tiers `[10, 50, 100, 500, 1000]` для всех 7 (унифицировано с Adventurer general — choice 22.05.2026 simplicity over realism). Capstone walk_30k=1000 прохождений = ~30M шагов = very-long-term endgame goal.
+- Без event_filter — каждый metric читает свой `counters` key напрямую.
 
 ##### 4.62.1.4. Energy triumphs (total + split) `[L / M / done (22.05.2026, 0.2.5p)]`
 
