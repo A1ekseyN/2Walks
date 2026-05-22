@@ -4429,7 +4429,7 @@ def log_event(event_type, **payload):
 
 **Следующий шаг:** 4.62.0.2 Engine (register_event + check_unlock + format_progress_bar + hook в log_event).
 
-##### 4.62.0.2. Engine: register_event + check_unlock + helpers `[L / M / todo (blocked by 4.62.0.1)]`
+##### 4.62.0.2. Engine: register_event + check_unlock + helpers `[L / M / done (22.05.2026, 0.2.5k)]`
 
 Новый модуль `triumphs.py` — pure logic без UI.
 

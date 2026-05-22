@@ -359,6 +359,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'bank_loan_amount', 'bank_loan_last_interest_ts',
         # 4.62.0.1 — Triumphs system (Phase 1 foundation для зонтичной 4.62)
         'triumphs', 'pinned_triumphs', 'title',
+        # 4.62.0.2 — Triumphs engine backfill dismiss flag
+        'triumphs_backfill_dismissed',
         # 4.54.1 — Optimistic concurrency
         'last_modified',
     }

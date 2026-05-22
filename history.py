@@ -93,7 +93,25 @@ def log_event(event_type: str, **payload: Any) -> None:
 
     Example:
         log_event('work_done', salary=40, hours=4, vacancy='watchman')
+
+    4.62.0.2 — после write в local/Sheets вызывает `triumphs.register_event`
+    для event-based counter increment + metric recheck. Hook автоматический —
+    все ~20 existing log_event call-sites НЕ меняются (event flows через
+    log_event как и раньше, triumphs engine получает payload и решает что
+    делать). Pytest fixture в conftest.py мокает register_event no-op чтобы
+    тесты не загрязняли state.triumphs. Empty catalog (4.62.0.x foundation)
+    — register_event no-op в любом случае.
     """
     event = _build_event(event_type, payload)
     _write_local(event)
     _write_sheets(event)
+    # 4.62.0.2 — Triumphs auto-hook. Lazy import чтобы избежать circular
+    # (triumphs → triumphs_data → ... → potentially history). game state
+    # читается lazy — если init_game_state ещё не отработал, no-op.
+    try:
+        from triumphs import register_event
+        from characteristics import game
+        if game.state is not None:
+            register_event(game.state, event_type, **payload)
+    except Exception:  # noqa: BLE001 — triumph hook не должен ломать log_event
+        pass

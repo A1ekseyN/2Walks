@@ -63,3 +63,21 @@ def _stub_steps_log_for_day(monkeypatch, request):
                         lambda self, date_str, user_id=None: [])
     monkeypatch.setattr(google_sheets_db.StepsLogRepo, 'append',
                         lambda self, ts, steps, source, user_id=None: None)
+
+
+@pytest.fixture(autouse=True)
+def _disable_triumphs_register_event_for_non_triumphs_tests(monkeypatch, request):
+    """4.62.0.2 — `triumphs.register_event` no-op для тестов кроме `test_triumphs.py`.
+
+    Engine вызывается из `history.log_event` (hook) на каждом event'е. Без
+    мока тесты которые делают log_event mock или обходят его — могут случайно
+    мутировать state.triumphs (если catalog не пустой). Также защищает от
+    side-effects если catalog (4.62.1.x) добавится.
+
+    `test_triumphs.py` тестирует сам engine — там register_event должен работать.
+    """
+    if request.node.fspath.basename == 'test_triumphs.py':
+        return
+    import triumphs
+    monkeypatch.setattr(triumphs, 'register_event',
+                        lambda state, event_type, **payload: [])

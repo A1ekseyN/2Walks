@@ -221,6 +221,13 @@ class GameState:
     # через flat-key 'title' (None для legacy).
     title: Optional[str] = None
 
+    # 4.62.0.2 — Backfill prompt dismiss flag (см. Backfill design в 4.62).
+    # При первом launch Triumph menu появляется prompt «Backfill counters из
+    # history?». Если игрок выбрал «S» (Skip навсегда), флаг ставится True
+    # → prompt больше не показывается. Manual sync команда остаётся доступной.
+    # Default False для legacy сейвов (prompt появится один раз).
+    triumphs_backfill_dismissed: bool = False
+
     # 4.54.1 — Optimistic concurrency через timestamp. `last_modified` —
     # Unix-ts момента последнего успешного save в Sheets; round-trip'ится
     # как обычное поле. На load в Sheets отсутствующий ключ → default 0.0
@@ -420,6 +427,8 @@ class GameState:
             triumphs=dict(d.get('triumphs') or {}),
             pinned_triumphs=list(d.get('pinned_triumphs') or []),
             title=d.get('title') if d.get('title') else None,
+            # 4.62.0.2 — backfill dismiss flag, default False для legacy.
+            triumphs_backfill_dismissed=bool(d.get('triumphs_backfill_dismissed') or False),
             # 4.54.1 — Optimistic concurrency timestamp. Default 0.0 для legacy
             # сейвов до 4.54 — первый save_safe запишет реальный time.time().
             last_modified=float(d.get('last_modified') or 0.0),
@@ -455,6 +464,8 @@ class GameState:
         self.triumphs = new.triumphs
         self.pinned_triumphs = new.pinned_triumphs
         self.title = new.title
+        # 4.62.0.2 — backfill dismiss flag.
+        self.triumphs_backfill_dismissed = new.triumphs_backfill_dismissed
         # 4.54.1 — last_modified подхватывается из свежего load'а Sheets.
         # last_loaded_snapshot обновлять здесь нельзя — caller (try_reload_state
         # или init_game_state) должен явно вызвать take_snapshot() после того
@@ -581,6 +592,8 @@ class GameState:
             'triumphs': self.triumphs,
             'pinned_triumphs': self.pinned_triumphs,
             'title': self.title,
+            # 4.62.0.2 — backfill prompt dismiss flag.
+            'triumphs_backfill_dismissed': self.triumphs_backfill_dismissed,
 
             # 4.54.1 — Optimistic concurrency timestamp (round-trip с Sheets).
             # `last_loaded_snapshot` НЕ сериализуется — runtime-only diff helper.

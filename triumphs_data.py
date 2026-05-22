@@ -1,0 +1,59 @@
+"""Triumphs catalog — static data (task 4.62.0.2).
+
+Пустой при foundation phase (4.62.0.x). Catalog заполняется по одной категории
+за раз в Phase 2 (4.62.1.1 Steps / 4.62.1.2 Adventures / etc).
+
+**Структура TRIUMPHS entry:**
+```python
+TRIUMPHS = {
+    'marathoner': {
+        'name': 'Marathoner',                # Human-readable
+        'category': 'steps',                  # Группировка в menu
+        'tiers': [10_000, 100_000, 1_000_000, 10_000_000],  # Tier thresholds
+        # Один из:
+        'metric': lambda state: state.steps.total_used,     # Metric-based
+        # ИЛИ:
+        'event_hooks': ['adventure_done'],    # Event-based counter increment
+        'count_delta': lambda payload: 1,     # По умолчанию +1 per event
+        # ИЛИ для accumulators (work hours, energy):
+        'count_delta': lambda payload: payload.get('hours', 0),
+        # Опционально:
+        'event_filter': lambda payload: payload.get('grade') == 's+grade',  # Filter
+        'hidden': False,                      # 4.62.5 hidden until unlock
+        'points_per_tier': 10,                # Override POINTS_PER_TIER если custom
+    },
+}
+```
+
+**Конвенции:**
+- Используем строки grade ('s+grade' / 's-grade' / ...) консистентно с item['grade'][0].
+- `metric` и `event_hooks` — взаимно-исключающие (один триумф — один тип).
+- `event_filter` опционально для filter'а конкретных payload values (например 'drop' только S+).
+"""
+
+# Points за unlock одного tier'а (constant в MVP). Custom override через
+# TRIUMPHS[id]['points_per_tier'].
+POINTS_PER_TIER: int = 10
+
+
+# Пустой catalog — заполняется в 4.62.1.x по одной категории за раз.
+TRIUMPHS: dict[str, dict] = {}
+
+
+# Категории для меню grouping (упорядоченные). Расширяются по мере добавления
+# триумфов в 4.62.1.x. Empty при foundation, заполнение через ADD в catalog tasks.
+CATEGORIES: dict[str, dict] = {
+    'steps': {'label': '🏃 Шаги', 'order': 1},
+    'adventures': {'label': '🗺 Приключения', 'order': 2},
+    'drops': {'label': '💎 Дропы', 'order': 3},
+    'gym': {'label': '🏋 Тренировки', 'order': 4},
+    'work': {'label': '🏭 Работа', 'order': 5},
+    'energy': {'label': '🔋 Энергия', 'order': 6},
+    'progression': {'label': '⭐ Уровень', 'order': 7},
+    'streak': {'label': '🔥 Постоянство', 'order': 8},
+    'bank': {'label': '🏦 Банк', 'order': 9},
+    'forge': {'label': '🔨 Кузница', 'order': 10},
+    'money': {'label': '💰 Деньги', 'order': 11},
+    'lifestyle': {'label': '🕒 Образ жизни', 'order': 12},
+    'collection': {'label': '🎒 Коллекция', 'order': 13},
+}
