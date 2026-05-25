@@ -25,10 +25,12 @@ from triumphs import (
     backfill_from_history,
     backfill_from_sheets_history,
     claim_all,
+    claim_one_tier,
     claim_triumph,
     get_progress,
     get_unclaimed_for,
     is_seal_unlocked,
+    next_unclaimed_tier,
     set_title,
     total_score,
     _format_progress_bar,
@@ -343,17 +345,24 @@ def _toggle_pin(state, triumph_id: str) -> None:
 # --- Claim logic (4.62.4) ---
 
 def _do_claim(state, triumph_id: str) -> None:
-    """Claim все unclaimed entries для одного triumph'а + UI feedback."""
-    count = claim_triumph(state, triumph_id)
-    if count == 0:
+    """4.62.7.1 — Claim ONE oldest unclaimed tier для одного triumph'а.
+
+    Per-tier acknowledge (Destiny-2 style). Каждый tier = отдельный «приз»,
+    игрок прокликивает их по одному. Score points за tier уже учтены в
+    total_score (при unlock'е), claim только убирает entry из queue.
+    """
+    entry = claim_one_tier(state, triumph_id)
+    if entry is None:
         return
     name = TRIUMPHS.get(triumph_id, {}).get('name', triumph_id)
-    points = count * 10  # POINTS_PER_TIER (TODO: per-triumph override если будет)
+    tier = int(entry.get('tier', 0))
     new_total = total_score(state)
-    print(f'\n{Fore.LIGHTGREEN_EX}🎉 {name}: {count} tier'
-          f'{"" if count == 1 else "ов"} собран'
-          f'{"" if count == 1 else "о"}!{Style.RESET_ALL} '
-          f'+{points} score (total {new_total})')
+    # Сколько ещё осталось для этого triumph'а после этого claim.
+    remaining = len(get_unclaimed_for(state, triumph_id))
+    suffix = (f' (ещё {remaining} осталось)' if remaining > 0
+              else ' (все собраны)')
+    print(f'\n{Fore.LIGHTGREEN_EX}🎉 {name}: Tier {tier} собран!{Style.RESET_ALL} '
+          f'Score: {new_total}{Fore.LIGHTBLACK_EX}{suffix}{Style.RESET_ALL}')
     input(f'{Fore.LIGHTBLACK_EX}[Enter]{Style.RESET_ALL}')
     _persist_silent()
 
@@ -414,7 +423,12 @@ def _open_detail_view(state, triumph_id: str) -> None:
         pin_label = ('📌 Открепить' if is_pinned else '📌 Закрепить')
         print(f'  [{Fore.LIGHTCYAN_EX}1{Style.RESET_ALL}] {pin_label}')
         if unclaimed:
-            print(f'  [{Fore.LIGHTCYAN_EX}c{Style.RESET_ALL}] ✓ Собрать ({len(unclaimed)})')
+            # 4.62.7.1 — Per-tier claim (oldest first). Label показывает
+            # next tier number + сколько ещё осталось.
+            next_tier = next_unclaimed_tier(state, triumph_id)
+            remaining = len(unclaimed)
+            suffix = (f' ({remaining} ост.)' if remaining > 1 else '')
+            print(f'  [{Fore.LIGHTCYAN_EX}c{Style.RESET_ALL}] ✓ Собрать tier {next_tier}{suffix}')
         print(f'  [{Fore.LIGHTCYAN_EX}0{Style.RESET_ALL}] Назад')
 
         choice = input('\n>>> ').strip().lower()

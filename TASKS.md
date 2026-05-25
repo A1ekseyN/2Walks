@@ -4707,6 +4707,16 @@ Web parity с CLI. До 0.2.5y triumph'ы были visible ТОЛЬКО в CLI (
 
 **Отложено в 1.3.6 web/main.py split:** при выделении web/routes/ + web/views/ — `web/routes/triumphs.py` + `web/views/triumphs.py`.
 
+##### 4.62.7.1. Web UX polish: per-tier claim + section move `[L / XS / done (25.05.2026, 0.2.5z)]`
+
+После live testing 0.2.5y user feedback: (1) `[✓ Собрать (N)]` clear'ил все N tier'ов одним batch — не давал emotional payoff per-tier; (2) Triumphs section была между Gym и Bank, занимала прайм-real-estate выше gameplay-блоков.
+
+**Изменения:**
+- **Per-tier claim**: новый engine `claim_one_tier(state, id, kind) -> Optional[dict]` — удаляет ONE oldest entry (sort `unlocked_ts ASC, tier ASC`). Web и CLI button label: `[✓ Собрать tier N (M ост.)]`. Старый `claim_triumph` остался batch для `[a] Собрать всё` в banner. Helper `next_unclaimed_tier(state, id, kind)` для UI label.
+- **Section position**: Triumphs section перенесена в **самый конец** dashboard'а после Inventory. Pinned + Unclaimed banners остаются над Stats (priority UI). Gameplay-блоки (Работа/Приключение/Спортзал/Bank/Equipment/Inventory) теперь приоритетнее visible сверху.
+
+**Тесты:** 8 новых в `tests/test_triumphs.py` (TestClaimOneTier 5 + TestNextUnclaimedTier 3) + updates: `test_dashboard_renders_triumphs_section_at_bottom` (was after_gym), `test_gym_skills_use_nested_details` (next after Gym теперь Bank), `test_web_claim_form_one_tier`, `test_api_claim_json_one_tier`.
+
 ---
 
 ### Phase 6 — Optional / deferred

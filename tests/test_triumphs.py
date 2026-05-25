@@ -804,6 +804,99 @@ class TestSealEntryInClaimQueue:
         assert state.unclaimed_unlocks == []
 
 
+class TestClaimOneTier:
+    """4.62.7.1 — claim_one_tier удаляет ONE oldest entry."""
+
+    def test_returns_none_if_no_matching(self):
+        from triumphs import claim_one_tier
+        state = GameState.default_new_game()
+        assert claim_one_tier(state, 'unknown') is None
+
+    def test_removes_oldest_by_ts(self):
+        from triumphs import claim_one_tier
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 3},
+        ])
+        # Manually set unlocked_ts для testing.
+        state.unclaimed_unlocks[0]['unlocked_ts'] = 100.0
+        # Add older entry.
+        state.unclaimed_unlocks.append({
+            'triumph_id': 'foo', 'tier': 1, 'unlocked_ts': 50.0, 'kind': 'triumph',
+        })
+        state.unclaimed_unlocks.append({
+            'triumph_id': 'foo', 'tier': 2, 'unlocked_ts': 75.0, 'kind': 'triumph',
+        })
+        # claim → returns oldest (tier 1).
+        entry = claim_one_tier(state, 'foo')
+        assert entry is not None
+        assert entry['tier'] == 1
+        # Other 2 entries остались.
+        assert len(state.unclaimed_unlocks) == 2
+
+    def test_same_ts_sorted_by_tier_asc(self):
+        """Если несколько tier'ов имеют одинаковый unlocked_ts (типично для
+        batch backfill) — берётся меньший tier."""
+        from triumphs import claim_one_tier
+        state = GameState.default_new_game()
+        state.unclaimed_unlocks = [
+            {'triumph_id': 'foo', 'tier': 3, 'unlocked_ts': 100.0, 'kind': 'triumph'},
+            {'triumph_id': 'foo', 'tier': 1, 'unlocked_ts': 100.0, 'kind': 'triumph'},
+            {'triumph_id': 'foo', 'tier': 2, 'unlocked_ts': 100.0, 'kind': 'triumph'},
+        ]
+        entry = claim_one_tier(state, 'foo')
+        assert entry['tier'] == 1  # lowest tier among same-ts.
+
+    def test_kind_filter(self):
+        """kind='seal' не клайм'ит entries с kind='triumph'."""
+        from triumphs import claim_one_tier
+        state = GameState.default_new_game()
+        state.unclaimed_unlocks = [
+            {'triumph_id': 'foo', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+        ]
+        entry = claim_one_tier(state, 'foo', kind='seal')
+        assert entry is None
+        assert len(state.unclaimed_unlocks) == 1  # not removed
+
+    def test_does_not_touch_other_triumphs(self):
+        from triumphs import claim_one_tier
+        state = GameState.default_new_game()
+        state.unclaimed_unlocks = [
+            {'triumph_id': 'foo', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+            {'triumph_id': 'bar', 'tier': 1, 'unlocked_ts': 2.0, 'kind': 'triumph'},
+        ]
+        claim_one_tier(state, 'foo')
+        assert len(state.unclaimed_unlocks) == 1
+        assert state.unclaimed_unlocks[0]['triumph_id'] == 'bar'
+
+
+class TestNextUnclaimedTier:
+    """4.62.7.1 — next_unclaimed_tier UI helper."""
+
+    def test_returns_none_when_no_unclaimed(self):
+        from triumphs import next_unclaimed_tier
+        state = GameState.default_new_game()
+        assert next_unclaimed_tier(state, 'foo') is None
+
+    def test_returns_oldest_tier(self):
+        from triumphs import next_unclaimed_tier
+        state = GameState.default_new_game()
+        state.unclaimed_unlocks = [
+            {'triumph_id': 'foo', 'tier': 2, 'unlocked_ts': 200.0, 'kind': 'triumph'},
+            {'triumph_id': 'foo', 'tier': 1, 'unlocked_ts': 100.0, 'kind': 'triumph'},
+        ]
+        assert next_unclaimed_tier(state, 'foo') == 1  # oldest by ts.
+
+    def test_kind_filter(self):
+        from triumphs import next_unclaimed_tier
+        state = GameState.default_new_game()
+        state.unclaimed_unlocks = [
+            {'triumph_id': 'foo', 'tier': 0, 'unlocked_ts': 1.0, 'kind': 'seal'},
+        ]
+        assert next_unclaimed_tier(state, 'foo', kind='triumph') is None
+        assert next_unclaimed_tier(state, 'foo', kind='seal') == 0
+
+
 # ============================================================================
 # 4.62.6 — Sheets backfill (cross-device)
 # ============================================================================

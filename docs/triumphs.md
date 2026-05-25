@@ -29,7 +29,7 @@ Trigger (action) → Triumph progress → Capstone (last tier) → Seal → Titl
 - **Claim queue** (4.62.4) — новые tier-unlocks требуют **явного acknowledge** через menu (Destiny-2 паттерн «нашёл — нужно собрать»).
 - **Score** — каждый unlocked tier даёт `POINTS_PER_TIER` (10) очков → суммарный `total_score(state)`.
 
-**Не входит** в систему на момент 0.2.5y: gameplay-бонусы за capstones (Phase 4 — задача 4.62.2.1, **deferred** 25.05.2026 до balance design), Hidden triumphs (4.62.5). Web UI **добавлен** в 0.2.5y (задача 4.62.7) — параллельная вёрстка к CLI menu.
+**Не входит** в систему на момент 0.2.5z: gameplay-бонусы за capstones (Phase 4 — задача 4.62.2.1, **deferred** 25.05.2026 до balance design), Hidden triumphs (4.62.5). Web UI **добавлен** в 0.2.5y (4.62.7) — параллельная вёрстка к CLI menu, **UX-polished** в 0.2.5z (4.62.7.1 — per-tier claim + section перенесена в конец dashboard'а).
 
 ---
 
@@ -40,10 +40,10 @@ Trigger (action) → Triumph progress → Capstone (last tier) → Seal → Titl
 | Модуль | Слой | Содержит |
 |---|---|---|
 | `triumphs_data.py` | Static catalog | `POINTS_PER_TIER`, `CATEGORIES`, `SEALS`, `TRIUMPHS` (dict[id, spec]), helper `_GYM_SKILL_FIELDS` |
-| `triumphs.py` | Pure engine | `register_event` / `init_metric_check` / `get_progress` / `total_score` / `backfill_from_history` / `backfill_from_sheets_history`, claim helpers (`append_unclaimed`, `claim_triumph`, `claim_all`, `get_unclaimed_for`, `backfill_unclaimed_from_existing`), seal helpers (`is_seal_unlocked`, `available_seals`, `available_titles`, `set_title`, `check_seal_unlocks`), progress bar formatter `_format_progress_bar` |
+| `triumphs.py` | Pure engine | `register_event` / `init_metric_check` / `get_progress` / `total_score` / `backfill_from_history` / `backfill_from_sheets_history`, claim helpers (`append_unclaimed`, `claim_triumph (batch)`, `claim_one_tier (per-tier, since 0.2.5z)`, `next_unclaimed_tier (UI helper)`, `claim_all`, `get_unclaimed_for`, `backfill_unclaimed_from_existing`), seal helpers (`is_seal_unlocked`, `available_seals`, `available_titles`, `set_title`, `check_seal_unlocks`), progress bar formatter `_format_progress_bar` |
 | `triumphs_menu.py` | CLI UI | `open_triumphs_menu` (3-level navigation: main → category → detail), Pin/Unpin toggle, Claim flow, Seals view, `render_pinned_status_bar` (для `functions.status_bar`) |
 | `web/main.py` | Web UI (since 0.2.5y / 4.62.7) | `_build_triumphs_view(state) -> dict` (pre-computed nested view: pinned_rows / unclaimed / categories / seals со всеми flags), `_validate_and_apply_pin/claim/claim_all/seal_toggle/backfill_sheets` helpers, 10 endpoints (5 web Form HTMX + 5 API JSON Pydantic) |
-| `web/templates/_status_fragment.html` | Web template | Top banners над Stats (unclaimed + pinned), title badge в Stats header (float-right), main `<section id="triumphs">` после Gym (collapsible + sub-collapsibles per category + Seals sub-section + Backfill button) |
+| `web/templates/_status_fragment.html` | Web template | Top banners над Stats (unclaimed + pinned), title badge в Stats header (float-right), main `<section id="triumphs">` **в конце dashboard'а после Inventory** (since 4.62.7.1 / 0.2.5z; collapsible + sub-collapsibles per category + Seals sub-section + Backfill button) |
 
 Auto-hook'и:
 
@@ -194,7 +194,7 @@ def is_seal_unlocked(state, cat_key):
 
 ---
 
-## 7. Claim mechanic (4.62.4)
+## 7. Claim mechanic (4.62.4, per-tier UX 4.62.7.1)
 
 Destiny-2 паттерн: при unlock игрок видит индикатор и должен **явно acknowledge**. Эмоциональный payoff — без этого triumph закрывается в фоне.
 
@@ -205,20 +205,28 @@ Destiny-2 паттерн: при unlock игрок видит индикатор
    ```
    🎁 N закрыто: имя1, имя2, имя3 (и ещё X) — открой [t]
    ```
-4. Игрок открывает Triumphs menu → видит ✨ markers на категориях/triumph'ах с unclaimed → drill'ит в detail view → нажимает `[c] ✓ Собрать (N)`.
-5. После claim: `🎉 Stamina: 2 tier'ов собрано! +20 score (total 290)` + entry удаляется из queue + persist.
+4. Игрок открывает Triumphs menu → видит ✨ markers на категориях/triumph'ах с unclaimed → drill'ит в detail view → нажимает `[c] ✓ Собрать tier N (M ост.)`.
+5. После claim: `🎉 Marathoner: Tier 1 собран! Score: 280 (ещё 2 осталось)` + одна entry удаляется из queue + persist + re-render обновляет label на следующий tier.
 
-**Batch claim:** в main menu отдельная кнопка `[a] ✓ Собрать все (N)` clear'ит весь queue.
+**Per-tier semantic (4.62.7.1 / 0.2.5z):** один клик = один tier (oldest first). Раньше (0.2.5u..0.2.5y) клик `[✓ Собрать (3)]` clear'ил все 3 tier'а одним batch'ем — заменено на per-tier для emotional payoff каждого acknowledgment (Destiny-2 style). Sort order для «oldest»: `unlocked_ts ASC, tier ASC` (если несколько tier'ов unlocked одним batch register_event — берётся меньший tier).
+
+**Batch claim:** в main menu отдельная кнопка `[a] ✓ Собрать все (N)` clear'ит весь queue (через `claim_all`) — для quick-clear при большом backfill (17 unlocks прокликивать по одному нудно).
 
 **Backfill в unclaimed:**
 - One-shot для existing players в `init_game_state` — `backfill_unclaimed_from_existing(state)` синтезирует entries для уже-unlocked tier'ов (только если queue пустая, чтобы не дублировать).
-- Manual backfill через menu → `backfill_from_history` тоже append'ит newly-unlocked tier'ы в queue.
+- Manual backfill через menu → `backfill_from_history` / `backfill_from_sheets_history` тоже append'ят newly-unlocked tier'ы в queue.
 
 **Entry kinds:**
 - `'triumph'` (default) — tier unlock конкретного triumph'а.
 - `'seal'` — seal unlock категории. `triumph_id` = category key, `tier = 0` (unused).
 
-`claim_triumph(state, id, kind='triumph')` — kwarg `kind` фильтрует. Без него triumph 'foo' и seal 'foo' конфликтовали бы.
+**Engine API claim:**
+- `claim_one_tier(state, id, kind='triumph') -> Optional[dict]` — per-tier, returns removed entry или None (since 0.2.5z, default UI path).
+- `next_unclaimed_tier(state, id, kind='triumph') -> Optional[int]` — UI helper для button label.
+- `claim_triumph(state, id, kind='triumph') -> int` — batch (all tiers for triumph), used by CLI [a] / future bulk operations (since 0.2.5u).
+- `claim_all(state) -> int` — clear весь queue, used by banner [✓ Собрать всё].
+
+Все методы фильтруют по `kind` — без него triumph 'foo' и seal 'foo' конфликтовали бы.
 
 ---
 
@@ -264,21 +272,28 @@ Lazy imports + try/except чтобы избежать circular dependency.
 
 ---
 
-## 9.5 Web UI architecture (4.62.7 / 0.2.5y)
+## 9.5 Web UI architecture (4.62.7 / 0.2.5y, UX-polished 4.62.7.1 / 0.2.5z)
 
 Параллельная вёрстка к CLI menu. 3 слоя UI в `web/templates/_status_fragment.html`:
 
 **1. Top banners над Stats** (conditional render, всегда visible если active):
-- **Unclaimed banner** `🎁 N закрытых не собрано` + sample names + `[✓ Собрать все]` button → POST `/web/triumphs/claim_all`.
+- **Unclaimed banner** `🎁 N закрытых не собрано` + sample names + `[✓ Собрать все]` button → POST `/web/triumphs/claim_all` (batch quick-clear).
 - **Pinned banner** `📌 Pinned N/3` + 3 строки с progress bars (HTML5 `<progress>`) + ✨ marker если pinned имеет unclaimed.
 
 **2. Title badge** в Stats header (`📊 Stats   👑 <title>` float-right) — visible если `state.title` non-None. Match с CLI placement над локацией.
 
-**3. Main `<section id="triumphs">`** после Gym — collapsible `<details>`:
+**3. Main `<section id="triumphs">`** — **в самом конце dashboard'а после Inventory** (перемещена в 4.62.7.1 / 0.2.5z; до этого была между Gym и Bank — занимала прайм-real-estate выше gameplay-блоков). Collapsible `<details>`:
 - Header: `🏆 Triumphs · Score: N · X/Y категорий · Z/M seals`
-- 5 sub-collapsibles per category (🏃 / 🔋 / 🗺 / 🏋 / 🏭) с triumph rows внутри: name + 📌/✨ markers + progress bar + tier label + `[📌 Pin/Unpin]` + `[✓ Собрать (N)]` buttons
+- 5 sub-collapsibles per category (🏃 / 🔋 / 🗺 / 🏋 / 🏭) с triumph rows внутри: name + 📌/✨ markers + progress bar + tier label + `[📌 Pin/Unpin]` + `[✓ Собрать tier N (M ост.)]` buttons (per-tier — см. ниже)
 - Sub-collapsible `🏅 Seals & Titles` (5 seals со статусом UNLOCKED/LOCKED + `[Носить/Снять]` toggle для unlocked)
 - `[🌐 Backfill из Sheets (cross-device)]` button внизу с `hx-confirm`
+
+**Per-tier claim semantic (4.62.7.1 / 0.2.5z):** до 0.2.5z один клик на `[✓ Собрать (N)]` clear'ил все N unclaimed tier'ов одним batch'ем — это не давало emotional payoff per-tier. После polish:
+- Button label: `[✓ Собрать tier N (M ост.)]` — показывает следующий oldest tier number + остаток.
+- Один клик = один tier (oldest first by `unlocked_ts ASC, tier ASC`).
+- После claim re-render обновляет label на next tier или убирает кнопку если queue для triumph'а пустой.
+- `[a] Собрать всё` в banner остаётся как batch для quick-clear (через `claim_all`).
+- Engine API: `claim_one_tier(state, id, kind) -> Optional[dict]` (returns removed entry или None), `next_unclaimed_tier(state, id, kind) -> Optional[int]` (UI label helper).
 
 **Endpoints (10 total в `web/main.py`):** все mutation endpoints через `_validate_and_apply_*` helper'ы с STALE handling через `_persist_and_handle_stale`. Web endpoints возвращают `_render_dashboard_or_stale(...)` для HTMX swap. API mirrors возвращают JSON с Pydantic models (`TriumphPinRequest`, `TriumphClaimRequest`, `TriumphSealRequest`).
 
@@ -498,7 +513,7 @@ Engine не поддерживает `count_mode='max'` напрямую — `co
 
 - [`TASKS.md`](../TASKS.md) — секция «4.62. Triumphs» с полным breakdown подзадач (Phase 1-6, 23 granular tasks).
 - [`CLAUDE.md`](../CLAUDE.md) — module map entry `triumphs.py + triumphs_data.py + triumphs_menu.py` с архитектурным overview.
-- [`changelog.txt`](../changelog.txt) — версии 0.2.5j-y содержат подробное описание каждого этапа имплементации (foundation 0.2.5j-l, catalog 0.2.5m-t + 0.2.5w Iron Worker, pinned 0.2.5u, seals 0.2.5v, backfill UX 0.2.5x, web UI 0.2.5y).
+- [`changelog.txt`](../changelog.txt) — версии 0.2.5j-z содержат подробное описание каждого этапа имплементации (foundation 0.2.5j-l, catalog 0.2.5m-t + 0.2.5w Iron Worker, pinned 0.2.5u, seals 0.2.5v, backfill UX 0.2.5x, web UI 0.2.5y, per-tier claim + section move 0.2.5z).
 
 ---
 
@@ -512,3 +527,4 @@ Engine не поддерживает `count_mode='max'` напрямую — `co
 | **4.62.5 Hidden** | `???` маска до unlock'а — surprise discovery | optional |
 | **4.62.6 Backfill UX** | `[b]` Sheets `history` cross-device + auto-fallback на local jsonl | **done (0.2.5x)** |
 | **4.62.7 Web UI** | Web section для Triumphs + pinned banner + title badge + 10 endpoints | **done (0.2.5y)** |
+| **4.62.7.1 Web UX polish** | Per-tier claim (один клик = один tier oldest first) + section move в конец dashboard'а | **done (0.2.5z)** |

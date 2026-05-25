@@ -3126,6 +3126,7 @@ def _build_triumphs_view(state) -> dict:
     """
     from triumphs import (
         get_progress, get_unclaimed_for, is_seal_unlocked, total_score,
+        next_unclaimed_tier,
     )
     from triumphs_data import CATEGORIES, SEALS, TRIUMPHS
 
@@ -3207,6 +3208,8 @@ def _build_triumphs_view(state) -> dict:
                 'is_pinned': tid in pinned_ids,
                 'has_unclaimed': unclaimed_count > 0,
                 'unclaimed_count': unclaimed_count,
+                # 4.62.7.1 — Per-tier claim button label.
+                'next_unclaimed_tier': next_unclaimed_tier(state, tid),
             })
         categories_view.append({
             'key': cat_key,
@@ -3312,12 +3315,18 @@ def _validate_and_apply_pin(state, triumph_id: str) -> Optional[str]:
 
 
 def _validate_and_apply_claim(state, triumph_id: str, kind: str) -> Optional[str]:
-    """Claim unclaimed entries для triumph'а+kind."""
-    from triumphs import claim_triumph
+    """4.62.7.1 — Claim **один** (oldest) unclaimed tier для triumph'а+kind.
+
+    Per-tier acknowledge pattern. UI имеет одну кнопку «[✓ Собрать tier N]»,
+    клик → claim ONE tier → re-render показывает next tier (если ещё есть).
+    Бывший batch-clear переведён на `claim_one_tier` (engine helper остался
+    `claim_triumph` для backwards-compat / [a] Собрать всё).
+    """
+    from triumphs import claim_one_tier
     if kind not in ('triumph', 'seal'):
         return f'Неизвестный kind: {kind}'
-    count = claim_triumph(state, triumph_id, kind=kind)
-    if count == 0:
+    entry = claim_one_tier(state, triumph_id, kind=kind)
+    if entry is None:
         return f'Нечего собирать (нет unclaimed entries для {triumph_id}).'
     stale = _persist_and_handle_stale(endpoint='triumph_claim')
     if stale:

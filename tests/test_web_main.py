@@ -2525,8 +2525,9 @@ def test_gym_skills_use_nested_details():
         response = client.get("/status")
     body = response.text
     gym_pos = body.find('id="gym"')
-    # Следующая секция после Gym = Triumphs (с 0.2.5y / 4.62.7), затем Bank.
-    next_section_pos = body.find('id="triumphs"', gym_pos)
+    # Следующая секция после Gym = Bank (с 0.2.5z / 4.62.7.1 — Triumphs
+    # перенесена в самый конец dashboard'а).
+    next_section_pos = body.find('id="bank"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
     # (после 0.2.4j / 4.22 — 20 навыков: + 3 energy_optimization_* после move_opt).
@@ -5110,18 +5111,23 @@ def test_equipment_section_shows_full_bonus_for_non_broken_item():
 # main section с pin/claim/seal/backfill endpoints).
 # ============================================================================
 
-def test_dashboard_renders_triumphs_section_after_gym():
-    """Main Triumphs section с id="triumphs" присутствует в HTML."""
+def test_dashboard_renders_triumphs_section_at_bottom():
+    """4.62.7.1 — Main Triumphs section теперь в самом конце dashboard'а
+    после Inventory (перенесена 25.05.2026 — gameplay-блоки приоритетнее
+    visible сверху)."""
     _setup_state()
     with TestClient(app) as client:
         response = client.get("/status")
     assert response.status_code == 200
     body = response.text
-    # Section is between Gym and Bank.
-    gym_pos = body.find('id="gym"')
+    inventory_pos = body.find('id="inventory"')
     triumphs_pos = body.find('id="triumphs"')
-    bank_pos = body.find('id="bank"')
-    assert gym_pos < triumphs_pos < bank_pos
+    # Triumphs ниже inventory.
+    assert inventory_pos < triumphs_pos
+    # И ниже Bank/Gym/Equipment (все gameplay блоки).
+    assert body.find('id="bank"') < triumphs_pos
+    assert body.find('id="gym"') < triumphs_pos
+    assert body.find('id="equipment"') < triumphs_pos
 
 
 def test_pinned_banner_visible_when_pinned():
@@ -5208,11 +5214,13 @@ def test_web_pin_cap_3_blocked():
     assert '3 закреплено' in r.text
 
 
-def test_web_claim_form():
-    """POST /web/triumphs/claim — clear unclaimed entries для triumph'а."""
+def test_web_claim_form_one_tier():
+    """4.62.7.1 — POST /web/triumphs/claim удаляет ОДИН tier (oldest)."""
     state = GameState.default_new_game()
     state.unclaimed_unlocks = [
         {'triumph_id': 'marathoner', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+        {'triumph_id': 'marathoner', 'tier': 2, 'unlocked_ts': 2.0, 'kind': 'triumph'},
+        {'triumph_id': 'marathoner', 'tier': 3, 'unlocked_ts': 3.0, 'kind': 'triumph'},
     ]
     _setup_state(state)
     with TestClient(app) as client:
@@ -5221,7 +5229,10 @@ def test_web_claim_form():
             data={"triumph_id": "marathoner", "kind": "triumph"},
         )
     assert r.status_code == 200
-    assert state.unclaimed_unlocks == []
+    # Только oldest (tier 1) удалён, tier 2 и 3 остались.
+    assert len(state.unclaimed_unlocks) == 2
+    remaining_tiers = sorted(e['tier'] for e in state.unclaimed_unlocks)
+    assert remaining_tiers == [2, 3]
 
 
 def test_web_claim_all_form():
@@ -5252,11 +5263,12 @@ def test_api_pin_toggle_json():
     assert "marathoner" in data["pinned"]
 
 
-def test_api_claim_json():
-    """POST /api/triumphs/claim — JSON Pydantic mirror."""
+def test_api_claim_json_one_tier():
+    """4.62.7.1 — POST /api/triumphs/claim удаляет ОДИН tier (oldest)."""
     state = GameState.default_new_game()
     state.unclaimed_unlocks = [
         {'triumph_id': 'marathoner', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+        {'triumph_id': 'marathoner', 'tier': 2, 'unlocked_ts': 2.0, 'kind': 'triumph'},
     ]
     _setup_state(state)
     with TestClient(app) as client:
@@ -5267,7 +5279,9 @@ def test_api_claim_json():
     assert r.status_code == 200
     data = r.json()
     assert data["ok"] is True
-    assert data["unclaimed_count"] == 0
+    # 1 tier удалён (oldest=tier 1), tier 2 остался.
+    assert data["unclaimed_count"] == 1
+    assert state.unclaimed_unlocks[0]['tier'] == 2
 
 
 def test_api_seal_toggle_rejects_locked():

@@ -323,6 +323,10 @@ def claim_triumph(state, triumph_id: str, kind: str = 'triumph') -> int:
     `kind` (4.62.3) — 'triumph' (default) для tier unlocks, или 'seal' для
     seal unlocks. Без фильтра по kind triumph 'foo' и seal cat_key 'foo'
     конфликтовали бы.
+
+    Note (4.62.7.1, 25.05.2026): этот helper остался batch-API (clear все
+    tier'ы для triumph'а). UI теперь использует `claim_one_tier` per-click
+    для granular acknowledge (один tier = один claim).
     """
     if state is None or not state.unclaimed_unlocks:
         return 0
@@ -332,6 +336,65 @@ def claim_triumph(state, triumph_id: str, kind: str = 'triumph') -> int:
         if not (e.get('triumph_id') == triumph_id and e.get('kind', 'triumph') == kind)
     ]
     return before - len(state.unclaimed_unlocks)
+
+
+def claim_one_tier(state, triumph_id: str, kind: str = 'triumph') -> Optional[dict]:
+    """4.62.7.1 (25.05.2026) — Claim **один** (oldest) unclaimed tier для
+    triumph'а+kind. Per-tier acknowledge pattern (Destiny-2 style) — каждый
+    tier = отдельный «приз», игрок прокликивает их по одному.
+
+    Sort order: (unlocked_ts ASC, tier ASC) — oldest first. Если несколько
+    tier'ов unlocked одним register_event (одинаковый unlocked_ts) — берётся
+    с меньшим tier'ом (tier 1 раньше tier 2).
+
+    Returns:
+    - Удалённый entry dict (для UI feedback с tier number / name) или
+    - None если нет matching entries в queue.
+    """
+    if state is None or not state.unclaimed_unlocks:
+        return None
+    # Find oldest matching entry.
+    matching = [
+        (i, e) for i, e in enumerate(state.unclaimed_unlocks)
+        if e.get('triumph_id') == triumph_id
+        and e.get('kind', 'triumph') == kind
+    ]
+    if not matching:
+        return None
+    # Sort by (unlocked_ts, tier) ASC.
+    matching.sort(key=lambda pair: (
+        float(pair[1].get('unlocked_ts', 0) or 0),
+        int(pair[1].get('tier', 0)),
+    ))
+    idx, entry = matching[0]
+    # Remove from queue (single pop by index).
+    state.unclaimed_unlocks = (
+        state.unclaimed_unlocks[:idx] + state.unclaimed_unlocks[idx + 1:]
+    )
+    result: dict = entry
+    return result
+
+
+def next_unclaimed_tier(state, triumph_id: str, kind: str = 'triumph') -> Optional[int]:
+    """UI helper: tier number следующего unclaimed entry (для label кнопки
+    «[✓ Собрать tier N]»). None если нет unclaimed для triumph'а.
+
+    Same sort order как `claim_one_tier` (oldest first).
+    """
+    if state is None or not state.unclaimed_unlocks:
+        return None
+    matching = [
+        e for e in state.unclaimed_unlocks
+        if e.get('triumph_id') == triumph_id
+        and e.get('kind', 'triumph') == kind
+    ]
+    if not matching:
+        return None
+    matching.sort(key=lambda e: (
+        float(e.get('unlocked_ts', 0) or 0),
+        int(e.get('tier', 0)),
+    ))
+    return int(matching[0].get('tier', 0))
 
 
 def claim_all(state) -> int:

@@ -422,7 +422,8 @@ class TestClaimUI:
         import persistence
         persistence.save_characteristic = self._orig_save
 
-    def test_do_claim_clears_unclaimed_for_triumph(self, monkeypatch, capsys):
+    def test_do_claim_clears_one_tier_for_triumph(self, monkeypatch, capsys):
+        """4.62.7.1 — per-tier claim. _do_claim удаляет один tier (oldest)."""
         from triumphs import append_unclaimed
         from triumphs_menu import _do_claim
         catalog = {'foo': {'name': 'Foo', 'category': 'misc', 'tiers': [10],
@@ -434,10 +435,11 @@ class TestClaimUI:
         append_unclaimed(state, [{'triumph_id': 'foo', 'tier_index': 1}])
         monkeypatch.setattr('builtins.input', lambda *a, **k: '')
         _do_claim(state, 'foo')
+        # One tier claimed → queue пустой (был только 1 entry).
         assert state.unclaimed_unlocks == []
         out = capsys.readouterr().out
         assert 'Foo' in out
-        assert '1 tier' in out
+        assert 'Tier 1 собран' in out
 
     def test_do_claim_all_clears_queue(self, monkeypatch, capsys):
         from triumphs import append_unclaimed
