@@ -1,0 +1,418 @@
+# Triumphs / Достижения — система и каталог
+
+Документ описывает Destiny-2-inspired систему достижений в 2Walks: архитектуру, mechanics, state schema, и полный каталог triumph'ов на момент актуальной версии. Цель — чтобы при добавлении новых triumph'ов / категорий / bonuses было понятно «что уже есть и как оно работает».
+
+Status: **active since 0.2.5j (22.05.2026)**. Зонтичная задача **4.62** в TASKS.md, см. секцию «4.62. Triumphs» для полного breakdown подзадач.
+
+---
+
+## 1. Высокоуровневая концепция
+
+Игрок прогрессирует через 4 уровня:
+
+```
+Trigger (action) → Triumph progress → Capstone (last tier) → Seal → Title
+     log_event        counter / metric       all tiers done       category    cosmetic
+        ↓                ↓                       ↓                  ↓           ↓
+   work_done       Hard Worker            Hard Worker          Workaholic    👑 Workaholic
+   hours=4         500h → 1000h               10000h              seal       в status_bar
+```
+
+- **Triumph** — одно достижение с 4-5 tier'ами. Пример: «Marathoner» с tiers `[100k, 500k, 1M, 5M, 10M]` спрятанных шагов.
+- **Capstone** — последний (самый сложный) tier triumph'а. «Capstone достигнут» = triumph полностью пройден.
+- **Seal** — закрыл **все capstones** в категории. Пример: для категории `gym` нужно довести все 20 per-skill triumph'ов до lvl 30 + Skill Master до 1000.
+- **Title** — cosmetic «звание» которое игрок может надеть; даётся как право использования с unlocked seal.
+
+Дополнительные слои поверх:
+
+- **Pinned** (4.62.4) — игрок выбирает до 3 triumph'ов для приоритетного показа в status_bar.
+- **Claim queue** (4.62.4) — новые tier-unlocks требуют **явного acknowledge** через menu (Destiny-2 паттерн «нашёл — нужно собрать»).
+- **Score** — каждый unlocked tier даёт `POINTS_PER_TIER` (10) очков → суммарный `total_score(state)`.
+
+**Не входит** в систему на момент 0.2.5v: gameplay-бонусы за capstones (Phase 4 — задача 4.62.2.1), Web UI (Phase 5 — задача 4.62.7), Hidden triumphs (4.62.5).
+
+---
+
+## 2. Архитектура
+
+3 файла + auto-hook'и в существующих модулях:
+
+| Модуль | Слой | Содержит |
+|---|---|---|
+| `triumphs_data.py` | Static catalog | `POINTS_PER_TIER`, `CATEGORIES`, `SEALS`, `TRIUMPHS` (dict[id, spec]), helper `_GYM_SKILL_FIELDS` |
+| `triumphs.py` | Pure engine | `register_event` / `init_metric_check` / `get_progress` / `total_score` / `backfill_from_history`, claim helpers (`append_unclaimed`, `claim_triumph`, `claim_all`, `get_unclaimed_for`, `backfill_unclaimed_from_existing`), seal helpers (`is_seal_unlocked`, `available_seals`, `available_titles`, `set_title`, `check_seal_unlocks`), progress bar formatter `_format_progress_bar` |
+| `triumphs_menu.py` | CLI UI | `open_triumphs_menu` (3-level navigation: main → category → detail), Pin/Unpin toggle, Claim flow, Seals view, `render_pinned_status_bar` (для `functions.status_bar`) |
+
+Auto-hook'и:
+
+- **`history.py:log_event`** — после write event'а вызывает `register_event(state, type, **payload)` + `append_unclaimed` для returned unlocks + `check_seal_unlocks` + `append_unclaimed` для seal unlocks. Try/except / silent fail / lazy import чтобы избежать circular dependency.
+- **`characteristics.py:init_game_state`** — на startup: `backfill_unclaimed_from_existing` (one-shot synth для уже-unlocked tier'ов из state.triumphs) + `init_metric_check` (auto-unlock metric-based) + `check_seal_unlocks` (для existing players у которых уже все capstones категории закрыты).
+- **`functions.py:status_bar`** — на каждом tick'е CLI печатает `render_pinned_status_bar(state)` (unclaimed banner + pinned section) + строку `👑 <title>` если `state.title` non-None.
+
+---
+
+## 3. State schema
+
+Всё хранится в `GameState` (state.py) и round-trip'ится через `to_dict`/`from_dict`:
+
+```python
+# 4.62.0.1 — Triumph progress (sparse — entry создаётся при первом progress).
+triumphs: dict[str, dict] = field(default_factory=dict)
+# Entry structure: {
+#   'tier': int (highest unlocked tier, 0 = none),
+#   'unlocked_at': dict[str→str] (tier index → ISO datetime),
+#   'count': int (event-based accumulator counter; metric-based не использует),
+# }
+
+# 4.62.0.1 — Pinned triumph IDs (≤3 enforced в pin operation).
+pinned_triumphs: list[str] = field(default_factory=list)
+
+# 4.62.0.1 — Selected title из unlocked seals.
+title: Optional[str] = None
+
+# 4.62.0.2 — Backfill prompt dismiss flag (one-shot UI control).
+triumphs_backfill_dismissed: bool = False
+
+# 4.62.4 — Unclaimed unlocks queue (Destiny-2 claim mechanic).
+# Entries: {'triumph_id': str, 'tier': int, 'unlocked_ts': float, 'kind': 'triumph' | 'seal'}
+# `kind='seal'` (4.62.3) → triumph_id = category key, tier = 0 (unused).
+unclaimed_unlocks: list[dict] = field(default_factory=list)
+```
+
+**Дополнительный pseudo-entry** в `state.triumphs`:
+
+```python
+state.triumphs['__seal__'] = {'acknowledged': list[str]}
+# Tracks которые seal cat_keys уже push'нуты в unclaimed queue —
+# для idempotency check_seal_unlocks. Создаётся lazy через setdefault.
+# Defensive: iteration кода `triumphs.py:backfill_unclaimed_from_existing`
+# делает `spec = TRIUMPHS.get(triumph_id)` → None для '__seal__' → skip.
+```
+
+---
+
+## 4. Два типа triumph'ов
+
+### Metric-based
+
+Читает state напрямую через lambda. Используется когда есть **persistent counter** уже в state.
+
+```python
+'marathoner': {
+    'name': 'Marathoner',
+    'category': 'steps',
+    'tiers': [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
+    'metric': lambda state: state.steps.total_used,
+}
+```
+
+**Auto-unlock на старте** через `init_metric_check(state)` в `init_game_state` — existing players мгновенно получают credit за всю прошлую игру **без backfill**.
+
+**Recheck** на любом `register_event` (любой log_event):
+```python
+for triumph_id, spec in TRIUMPHS.items():
+    current = _read_current_value(state, spec)
+    newly = _check_tier_unlocks(state, triumph_id, spec, current)
+    # newly = list of tier indices unlocked at this call
+```
+
+### Event-based
+
+Counter в `state.triumphs[id]['count']` accumulates на каждом matching `log_event`. Используется когда persistent counter в state **нет** — нужно считать события.
+
+```python
+'workhorse': {
+    'name': 'Workhorse',
+    'category': 'energy',
+    'tiers': [1_000, 5_000, 10_000, 50_000],
+    'event_hooks': ['work_start', 'work_extend'],  # типы событий
+    'count_delta': lambda p: int(p.get('cost_energy', 0) or 0),  # сколько добавить
+    'event_filter': lambda p: p.get('vacancy') == 'watchman',  # опционально
+}
+```
+
+**Backfill из `history.jsonl`** через `backfill_from_history(state, path)` — replay'ит все события файла, accumulate counters, recheck tier unlocks. Идемпотентен (reset counters → replay).
+
+**Backfill ограничение:** читает только LOCAL `history.jsonl` (CLI machine). Server's web events в server's jsonl. См. отложенную задачу 4.62.6 «Backfill UX — Sheets history source».
+
+---
+
+## 5. Capstone & Seal logic
+
+**Capstone** = `unlocked_tier == len(spec['tiers'])`. Marker:
+
+```python
+unlock_event['is_capstone'] = (tier_idx == len(spec.get('tiers', [])))
+```
+
+UI рендерит capstone'нутый triumph специально (золотая «Capstone» label в Detail view).
+
+**Seal unlocked** = ВСЕ triumph'ы категории на capstone:
+
+```python
+def is_seal_unlocked(state, cat_key):
+    cat_triumph_ids = [tid for tid, spec in TRIUMPHS.items()
+                       if spec.get('category') == cat_key]
+    if not cat_triumph_ids:
+        return False  # пустая категория не unlock'ает seal
+    for tid in cat_triumph_ids:
+        total_tiers = len(TRIUMPHS[tid].get('tiers', []))
+        if int(state.triumphs.get(tid, {}).get('tier', 0)) < total_tiers:
+            return False
+    return True
+```
+
+**Symmetry с claim mechanic:** seal unlock попадает в `unclaimed_unlocks` через `check_seal_unlocks` → idempotency через `state.triumphs['__seal__']['acknowledged']` marker. Acknowledged seal удаляется из queue при claim, но `acknowledged` flag остаётся → повторно в queue не попадает.
+
+---
+
+## 6. Pinned mechanic (4.62.4)
+
+- `state.pinned_triumphs` cap = 3 (enforced в `_toggle_pin`, не в schema).
+- **Smart replace prompt** при попытке pin 4-го: «У тебя уже 3 закреплено. Какой заменить? [1/2/3/c]».
+- Auto-unpin на capstone = **НЕТ** (capstone остаётся в pinned как trophy — design choice 25.05.2026).
+- Display: pinned section в начале Triumphs main menu + в `functions.status_bar` через `render_pinned_status_bar`. Лимит 3 строки.
+- Visual marker `📌` рядом с pinned triumph в category list / detail view.
+
+---
+
+## 7. Claim mechanic (4.62.4)
+
+Destiny-2 паттерн: при unlock игрок видит индикатор и должен **явно acknowledge**. Эмоциональный payoff — без этого triumph закрывается в фоне.
+
+**Flow:**
+1. `register_event` returns list newly-unlocked tiers.
+2. Auto-hook (`history.log_event`) push'ит unlocks в `state.unclaimed_unlocks` через `append_unclaimed` (dedupe по `(triumph_id, tier, kind)`).
+3. На каждом tick'е `status_bar` показывает banner:
+   ```
+   🎁 N закрыто: имя1, имя2, имя3 (и ещё X) — открой [t]
+   ```
+4. Игрок открывает Triumphs menu → видит ✨ markers на категориях/triumph'ах с unclaimed → drill'ит в detail view → нажимает `[c] ✓ Собрать (N)`.
+5. После claim: `🎉 Stamina: 2 tier'ов собрано! +20 score (total 290)` + entry удаляется из queue + persist.
+
+**Batch claim:** в main menu отдельная кнопка `[a] ✓ Собрать все (N)` clear'ит весь queue.
+
+**Backfill в unclaimed:**
+- One-shot для existing players в `init_game_state` — `backfill_unclaimed_from_existing(state)` синтезирует entries для уже-unlocked tier'ов (только если queue пустая, чтобы не дублировать).
+- Manual backfill через menu → `backfill_from_history` тоже append'ит newly-unlocked tier'ы в queue.
+
+**Entry kinds:**
+- `'triumph'` (default) — tier unlock конкретного triumph'а.
+- `'seal'` — seal unlock категории. `triumph_id` = category key, `tier = 0` (unused).
+
+`claim_triumph(state, id, kind='triumph')` — kwarg `kind` фильтрует. Без него triumph 'foo' и seal 'foo' конфликтовали бы.
+
+---
+
+## 8. Seals & Titles (4.62.3)
+
+- `SEALS` catalog в `triumphs_data.py` — один seal per category.
+- При unlock последнего capstone'а → seal через `check_seal_unlocks` → в claim queue.
+- После claim seal'а в Seals view игрок может **надеть title** (один за раз).
+- Active title рендерится в `functions.status_bar` отдельной строкой `👑 <title>` над «Вы находитесь в локации».
+
+UI access: `[s] 🏅 Seals & Titles` в Triumphs main menu → Seals view (текущий title + 5 seals со статусом UNLOCKED/LOCKED + Носить/Снять toggle).
+
+---
+
+## 9. Auto-hook architecture
+
+Один common pattern — **avoid отдельных hook'ов в каждом mutation site**. Вместо `gym.skill_training`/`work.start_work`/etc дёргать триумфы явно, всё идёт через **существующий** `history.log_event`:
+
+```python
+# history.py:log_event
+event = _build_event(event_type, payload)
+_write_local(event)
+_write_sheets(event)
+
+# 4.62 auto-hook
+try:
+    from triumphs import register_event, append_unclaimed, check_seal_unlocks
+    from characteristics import game
+    if game.state is not None:
+        unlocks = register_event(game.state, event_type, **payload)
+        if unlocks:
+            append_unclaimed(game.state, unlocks)
+        seal_unlocks = check_seal_unlocks(game.state)
+        if seal_unlocks:
+            append_unclaimed(game.state, seal_unlocks)
+except Exception:  # silent fail — triumph hook не должен ломать log_event
+    pass
+```
+
+**Преимущество:** добавляя новый event-based triumph — НЕ нужно искать call site, нужно только убедиться что соответствующий `log_event(event_type, ...)` уже вызывается где надо. Если event'а нет — добавить вызов (как, например, было сделано для `forge.py:item_crafted` payload — добавили `cost_energy` в 0.2.5p для Energy triumph'ов).
+
+Lazy imports + try/except чтобы избежать circular dependency.
+
+---
+
+## 10. Pytest защита
+
+`tests/conftest.py:_disable_triumphs_register_event_for_non_triumphs_tests` (autouse) → `triumphs.register_event` → `lambda state, type, **p: []` для всех тестов кроме `test_triumphs.py` / `test_triumphs_catalog.py`. Без этого fixture'а auto-hook срабатывал бы во всех integration тестах (web endpoint'ы / CLI flows) и мутировал `state.triumphs` лишними счётчиками → ломал fine-grained assertions.
+
+---
+
+## 11. Каталог triumph'ов (0.2.5v, 25.05.2026)
+
+**Score system:** `POINTS_PER_TIER = 10`. Capstone = 10 × num_tiers points (50 для 5-tier triumph'а, 40 для 4-tier).
+
+**Total: 39 triumph'ов в 5 категориях, 5 seals.**
+
+### 🏃 Steps (1) — 4.62.1.1 / 0.2.5m
+
+| ID | Name | Tiers | Tracking | Metric / Hook |
+|---|---|---|---|---|
+| `marathoner` | Marathoner | `[100k, 500k, 1M, 5M, 10M]` | metric | `state.steps.total_used` |
+
+**Seal:** Marathoner.
+
+### 🔋 Energy (4) — 4.62.1.4 / 0.2.5p
+
+Approach B (event-based через `cost_energy` в payload existing log_event'ов). Все 4 имеют одинаковые tiers `[1k, 5k, 10k, 50k]`.
+
+| ID | Name | Hooks | Filter |
+|---|---|---|---|
+| `endurance` | Endurance | work_start, work_extend, skill_train_start, adventure_start, item_repaired, item_crafted | — |
+| `workhorse` | Workhorse | work_start, work_extend | — |
+| `disciplined` | Disciplined | skill_train_start | — |
+| `pathfinder` | Pathfinder | adventure_start | — |
+
+`count_delta = lambda p: int(p.get('cost_energy', 0))` для всех.
+
+**Seal:** Indefatigable.
+
+### 🗺 Adventures (8) — 4.62.1.2 + 4.62.1.3 / 0.2.5q
+
+Metric-based через `state.adventure.counters` (counters обновляются в `Adventure.adventure_check_done`). Все 8 имеют одинаковые tiers `[10, 50, 100, 500, 1000]`.
+
+| ID | Name | Metric |
+|---|---|---|
+| `adventurer` | Adventurer | `sum(state.adventure.counters.values())` |
+| `stroller` | Stroller | `counters.get('walk_easy', 0)` |
+| `hiker` | Hiker | `counters.get('walk_normal', 0)` |
+| `trekker` | Trekker | `counters.get('walk_hard', 0)` |
+| `roamer` | Roamer | `counters.get('walk_15k', 0)` |
+| `voyager` | Voyager | `counters.get('walk_20k', 0)` |
+| `explorer` | Explorer | `counters.get('walk_25k', 0)` |
+| `conqueror` | Conqueror | `counters.get('walk_30k', 0)` |
+
+**Seal:** Globetrotter.
+
+### 🏋 Gym / Skill Mastery (21) — 4.62.1.6 / 0.2.5s
+
+Metric-based через `state.gym.<field>`. Per-skill tiers `[10, 15, 20, 25, 30]`, aggregate Skill Master tiers `[50, 100, 250, 500, 1000]`.
+
+20 per-skill triumph'ов (id = field name из `state.GymSkills`, name = title из `_GYM_SKILL_DISPLAY` в `web/main.py`):
+
+| ID | Name | ID | Name |
+|---|---|---|---|
+| `stamina` | Stamina | `money_saving` | Экономия денег |
+| `energy_max_skill` | Energy Max | `earnings_boost` | Бонус к зарплате |
+| `energy_regen_skill` | Регенерация энергии | `trader` | Торговец |
+| `speed_skill` | Speed | `banking_interest_rate` | Банковская ставка |
+| `luck_skill` | Luck | `loan_capacity` | Кредитный лимит |
+| `move_optimization_adventure` | Move Optimization (Adventure) | `loan_interest_reduction` | Снижение ставки по кредиту |
+| `move_optimization_gym` | Move Optimization (Gym) | `inspiration` | Обучение |
+| `move_optimization_work` | Move Optimization (Work) | `backpack_skill` | Размер инвентаря |
+| `energy_optimization_adventure` | Экономия энергии в Adventure | `neatness_in_using_things` | Neatness |
+| `energy_optimization_gym` | Экономия энергии в Gym | | |
+| `energy_optimization_work` | Экономия энергии в Work | | |
+
+`metric: lambda s: s.gym.<field>` для каждого.
+
+Plus 1 aggregate:
+
+| ID | Name | Metric |
+|---|---|---|
+| `skill_master` | Skill Master | `sum(getattr(s.gym, f) for f in _GYM_SKILL_FIELDS)` (20 fields) |
+
+Legacy fields `mechanics` / `it_technologies` из `GymSkills` намеренно исключены — не trainable через Gym menu.
+
+**Seal:** Polymath.
+
+### 🏭 Work (5) — 4.62.1.5 / 0.2.5t
+
+Event-based через `work_done` payload (`vacancy + hours`). Все 5 имеют одинаковые tiers `[100, 500, 1000, 5000, 10000]`.
+
+| ID | Name | Hooks | Filter |
+|---|---|---|---|
+| `hard_worker` | Hard Worker | work_done | — |
+| `watchman` | Сторож | work_done | `payload['vacancy'] == 'watchman'` |
+| `factory` | Заводчанин | work_done | `payload['vacancy'] == 'factory'` |
+| `courier_foot` | Курьер | work_done | `payload['vacancy'] == 'courier_foot'` |
+| `forwarder` | Экспедитор | work_done | `payload['vacancy'] == 'forwarder'` |
+
+`count_delta = lambda p: int(p.get('hours', 0))` для всех. **Tracking semantics:** счётчик растёт на **завершении** смены (`work_done` event, который fire'ит auto-finalize в `work.py:work_check_done`), не на старте. Симметрично с Energy: Workhorse/Endurance hook'аются на старт (энергия в момент траты = факт), Hard Worker — на финиш (часы — accumulator за время смены). Активная смена в RAM не учитывается до finalize.
+
+**Seal:** Workaholic.
+
+---
+
+## 12. Как добавить новый triumph (recipe)
+
+### Metric-based (счётчик уже в state)
+
+Простейший случай. Backfill не нужен — auto-unlock через `init_metric_check`.
+
+1. Открыть `triumphs_data.py:TRIUMPHS`, добавить entry:
+   ```python
+   'veteran': {
+       'name': 'Veteran',
+       'category': 'progression',  # должна быть в CATEGORIES
+       'tiers': [5, 10, 25, 50, 100],
+       'metric': lambda state: state.char_level.level,
+   },
+   ```
+2. Тесты в `tests/test_triumphs_catalog.py::TestVeteran` (см. existing для образца).
+3. Bump version + changelog.
+
+### Event-based (нужен новый счётчик / событие)
+
+1. Убедиться что нужный `log_event(event_type, **payload)` уже fire'ится где надо. Если нет — добавить вызов в соответствующую mutation function.
+2. Если payload не содержит нужный numeric field (например `hours`/`cost_energy`/etc) — добавить его в payload в call site.
+3. Добавить entry в `TRIUMPHS`:
+   ```python
+   'investor': {
+       'name': 'Investor',
+       'category': 'money',
+       'tiers': [1_000, 10_000, 100_000, 1_000_000],
+       'event_hooks': ['gym_payment'],  # тип события
+       'count_delta': lambda p: int(p.get('amount', 0) or 0),
+   },
+   ```
+4. Опционально `event_filter` если триумф учитывает подмножество events.
+5. Тесты — accumulator correctness, tier unlock, capstone.
+6. **Backfill:** если payload format стабилен — `backfill_from_history` автоматически подберёт events из старой `history.jsonl`.
+
+### Новая категория
+
+1. Добавить в `triumphs_data.py:CATEGORIES`:
+   ```python
+   'progression': {'label': '⭐ Уровень', 'order': 7},
+   ```
+2. Опционально seal в `SEALS`:
+   ```python
+   'progression': {'name': 'Veteran', 'icon': '⭐'},
+   ```
+3. Тесты + changelog.
+
+---
+
+## 13. Связанные документы
+
+- [`TASKS.md`](../TASKS.md) — секция «4.62. Triumphs» с полным breakdown подзадач (Phase 1-6, 23 granular tasks).
+- [`CLAUDE.md`](../CLAUDE.md) — module map entry `triumphs.py + triumphs_data.py + triumphs_menu.py` с архитектурным overview.
+- [`changelog.txt`](../changelog.txt) — версии 0.2.5j-v содержат подробное описание каждого этапа имплементации.
+
+---
+
+## 14. Будущие фазы (см. TASKS.md)
+
+| Phase | Что | Status |
+|---|---|---|
+| **2 Catalog (cont.)** | 8 категорий ещё не реализованы: Drops / Forge / Bank / Streak / Level / Money / Lifestyle / Collection | todo |
+| **4.62.2.1 Bonuses** | Gameplay-эффекты на capstones (Marathoner 10M → +5% Stamina, Hard Worker 10k → +5% ЗП, и т.п.) | ready |
+| **4.62.2.2 Active rewards** | Active abilities (Lucky Day, Streak Saver, Premium Shift) | blocked by 4.58 |
+| **4.62.5 Hidden** | `???` маска до unlock'а — surprise discovery | optional |
+| **4.62.6 Backfill UX** | `[b]` manual trigger в menu + Sheets `history` лист как source (cross-device unified backfill вместо local jsonl-only) | new |
+| **4.62.7 Web UI** | Web section для Triumphs + pinned banner | ready |

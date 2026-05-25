@@ -99,7 +99,10 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # уже-unlocked tier'ов в state.triumphs, чтобы старые достижения тоже
     # требовали acknowledge).
     try:
-        from triumphs import init_metric_check, append_unclaimed, backfill_unclaimed_from_existing
+        from triumphs import (
+            init_metric_check, append_unclaimed,
+            backfill_unclaimed_from_existing, check_seal_unlocks,
+        )
         # Сначала synth-backfill для старых unlocked tier'ов (только если
         # queue пустой — это one-shot per save, после первого launch с 4.62.4
         # queue будет non-empty или claim'нут).
@@ -109,6 +112,11 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
         new_unlocks = init_metric_check(s)
         if new_unlocks:
             append_unclaimed(s, new_unlocks)
+        # 4.62.3 — Recheck seals (для existing players у кого уже все capstones
+        # в категории закрыты до 4.62.3 deploy → silent unlock + push в queue).
+        seal_unlocks = check_seal_unlocks(s)
+        if seal_unlocks:
+            append_unclaimed(s, seal_unlocks)
     except Exception:  # noqa: BLE001
         pass
 

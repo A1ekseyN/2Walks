@@ -21,15 +21,18 @@ from colorama import Fore, Style
 
 from config import HISTORY_FILE
 from triumphs import (
+    available_seals,
     backfill_from_history,
     claim_all,
     claim_triumph,
     get_progress,
     get_unclaimed_for,
+    is_seal_unlocked,
+    set_title,
     total_score,
     _format_progress_bar,
 )
-from triumphs_data import CATEGORIES, TRIUMPHS
+from triumphs_data import CATEGORIES, SEALS, TRIUMPHS
 
 
 _SEP = '═' * 60
@@ -201,15 +204,23 @@ def render_pinned_status_bar(state) -> str:
 
     # 4.62.4 — Unclaimed banner.
     if state.unclaimed_unlocks:
-        # Уникальные triumph IDs в unclaimed (для имён).
-        seen_ids: list[str] = []
+        # Уникальные (triumph_id, kind) в unclaimed (для имён).
+        # 4.62.3: kind='seal' entries использует SEALS catalog, не TRIUMPHS.
+        seen: list[tuple[str, str]] = []
         for entry in state.unclaimed_unlocks:
             tid = entry.get('triumph_id')
-            if tid and tid not in seen_ids:
-                seen_ids.append(tid)
+            kind = entry.get('kind', 'triumph')
+            if tid and (tid, kind) not in seen:
+                seen.append((tid, kind))
         total = len(state.unclaimed_unlocks)
-        names = [TRIUMPHS.get(tid, {}).get('name', tid) for tid in seen_ids[:3]]
-        more = len(seen_ids) - 3
+
+        def _entry_name(tid: str, kind: str) -> str:
+            if kind == 'seal':
+                return str(SEALS.get(tid, {}).get('name', tid)) + ' (Seal)'
+            return str(TRIUMPHS.get(tid, {}).get('name', tid))
+
+        names = [_entry_name(tid, kind) for tid, kind in seen[:3]]
+        more = len(seen) - 3
         names_str = ', '.join(names)
         if more > 0:
             names_str += f' и ещё {more}'
@@ -470,11 +481,107 @@ def _print_main_menu(state) -> list[str]:
     return ordered_cats
 
 
-def _print_main_commands() -> None:
+def _print_main_commands(state) -> None:
     """Список общих команд внизу main menu."""
     print(f'\n{Fore.LIGHTBLACK_EX}Команды:{Style.RESET_ALL}')
+    # 4.62.3 — Seals & Titles entry. Показывает count unlocked/total.
+    total_seals = len(SEALS)
+    unlocked_seals = len(available_seals(state))
+    print(f'  [{Fore.LIGHTCYAN_EX}s{Style.RESET_ALL}] 🏅 Seals & Titles '
+          f'({unlocked_seals}/{total_seals} unlocked)')
     print(f'  [{Fore.LIGHTCYAN_EX}r{Style.RESET_ALL}] 🔄 Sync from history (вручную)')
     print(f'  [{Fore.LIGHTCYAN_EX}0{Style.RESET_ALL}] Назад')
+
+
+# --- 4.62.3 Seals view ---
+
+def _open_seals_view(state) -> None:
+    """Список всех SEALS + UI выбора title.
+
+    Каждый seal:
+    - ✅ UNLOCKED → опция «Носить» (если не текущий title) или «Снять» (если)
+    - 🔒 LOCKED → progress «N/M capstones»
+    """
+    while True:
+        print(f'\n{_SEP}')
+        print(f'🏅 {Fore.LIGHTYELLOW_EX}Seals & Titles{Style.RESET_ALL}')
+        print(_SEP)
+
+        # Текущий title.
+        current = state.title
+        if current:
+            print(f'\nТекущий титул: {Fore.LIGHTYELLOW_EX}👑 {current}{Style.RESET_ALL}'
+                  f'  [{Fore.LIGHTCYAN_EX}u{Style.RESET_ALL}] снять')
+        else:
+            print(f'\nТекущий титул: {Fore.LIGHTBLACK_EX}(не выбран){Style.RESET_ALL}')
+
+        # Список seals по order из CATEGORIES.
+        seal_keys = sorted(
+            SEALS.keys(),
+            key=lambda k: CATEGORIES.get(k, {}).get('order', 999)
+        )
+        print()
+        for i, cat_key in enumerate(seal_keys, start=1):
+            meta = SEALS[cat_key]
+            name = meta.get('name', cat_key.title())
+            icon = meta.get('icon', '🏅')
+            cat_triumph_ids = [
+                tid for tid, spec in TRIUMPHS.items()
+                if spec.get('category') == cat_key
+            ]
+            total = len(cat_triumph_ids)
+            unlocked = sum(
+                1 for tid in cat_triumph_ids
+                if int(state.triumphs.get(tid, {}).get('tier', 0)) >=
+                   len(TRIUMPHS[tid].get('tiers', []))
+                and len(TRIUMPHS[tid].get('tiers', [])) > 0
+            )
+
+            is_unlocked = is_seal_unlocked(state, cat_key)
+            if is_unlocked:
+                status = f'{Fore.LIGHTGREEN_EX}✅ UNLOCKED{Style.RESET_ALL}'
+                is_worn = (current == name)
+                action = (f'  [{Fore.LIGHTCYAN_EX}{i}{Style.RESET_ALL}] '
+                          f'{"Снять" if is_worn else "Носить"}')
+                worn_marker = (f' {Fore.LIGHTYELLOW_EX}(надет){Style.RESET_ALL}'
+                               if is_worn else '')
+                print(f'  {icon} {Fore.LIGHTCYAN_EX}{name}{Style.RESET_ALL}'
+                      f'{worn_marker}  {status}{action}')
+            else:
+                status = (f'{Fore.LIGHTBLACK_EX}🔒 LOCKED — '
+                          f'{unlocked}/{total} capstones{Style.RESET_ALL}')
+                print(f'  {icon} {Fore.LIGHTBLACK_EX}{name}{Style.RESET_ALL}  {status}')
+
+        print(f'\n  [{Fore.LIGHTCYAN_EX}0{Style.RESET_ALL}] Назад')
+
+        choice = input('\n>>> ').strip().lower()
+
+        if choice == '0':
+            return
+        if choice == 'u':
+            if state.title is not None:
+                old = state.title
+                set_title(state, None)
+                print(f'{Fore.LIGHTBLACK_EX}Снял титул «{old}».{Style.RESET_ALL}')
+                _persist_silent()
+            continue
+        if choice.isdigit() and 1 <= int(choice) <= len(seal_keys):
+            cat_key = seal_keys[int(choice) - 1]
+            if not is_seal_unlocked(state, cat_key):
+                print(f'{Fore.LIGHTRED_EX}Этот seal ещё не открыт.{Style.RESET_ALL}')
+                continue
+            name = SEALS[cat_key]['name']
+            if state.title == name:
+                # Toggle off — snimaiem.
+                set_title(state, None)
+                print(f'{Fore.LIGHTBLACK_EX}Снял титул «{name}».{Style.RESET_ALL}')
+            else:
+                set_title(state, name)
+                print(f'\n{Fore.LIGHTGREEN_EX}👑 Надел титул '
+                      f'«{name}».{Style.RESET_ALL}')
+            _persist_silent()
+            continue
+        print(f'{Fore.LIGHTRED_EX}Неизвестная команда.{Style.RESET_ALL}')
 
 
 def open_triumphs_menu(state) -> None:
@@ -490,7 +597,7 @@ def open_triumphs_menu(state) -> None:
     while True:
         _print_header(state)
         ordered_cats = _print_main_menu(state)
-        _print_main_commands()
+        _print_main_commands(state)
 
         choice = input('\n>>> ').strip().lower()
 
@@ -501,6 +608,9 @@ def open_triumphs_menu(state) -> None:
             continue
         if choice == 'a':
             _do_claim_all(state)
+            continue
+        if choice == 's':
+            _open_seals_view(state)
             continue
         if choice.isdigit() and ordered_cats:
             num = int(choice)

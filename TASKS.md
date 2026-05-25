@@ -4603,16 +4603,20 @@ CLI shell для будущих категорий. Empty state когда catal
 
 ### Phase 3 — Meta features
 
-##### 4.62.3. Seals + Titles (мета-триумфы) `[L / S / todo (blocked by 4-5 категорий из 4.62.1.x)]`
+##### 4.62.3. Seals + Titles (мета-триумфы) `[L / S / done (25.05.2026, 0.2.5v)]`
 
-**Закрыл все триумфы категории → получил титул** (косметика).
+**Закрыл все capstones категории → получил Seal → можешь надеть Title** (косметика).
 
-- `state.title: Optional[str]` — выбранный титул (из unlocked).
-- Меню Triumphs: подсекция «Titles» — список доступных, выбор активного.
-- Display: status_bar строка «Вы находитесь в локации» расширяется до «<титул> в локации X» если title != None. Web: badge рядом с user.
-- Список (MVP, по категориям): Marathoner / Adventurer / Treasure Hunter / Athlete / Hard Worker / Veteran / Banker / Blacksmith / Loyal / Master of All Trades.
+- `state.title: Optional[str]` — выбранный титул (из unlocked seals).
+- `SEALS` catalog в `triumphs_data.py` — 5 seals для текущих категорий: Marathoner (steps), Indefatigable (energy), Globetrotter (adventures), Polymath (gym), Workaholic (work). Один seal per category, `name` + `icon`.
+- Engine: `is_seal_unlocked`, `available_seals`, `available_titles`, `set_title`, `check_seal_unlocks` (idempotent через `state.triumphs['__seal__']['acknowledged']` marker).
+- Auto-hook: `history.log_event` + `init_game_state` recheck'ают seals; newly unlocked entries попадают в `unclaimed_unlocks` с `kind='seal'` → status_bar banner показывает «Marathoner (Seal)» симметрично с triumph entries.
+- CLI: `[s] 🏅 Seals & Titles` в Triumphs main menu → Seals view (текущий title + список 5 seals с UNLOCKED/LOCKED + действия Носить/Снять).
+- Status_bar: новая строка `👑 <title>` над «Вы находитесь в локации» если `state.title` non-None.
 
-**Тесты:** все tiers категории unlock → seal triggers, title в state.
+**Schema extension:** `unclaimed_unlocks` entries получили поле `kind: 'triumph' | 'seal'` (default 'triumph'). Dedupe-key = `(triumph_id, tier, kind)`. `claim_triumph` получил kwarg `kind`.
+
+15 новых тестов (12 engine + 3 для seal entries в claim queue).
 
 ##### 4.62.4. Pinned / Tracked + Claim mechanic `[L / S / done (25.05.2026, 0.2.5u — расширена claim queue)]`
 

@@ -267,10 +267,12 @@ import time as _time
 def append_unclaimed(state, unlocks: list[dict]) -> None:
     """Добавляет newly-unlocked tier'ы в `state.unclaimed_unlocks` (dedupe).
 
-    Каждый unlock `{triumph_id, tier_index, ...}` мапится в unclaimed entry
-    `{triumph_id, tier, unlocked_ts}`. Dedupe по `(triumph_id, tier)` — повторный
-    register_event для уже-unclaimed tier'а no-op (нет дублирования если у
-    игрока entry уже висит).
+    Каждый unlock `{triumph_id, tier_index, ..., [kind]}` мапится в unclaimed
+    entry `{triumph_id, tier, unlocked_ts, kind}`. Dedupe по `(triumph_id, tier,
+    kind)` — повторный register_event для уже-unclaimed tier'а no-op.
+
+    Поле `kind` (4.62.3) — 'triumph' (default) или 'seal' для seal unlocks.
+    Seal entries: triumph_id = category key, tier = 0 (unused для seals).
 
     Используется из `history.log_event` auto-hook (после register_event),
     из `init_metric_check` (startup auto-unlocks) и из `backfill_from_history`.
@@ -280,21 +282,23 @@ def append_unclaimed(state, unlocks: list[dict]) -> None:
     if not hasattr(state, 'unclaimed_unlocks') or state.unclaimed_unlocks is None:
         state.unclaimed_unlocks = []
     existing_keys = {
-        (e.get('triumph_id'), int(e.get('tier', 0)))
+        (e.get('triumph_id'), int(e.get('tier', 0)), e.get('kind', 'triumph'))
         for e in state.unclaimed_unlocks
     }
     now_ts = _time.time()
     for u in unlocks:
         tid = u.get('triumph_id')
         tier = int(u.get('tier_index', 0))
-        if not tid or (tid, tier) in existing_keys:
+        kind = u.get('kind', 'triumph')
+        if not tid or (tid, tier, kind) in existing_keys:
             continue
         state.unclaimed_unlocks.append({
             'triumph_id': tid,
             'tier': tier,
             'unlocked_ts': now_ts,
+            'kind': kind,
         })
-        existing_keys.add((tid, tier))
+        existing_keys.add((tid, tier, kind))
 
 
 def get_unclaimed_for(state, triumph_id: str) -> list[dict]:
@@ -311,17 +315,21 @@ def get_unclaimed_for(state, triumph_id: str) -> list[dict]:
     ]
 
 
-def claim_triumph(state, triumph_id: str) -> int:
-    """Помечает все unclaimed entries для triumph'а как claimed (удаляет их).
+def claim_triumph(state, triumph_id: str, kind: str = 'triumph') -> int:
+    """Помечает все unclaimed entries для triumph'а+kind как claimed (удаляет их).
 
     Returns count claimed tier'ов (для UI feedback).
+
+    `kind` (4.62.3) — 'triumph' (default) для tier unlocks, или 'seal' для
+    seal unlocks. Без фильтра по kind triumph 'foo' и seal cat_key 'foo'
+    конфликтовали бы.
     """
     if state is None or not state.unclaimed_unlocks:
         return 0
     before = len(state.unclaimed_unlocks)
     state.unclaimed_unlocks = [
         e for e in state.unclaimed_unlocks
-        if e.get('triumph_id') != triumph_id
+        if not (e.get('triumph_id') == triumph_id and e.get('kind', 'triumph') == kind)
     ]
     return before - len(state.unclaimed_unlocks)
 
@@ -336,6 +344,99 @@ def claim_all(state) -> int:
     count = len(state.unclaimed_unlocks)
     state.unclaimed_unlocks = []
     return count
+
+
+# --- 4.62.3 Seals & Titles ---
+
+def is_seal_unlocked(state, cat_key: str) -> bool:
+    """Seal unlocked если ВСЕ triumph'ы категории на capstone tier.
+
+    Если в категории нет ни одного triumph'а → False (нет ничего
+    capstone'нуть). Не зависит от наличия seal в SEALS — caller проверяет
+    отдельно (некоторые категории могут не иметь seal).
+    """
+    if state is None:
+        return False
+    cat_triumph_ids = [
+        tid for tid, spec in TRIUMPHS.items()
+        if spec.get('category') == cat_key
+    ]
+    if not cat_triumph_ids:
+        return False
+    for tid in cat_triumph_ids:
+        spec = TRIUMPHS[tid]
+        total_tiers = len(spec.get('tiers', []))
+        if total_tiers == 0:
+            return False
+        unlocked_tier = int(state.triumphs.get(tid, {}).get('tier', 0))
+        if unlocked_tier < total_tiers:
+            return False
+    return True
+
+
+def available_seals(state) -> list[str]:
+    """Returns list category keys для которых seal unlocked И SEAL existует
+    в SEALS catalog'е."""
+    from triumphs_data import SEALS
+    if state is None:
+        return []
+    return [
+        cat_key for cat_key in SEALS.keys()
+        if is_seal_unlocked(state, cat_key)
+    ]
+
+
+def available_titles(state) -> list[str]:
+    """Returns list title strings из unlocked seals (для UI title selection)."""
+    from triumphs_data import SEALS
+    return [SEALS[cat_key]['name'] for cat_key in available_seals(state)]
+
+
+def set_title(state, title: Optional[str]) -> None:
+    """Set active title. None = снять title.
+
+    Не валидирует что title в available_titles — caller ответственен
+    (UI показывает только доступные).
+    """
+    if state is None:
+        return
+    state.title = title
+
+
+def check_seal_unlocks(state) -> list[dict]:
+    """4.62.3 — Detect newly unlocked seals (для unclaimed queue).
+
+    Compares current `available_seals(state)` с уже claimed seals (tracked
+    через `state.triumphs['__seal__'][cat_key]` marker dict). Returns list
+    of dict'ов в формате compatible с `append_unclaimed`:
+    `[{triumph_id: cat_key, tier_index: 0, name: SEAL_NAME, kind: 'seal'}, ...]`
+
+    Idempotent: повторный call после claim не вернёт тот же seal.
+    """
+    from triumphs_data import SEALS
+    if state is None:
+        return []
+    # Marker storage — особый «pseudo-triumph» __seal__ в state.triumphs
+    # хранит уже-acknowledged seal keys (избегаем нового state-поля).
+    seal_marker = state.triumphs.setdefault('__seal__', {'acknowledged': []})
+    if not isinstance(seal_marker.get('acknowledged'), list):
+        seal_marker['acknowledged'] = []
+    already_ack = set(seal_marker['acknowledged'])
+
+    new_unlocks: list[dict] = []
+    for cat_key in available_seals(state):
+        if cat_key in already_ack:
+            continue
+        seal_meta = SEALS.get(cat_key, {})
+        new_unlocks.append({
+            'triumph_id': cat_key,
+            'tier_index': 0,
+            'name': seal_meta.get('name', cat_key.title()),
+            'is_capstone': True,
+            'kind': 'seal',
+        })
+        seal_marker['acknowledged'].append(cat_key)
+    return new_unlocks
 
 
 def backfill_unclaimed_from_existing(state) -> int:

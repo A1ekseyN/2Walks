@@ -395,3 +395,19 @@ CATEGORIES: dict[str, dict] = {
     'lifestyle': {'label': '🕒 Образ жизни', 'order': 12},
     'collection': {'label': '🎒 Коллекция', 'order': 13},
 }
+
+
+# 4.62.3 — Seals & Titles. Один seal per category. Unlock'ается когда ВСЕ
+# triumph'ы в категории на capstone tier. Игрок может «надеть» title (один за
+# раз) — отображается в status_bar над локацией. Чисто косметика на этом
+# этапе (gameplay bonuses — отдельная task 4.62.2.1).
+#
+# Key = category key (matches CATEGORIES). Не все CATEGORIES обязаны иметь
+# SEAL — defined только для категорий с triumph'ами в catalog'е.
+SEALS: dict[str, dict] = {
+    'steps': {'name': 'Marathoner', 'icon': '🏃'},
+    'energy': {'name': 'Indefatigable', 'icon': '🔋'},
+    'adventures': {'name': 'Globetrotter', 'icon': '🗺'},
+    'gym': {'name': 'Polymath', 'icon': '🏋'},
+    'work': {'name': 'Workaholic', 'icon': '🏭'},
+}

@@ -110,6 +110,11 @@ def status_bar(state: GameState) -> None:
 
     char_level_view.level_status_bar()
 
+    # 4.62.3 — Active title from Seals system. Печатается отдельной строкой
+    # над локацией если игрок надел title в Triumphs → Seals view.
+    if getattr(state, 'title', None):
+        print(f'{Fore.LIGHTYELLOW_EX}👑 {state.title}{Style.RESET_ALL}')
+
     print(f'Вы находитесь в локации: {icon_loc(state)} {Fore.GREEN}{state.loc.title()}{Style.RESET_ALL}.')
     if state.training.active:
         skill_end_time = format_timedelta(state.training.time_end - datetime.fromtimestamp(datetime.now().timestamp()))

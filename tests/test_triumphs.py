@@ -621,3 +621,184 @@ class TestUnclaimedRoundTrip:
         del d['unclaimed_unlocks']
         state = GameState.from_dict(d)
         assert state.unclaimed_unlocks == []
+
+
+# ============================================================================
+# 4.62.3 — Seals & Titles
+# ============================================================================
+
+from triumphs import (
+    available_seals,
+    available_titles,
+    check_seal_unlocks,
+    is_seal_unlocked,
+    set_title,
+)
+
+
+@pytest.fixture
+def seal_catalog(monkeypatch):
+    """Mock TRIUMPHS + SEALS для seal tests.
+
+    Category 'steps' имеет 1 triumph (Marathoner) с capstone 100.
+    Category 'work' имеет 2 triumph'а (Hard Worker, Watchman) — обоим нужен
+    capstone для seal.
+    """
+    import triumphs_data
+    test_triumphs = {
+        'marathoner': {
+            'name': 'Marathoner', 'category': 'steps',
+            'tiers': [50, 100],
+            'metric': lambda s: s.steps.total_used,
+        },
+        'hard_worker': {
+            'name': 'Hard Worker', 'category': 'work',
+            'tiers': [10, 100],
+            'event_hooks': ['work_done'],
+            'count_delta': lambda p: int(p.get('hours', 0) or 0),
+        },
+        'watchman': {
+            'name': 'Watchman', 'category': 'work',
+            'tiers': [10, 100],
+            'event_hooks': ['work_done'],
+            'event_filter': lambda p: p.get('vacancy') == 'watchman',
+            'count_delta': lambda p: int(p.get('hours', 0) or 0),
+        },
+    }
+    test_seals = {
+        'steps': {'name': 'Marathoner', 'icon': '🏃'},
+        'work': {'name': 'Workaholic', 'icon': '🏭'},
+    }
+    monkeypatch.setattr(triumphs, 'TRIUMPHS', test_triumphs)
+    monkeypatch.setattr(triumphs_data, 'TRIUMPHS', test_triumphs)
+    monkeypatch.setattr(triumphs_data, 'SEALS', test_seals)
+    return test_triumphs, test_seals
+
+
+class TestSealUnlock:
+    """is_seal_unlocked / available_seals / available_titles."""
+
+    def test_empty_category_returns_false(self, monkeypatch):
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', {})
+        state = GameState.default_new_game()
+        assert is_seal_unlocked(state, 'steps') is False
+
+    def test_partial_capstones_returns_false(self, seal_catalog):
+        """Один triumph на capstone, другой нет → seal locked."""
+        state = GameState.default_new_game()
+        # hard_worker capstone (tier 2), watchman только tier 1.
+        state.triumphs['hard_worker'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        state.triumphs['watchman'] = {'tier': 1, 'unlocked_at': {}, 'count': 0}
+        assert is_seal_unlocked(state, 'work') is False
+
+    def test_all_capstones_returns_true(self, seal_catalog):
+        state = GameState.default_new_game()
+        state.triumphs['hard_worker'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        state.triumphs['watchman'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        assert is_seal_unlocked(state, 'work') is True
+
+    def test_single_triumph_category(self, seal_catalog):
+        """Steps category — 1 triumph (Marathoner). Capstone = seal unlocked."""
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        assert is_seal_unlocked(state, 'steps') is True
+
+    def test_available_seals_filters_locked(self, seal_catalog):
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        # work seal locked (watchman не capstone'нут).
+        state.triumphs['hard_worker'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        seals = available_seals(state)
+        assert seals == ['steps']
+
+    def test_available_titles_returns_names(self, seal_catalog):
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        titles = available_titles(state)
+        assert titles == ['Marathoner']
+
+
+class TestSealCheckUnlocks:
+    """check_seal_unlocks возвращает только newly-unlocked seals (idempotent)."""
+
+    def test_first_call_returns_new_seals(self, seal_catalog):
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        new = check_seal_unlocks(state)
+        assert len(new) == 1
+        assert new[0]['triumph_id'] == 'steps'
+        assert new[0]['kind'] == 'seal'
+        assert new[0]['name'] == 'Marathoner'
+        assert new[0]['is_capstone'] is True
+
+    def test_second_call_idempotent(self, seal_catalog):
+        """Повторный call после первого = no new seals (acknowledged tracked)."""
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        check_seal_unlocks(state)
+        # Repeated call.
+        new = check_seal_unlocks(state)
+        assert new == []
+
+    def test_locked_seals_not_returned(self, seal_catalog):
+        state = GameState.default_new_game()
+        # No capstones → no seals.
+        new = check_seal_unlocks(state)
+        assert new == []
+
+
+class TestSetTitle:
+    """set_title / state.title manipulation."""
+
+    def test_set_title_string(self):
+        state = GameState.default_new_game()
+        set_title(state, 'Marathoner')
+        assert state.title == 'Marathoner'
+
+    def test_clear_title_with_none(self):
+        state = GameState.default_new_game()
+        state.title = 'Old Title'
+        set_title(state, None)
+        assert state.title is None
+
+
+class TestSealEntryInClaimQueue:
+    """Seal entries в unclaimed_unlocks работают через append_unclaimed +
+    claim_triumph с kind='seal'."""
+
+    def test_seal_entry_appended_with_kind_field(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'steps', 'tier_index': 0, 'kind': 'seal'},
+        ])
+        assert len(state.unclaimed_unlocks) == 1
+        assert state.unclaimed_unlocks[0]['kind'] == 'seal'
+
+    def test_dedupe_uses_kind(self):
+        """Triumph 'foo' и seal 'foo' — НЕ дубли (разный kind)."""
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 0, 'kind': 'triumph'},
+            {'triumph_id': 'foo', 'tier_index': 0, 'kind': 'seal'},
+        ])
+        assert len(state.unclaimed_unlocks) == 2
+
+    def test_claim_triumph_default_kind_does_not_claim_seal(self):
+        """claim_triumph(kind='triumph') не трогает seal entries."""
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 0, 'kind': 'triumph'},
+            {'triumph_id': 'foo', 'tier_index': 0, 'kind': 'seal'},
+        ])
+        # Default kind='triumph' clears only triumph entry.
+        claim_triumph(state, 'foo')
+        assert len(state.unclaimed_unlocks) == 1
+        assert state.unclaimed_unlocks[0]['kind'] == 'seal'
+
+    def test_claim_triumph_with_seal_kind_clears_seal(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 0, 'kind': 'seal'},
+        ])
+        claim_triumph(state, 'foo', kind='seal')
+        assert state.unclaimed_unlocks == []
