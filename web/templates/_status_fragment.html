@@ -123,7 +123,7 @@
 {# 4.62.7 — Pinned banner (≤3 priority triumph'ов с progress bars). #}
 {% if triumphs_view.has_pinned %}
 <section id="triumphs-pinned" style="margin-bottom: 1rem;">
-    <article style="border-left: 4px solid #f59e0b; padding: 0.5rem 0.75rem; margin: 0;">
+    <article style="border-left: 4px solid #3b82f6; padding: 0.5rem 0.75rem; margin: 0;">
         <header style="margin: 0 0 0.5rem 0;">
             <strong>📌 Pinned ({{ triumphs_view.pinned_rows | length }}/3)</strong>
         </header>
@@ -1003,7 +1003,7 @@
 
         {# Categories — каждая в своём sub-details. #}
         {% for cat in triumphs_view.categories %}
-        <details class="triumph-category" style="margin-top: 0.5rem;">
+        <details class="triumph-category" style="margin-top: 0.5rem; background: rgba(59, 130, 246, 0.04); border-left: 3px solid #3b82f6; border-radius: 6px; padding: 0.4rem 0.6rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);">
             <summary>
                 {{ cat.label }}
                 <small>· {{ cat.unlocked }}/{{ cat.total }}{% if cat.has_unclaimed %} <span title="Есть несобранные tier'ы">✨</span>{% endif %}</small>
@@ -1071,7 +1071,7 @@
         {% endfor %}
 
         {# Seals & Titles sub-section. #}
-        <details class="triumph-seals" style="margin-top: 0.5rem;">
+        <details class="triumph-seals" style="margin-top: 0.5rem; background: rgba(59, 130, 246, 0.04); border-left: 3px solid #3b82f6; border-radius: 6px; padding: 0.4rem 0.6rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);">
             <summary>
                 🏅 <strong>Seals & Titles</strong>
                 <small>· {{ triumphs_view.seals_unlocked }}/{{ triumphs_view.seals_total }} unlocked{% if triumphs_view.title %} · 👑 {{ triumphs_view.title }}{% endif %}</small>

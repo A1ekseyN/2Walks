@@ -111,11 +111,14 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
         # сервера не учитываются; будет решено в 4.62.6 через Sheets source).
         if s.work.longest_shift_hours == 0:
             _backfill_longest_shift_from_history(s)
-        # Сначала synth-backfill для старых unlocked tier'ов (только если
-        # queue пустой — это one-shot per save, после первого launch с 4.62.4
-        # queue будет non-empty или claim'нут).
+        # 4.62.4 — synth-backfill для старых unlocked tier'ов. С 4.62.4.1
+        # (0.2.6 fix) использует internal flag `__synth_done__` чтобы запуск
+        # был true one-shot — `if not s.unclaimed_unlocks` check здесь
+        # сохранён как defense-in-depth (если queue non-empty, backfill точно
+        # не нужен).
+        synth_added = 0
         if not s.unclaimed_unlocks:
-            backfill_unclaimed_from_existing(s)
+            synth_added = backfill_unclaimed_from_existing(s)
         # Теперь recheck metrics — может добавить новые unlocks которых ещё нет.
         new_unlocks = init_metric_check(s)
         if new_unlocks:
@@ -125,6 +128,24 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
         seal_unlocks = check_seal_unlocks(s)
         if seal_unlocks:
             append_unclaimed(s, seal_unlocks)
+
+        # 4.62.4.1 (fix 25.05.2026 / 0.2.6) — CRITICAL: persist immediately
+        # если synth_backfill добавил entries. Без этого первый GET / в web
+        # вызывает `try_reload_state` → `update_from_dict(Sheets)` который
+        # OVERRIDES RAM значением из Sheets (где queue ещё []) → backfilled
+        # entries теряются silently. Real-world incident 25.05.2026: у Oleksii
+        # 17 unlocked tier'ов silent'но не появились в banner. После фикса
+        # backfill + flag persist'ятся ДО первого reload → banner показывается.
+        # Cost: +1 Sheets save на startup для existing players (only-once,
+        # последующие старты skip backfill через flag). Silent-fail если
+        # Sheets unavailable — лучше потерять backfill чем crash init.
+        if synth_added > 0:
+            game.state = s  # save_characteristic reads from container
+            try:
+                from persistence import save_characteristic
+                save_characteristic()
+            except Exception:  # noqa: BLE001
+                pass
     except Exception:  # noqa: BLE001
         pass
 

@@ -511,13 +511,29 @@ def backfill_unclaimed_from_existing(state) -> int:
     Без этого helper'а старые unlocks остались бы invisible — claim queue был
     бы пустой, игрок никогда не «acknowledged» прошлые достижения.
 
-    Идемпотентен через dedupe в append_unclaimed (повторный вызов не создаёт
-    duplicates). Возвращает count добавленных entries.
+    **4.62.4.1 (fix 25.05.2026 / 0.2.6):** добавлен flag-marker
+    `state.triumphs['__synth_done__']['done']`. Backfill runs только если flag
+    NOT set. Без flag: после первого `claim_all` user'а — следующий restart
+    сервера снова бы синтезировал entries → infinite loop, queue никогда не
+    очистить. С flag: backfill — true one-shot, после первого запуска marker
+    persists в Sheets, последующие старты skip.
+
+    Идемпотентен через dedupe в append_unclaimed + flag. Returns count
+    добавленных entries (0 если flag уже set).
     """
     if state is None:
         return 0
+    # 4.62.4.1 — Anti-loop flag. Set после первого backfill, prevents
+    # re-population после user claim_all.
+    synth_marker = state.triumphs.setdefault('__synth_done__', {})
+    if synth_marker.get('done'):
+        return 0
+
     synthetic_unlocks: list[dict] = []
     for triumph_id, ts in (state.triumphs or {}).items():
+        # Skip pseudo-entries (__seal__ / __synth_done__).
+        if triumph_id.startswith('__'):
+            continue
         unlocked_tier = int(ts.get('tier', 0))
         if unlocked_tier <= 0:
             continue
@@ -535,7 +551,11 @@ def backfill_unclaimed_from_existing(state) -> int:
             })
     before = len(state.unclaimed_unlocks or [])
     append_unclaimed(state, synthetic_unlocks)
-    return len(state.unclaimed_unlocks) - before
+    added = len(state.unclaimed_unlocks) - before
+    # Mark done — независимо от того, добавили ли entries (для брand-new
+    # player без unlocked tier'ов flag тоже set, чтобы не sканировать снова).
+    synth_marker['done'] = True
+    return added
 
 
 # --- Progress bar formatter ---

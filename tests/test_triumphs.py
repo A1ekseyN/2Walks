@@ -584,13 +584,55 @@ class TestBackfillUnclaimedFromExisting:
 
     def test_synth_idempotent(self, mock_catalog):
         """Повторный вызов с уже-backfilled queue не создаёт duplicates
-        (dedupe в append_unclaimed)."""
+        (dedupe в append_unclaimed + flag)."""
         state = GameState.default_new_game()
         state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
         backfill_unclaimed_from_existing(state)
         first_count = len(state.unclaimed_unlocks)
         backfill_unclaimed_from_existing(state)
         assert len(state.unclaimed_unlocks) == first_count
+
+    def test_synth_flag_set_after_run(self, mock_catalog):
+        """4.62.4.1 — После первого backfill flag `__synth_done__` set'ится."""
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        # Pre-condition: no flag.
+        assert '__synth_done__' not in state.triumphs
+        backfill_unclaimed_from_existing(state)
+        # Post-condition: flag set.
+        assert state.triumphs['__synth_done__']['done'] is True
+
+    def test_synth_skipped_after_user_claim_all(self, mock_catalog):
+        """4.62.4.1 — После user claim_all (queue empty) повторный backfill
+        НЕ должен re-populate. Иначе infinite loop — user никогда не сможет
+        очистить queue."""
+        from triumphs import claim_all
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        # First backfill: 2 entries.
+        backfill_unclaimed_from_existing(state)
+        assert len(state.unclaimed_unlocks) == 2
+        # User claims all.
+        claim_all(state)
+        assert state.unclaimed_unlocks == []
+        # Re-run backfill — must NOT re-populate (flag is set).
+        added = backfill_unclaimed_from_existing(state)
+        assert added == 0
+        assert state.unclaimed_unlocks == []
+
+    def test_synth_skips_pseudo_entries(self, mock_catalog):
+        """4.62.4.1 — Pseudo-entries (`__seal__`, `__synth_done__`) не должны
+        попадать в synthesis (они не настоящие triumph'ы)."""
+        state = GameState.default_new_game()
+        state.triumphs = {
+            '__seal__': {'acknowledged': ['steps']},
+            '__synth_done__': {},  # falsy → backfill ещё не run
+            'marathoner': {'tier': 1, 'unlocked_at': {}, 'count': 0},
+        }
+        added = backfill_unclaimed_from_existing(state)
+        # Только marathoner добавлен, pseudo-entries skipped.
+        assert added == 1
+        assert state.unclaimed_unlocks[0]['triumph_id'] == 'marathoner'
 
 
 class TestUnclaimedRoundTrip:
