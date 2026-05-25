@@ -363,6 +363,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'triumphs_backfill_dismissed',
         # 4.62.4 — Unclaimed triumph unlocks (Destiny-2 claim queue)
         'unclaimed_unlocks',
+        # 4.62.1.5.1 — Iron Worker longest single shift
+        'work_longest_shift_hours',
         # 4.54.1 — Optimistic concurrency
         'last_modified',
     }

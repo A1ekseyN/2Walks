@@ -627,3 +627,72 @@ class TestWorkTriumphs:
         # Но per-vacancy capstone не достигнут (no single vacancy hit 10k).
         for triumph_id, _ in self.PER_VACANCY:
             assert state.triumphs.get(triumph_id, {}).get('tier', 0) < 5
+
+
+# ===========================================================================
+# 4.62.1.5.1 — Iron Worker (longest single shift)
+# ===========================================================================
+
+class TestIronWorker:
+    """🏭 Iron Worker — metric-based, state.work.longest_shift_hours."""
+
+    EXPECTED_TIERS = [24, 72, 168, 336, 720]
+
+    def test_in_catalog(self):
+        assert 'iron_worker' in TRIUMPHS
+        spec = TRIUMPHS['iron_worker']
+        assert spec['name'] == 'Iron Worker'
+        assert spec['category'] == 'work'
+        assert spec['tiers'] == self.EXPECTED_TIERS
+        assert 'metric' in spec
+        assert 'event_hooks' not in spec
+
+    def test_metric_reads_longest_shift_field(self):
+        state = GameState.default_new_game()
+        state.work.longest_shift_hours = 200
+        assert TRIUMPHS['iron_worker']['metric'](state) == 200
+
+    def test_no_unlock_below_first_tier(self):
+        """23h → no unlock (tier 1 = 24h)."""
+        state = GameState.default_new_game()
+        state.work.longest_shift_hours = 23
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs.get('iron_worker', {}).get('tier', 0) == 0
+
+    def test_unlock_tier_1_at_24h(self):
+        state = GameState.default_new_game()
+        state.work.longest_shift_hours = 24
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs['iron_worker']['tier'] == 1
+
+    def test_player_snapshot_472h_unlocks_tier_4(self):
+        """Real player scenario: 472h текущая активная watchman смена → после
+        finalize state.work.longest_shift_hours = 472 → Iron Worker tier 4
+        (336h passed, 720h not yet)."""
+        state = GameState.default_new_game()
+        state.work.longest_shift_hours = 472
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs['iron_worker']['tier'] == 4
+
+    def test_capstone_at_720h(self):
+        """720h (1 month) → tier 5 capstone."""
+        state = GameState.default_new_game()
+        state.work.longest_shift_hours = 720
+        unlocked = register_event(state, 'work_done', hours=1)
+        iw_unlocks = [u for u in unlocked if u['triumph_id'] == 'iron_worker']
+        assert state.triumphs['iron_worker']['tier'] == 5
+        assert iw_unlocks[-1]['is_capstone'] is True
+
+    def test_metric_does_not_decrease(self):
+        """max-tracking semantic — поле longest_shift_hours только растёт через
+        work.py:work_check_done hook. Metric читает напрямую — если кто-то
+        уменьшит поле (через testing/migration), triumph не «откатит» tier
+        (engine не unlock'ает обратно, только проверяет вперёд)."""
+        state = GameState.default_new_game()
+        state.work.longest_shift_hours = 100  # tier 2
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs['iron_worker']['tier'] == 2
+        # Кто-то снизил поле — tier не должен откатиться (idempotent forward).
+        state.work.longest_shift_hours = 50
+        register_event(state, 'work_done', hours=1)
+        assert state.triumphs['iron_worker']['tier'] == 2  # remembered

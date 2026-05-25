@@ -375,6 +375,18 @@ TRIUMPHS: dict[str, dict] = {
         'event_filter': lambda p: p.get('vacancy') == 'forwarder',
         'count_delta': lambda p: int(p.get('hours', 0) or 0),
     },
+
+    # 🏭 Iron Worker (4.62.1.5.1, 25.05.2026) — самая длинная одиночная смена.
+    # Metric-based через state.work.longest_shift_hours (новое поле).
+    # Hook в work.py:work_check_done обновляет field перед log_event.
+    # Backfill для existing players в init_game_state через scan history.jsonl.
+    # Tiers [24, 72, 168, 336, 720]: 1сут → 3дня → 1нед → 2нед → 1мес (capstone).
+    'iron_worker': {
+        'name': 'Iron Worker',
+        'category': 'work',
+        'tiers': [24, 72, 168, 336, 720],
+        'metric': lambda s: s.work.longest_shift_hours,
+    },
 }
 
 

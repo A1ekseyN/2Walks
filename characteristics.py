@@ -103,6 +103,14 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
             init_metric_check, append_unclaimed,
             backfill_unclaimed_from_existing, check_seal_unlocks,
         )
+        # 4.62.1.5.1 (25.05.2026) — One-shot backfill для Iron Worker triumph:
+        # scan history.jsonl для max(hours) из work_done events. Запускается
+        # только если longest_shift_hours == 0 (после первого scan field
+        # станет > 0 для existing players → subsequent инициализации skip
+        # scan). Cross-device limitation — local jsonl only (web events с
+        # сервера не учитываются; будет решено в 4.62.6 через Sheets source).
+        if s.work.longest_shift_hours == 0:
+            _backfill_longest_shift_from_history(s)
         # Сначала synth-backfill для старых unlocked tier'ов (только если
         # queue пустой — это one-shot per save, после первого launch с 4.62.4
         # queue будет non-empty или claim'нут).
@@ -139,6 +147,45 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
 
     game.state = s
     return game.state
+
+
+def _backfill_longest_shift_from_history(state: GameState) -> None:
+    """4.62.1.5.1 (25.05.2026) — Scan local history.jsonl для max(payload.hours)
+    из всех work_done events и устанавливает state.work.longest_shift_hours.
+
+    Используется в init_game_state для existing players (longest_shift_hours
+    == 0). После первого scan field будет > 0 → последующие init'ы skip.
+
+    Silent-fail если файл не существует / corrupt — state не мутируется.
+
+    Limitation: читает только local jsonl (CLI machine). Web events с
+    сервера не учитываются — для cross-device unified backfill см. 4.62.6.
+    """
+    import json
+    import os
+    from config import HISTORY_FILE
+    if not os.path.exists(HISTORY_FILE):
+        return
+    try:
+        max_hours = 0
+        with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get('type') != 'work_done':
+                    continue
+                hours = int(event.get('payload', {}).get('hours', 0) or 0)
+                if hours > max_hours:
+                    max_hours = hours
+        if max_hours > 0:
+            state.work.longest_shift_hours = max_hours
+    except OSError:
+        pass
 
 
 def apply_steps_log_max_merge(state: GameState) -> None:

@@ -103,6 +103,11 @@ class WorkSession:
     salary: int = 0                         # was work_salary
     start: Optional[datetime] = None        # was working_start
     end: Optional[datetime] = None          # was working_end
+    # 4.62.1.5.1 — Самая длинная одиночная смена в часах за всю историю.
+    # Обновляется в work.py:work_check_done после log_event('work_done').
+    # Используется Iron Worker triumph (metric-based). Backfill для existing
+    # players в init_game_state через scan history.jsonl. Default 0 для legacy.
+    longest_shift_hours: int = 0
 
 
 @dataclass
@@ -385,6 +390,7 @@ class GameState:
                 salary=int(d.get('work_salary', 0)),
                 start=_deser_datetime(d.get('working_start')),
                 end=_deser_datetime(d.get('working_end')),
+                longest_shift_hours=int(d.get('work_longest_shift_hours', 0) or 0),
             ),
 
             adventure=AdventureSession(
@@ -558,6 +564,7 @@ class GameState:
             'working_hours': self.work.hours,
             'working_start': self.work.start,
             'working_end': self.work.end,
+            'work_longest_shift_hours': self.work.longest_shift_hours,
 
             # Inventory
             'inventory': self.inventory,

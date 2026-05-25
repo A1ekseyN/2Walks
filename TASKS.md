@@ -4521,6 +4521,15 @@ CLI shell для будущих категорий. Empty state когда catal
 
 **Rejected** (на момент 4.62.1.5): per-vacancy скейлинг tiers по difficulty (Forwarder 30 эн/ч vs Watchman 4 эн/ч) — отклонено, simplicity over realism (capstone 10k для всех = endgame goal); per-vacancy capstone bonuses → перенесено в 4.62.2.1 Bonus integration phase. 12 новых тестов в TestWorkTriumphs. Backfill работает автоматически из Sheets history (payload format стабилен с 0.2.4).
 
+##### 4.62.1.5.1. Iron Worker — самая длинная одиночная смена `[L / XS / done (25.05.2026, 0.2.5w)]`
+
+**Категория `work`. Metric-based** через новое поле `state.work.longest_shift_hours: int`. Unique в catalog'е — единственный triumph с **max-tracking semantic** (не sum/count, а maximum за всю историю).
+
+- Tiers `[24, 72, 168, 336, 720]` — 1 сутки / 3 дня / 1 неделя / 2 недели / **1 месяц** (capstone = 720ч).
+- Hook в `work.py:work_check_done` обновляет field ПЕРЕД log_event (чтобы register_event auto-hook сразу видел fresh value).
+- One-shot backfill `characteristics._backfill_longest_shift_from_history` — scan local `history.jsonl` для `max(payload['hours'])` из work_done events. Запускается только если `longest_shift_hours == 0`. Cross-device limitation решится в 4.62.6.
+- 7 новых тестов в TestIronWorker.
+
 ##### 4.62.1.6. Gym / Skill triumphs `[L / M / done (22.05.2026, 0.2.5s)]`
 
 **Категория `gym`. Metric-based** через `state.gym.<field>` напрямую (без backfill, auto-unlock через `init_metric_check`).

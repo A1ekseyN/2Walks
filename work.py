@@ -272,6 +272,12 @@ def work_check_done(state: GameState) -> GameState:
 
         # Commit подтверждён — фаерим log_event + печатаем для CLI.
         print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{format_money(earned)}{Style.RESET_ALL} $.')
+        # 4.62.1.5.1 — Iron Worker triumph (metric-based). Обновляем
+        # state.work.longest_shift_hours = max(current, this shift) ПЕРЕД
+        # log_event чтобы register_event auto-hook увидел свежее значение и
+        # unlock'нул tier сразу (а не на следующем event'е).
+        if finished_hours > state.work.longest_shift_hours:
+            state.work.longest_shift_hours = finished_hours
         # 4.6 — log_event завершения смены. salary = итоговая (с bonus),
         # salary_base = базовая (без bonus) — для отладки.
         from history import log_event
