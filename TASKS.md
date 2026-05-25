@@ -4655,21 +4655,30 @@ CLI shell для будущих категорий. Empty state когда catal
 
 ### Phase 4 — Bonus integration
 
-##### 4.62.2.1. Постоянные bonuses на capstones `[L / M / todo (blocked by 4-5 категорий)]`
+##### 4.62.2.1. Постоянные bonuses на capstones `[L / M / deferred (25.05.2026 — отложено до balance design)]`
 
 **На capstones категорий вешаем постоянные gameplay-эффекты.** Strategy — бонус только на максимальный tier категории.
+
+**⏸️ Status (25.05.2026): отложено.** Infrastructure ready (5 категорий с capstones + Iron Worker), но пользователь хочет сначала придумать **balance design** прежде чем кодить. Сейчас triumph'ы дают только score points (cosmetic). Возобновить когда balance plan готов.
 
 - Каждый capstone bonus — функция `bonus_<name>(state) -> int` в `triumphs.py`. Читает `state.triumphs[id]['tier']` и возвращает `+N` если capstone unlocked.
 - Интегрируется в existing helper'ы (например `total_bonus_steps(state)` суммирует triumph-bonus alongside stamina/equipment/daily/level).
 - Реализуется после того как 5+ категорий из 4.62.1.x ready (нечего bonus'ить без unlocked capstones).
 
-**Примеры (для обсуждения при implementation):**
+**Примеры (для обсуждения при implementation — НЕ финализированы):**
 - Marathoner капстоун (10M) → +5% к Stamina permanent
 - Adventurer (1000) → +1 max inventory capacity
 - Treasure Hunter (10 S-grade) → +1% to luck permanent
 - Veteran Worker (1000h) → +5% к зарплате (stack с earnings_boost)
+- Iron Worker (720h одиночная смена) → ??? (например +X% к salary при длинных сменах, или energy_regen bonus)
 
-**Тесты:** unlock триггерит bonus, бонус виден в status_bar / character info, save/load preserves.
+**Balance вопросы:**
+- Bonus power уровень — должен быть meaningful но не game-breaking. +5% Stamina = заметно но не overpower'ит equipment.
+- Stack semantics — bonus сверху earnings_boost / Stamina skill? Multiplicative или additive?
+- Hard Worker bonus на ЗП vs earnings_boost — двойной выгоды нет? balance discussion.
+- Iron Worker — реально redundant с Hard Worker если оба про ЗП. Нужен distinct bonus.
+
+**Тесты (после implementation):** unlock триггерит bonus, бонус виден в status_bar / character info, save/load preserves.
 
 ##### 4.62.2.2. Active skill rewards `[L / M / todo (blocked by 4.58 Active buffs + 4-5 категорий)]`
 
@@ -4705,7 +4714,19 @@ Web-секция отображения Triumphs параллельно с CLI.
 - `TRIUMPHS[id]['hidden'] = True` — в меню показывается как `???` с count `0/?`.
 - При unlock — visible с full name.
 
-##### 4.62.6. Extended catalog candidates (brainstorm reference) `[reference — мигрировано в 4.62.1.x granular tasks (22.05.2026)]`
+##### 4.62.6. Backfill UX — Sheets `history` source (cross-device) `[L / XS / done (25.05.2026, 0.2.5x)]`
+
+**Проблема:** до 0.2.5x backfill читал только LOCAL `history.jsonl` (CLI machine). Web events с сервера терялись — existing игрок (CLI с MacBook + phone web на server) получал partial credit. Это особенно ломало Hard Worker / per-vacancy counters (hours отрабатывались на сервере, не появлялись в local).
+
+**Реализация:**
+- Refactor — выделен `_replay_events_into_counters(state, events)` helper. Shared между local-jsonl и Sheets backfill paths.
+- Новый `backfill_from_sheets_history(state)` — pulls all events через `HistoryLogRepo.since(0)` → call shared helper.
+- Iron Worker max-tracker (`state.work.longest_shift_hours`) тоже обновляется в shared helper'е → автоматически refresh'ится при Sheets backfill (cross-device max).
+- Menu: `[b] 🌐 Backfill из Sheets (cross-device, recommended)` — Sheets-first с auto-fallback на local jsonl если Sheets недоступен. Старый `[r] 🔄 Re-sync local jsonl (offline fallback)` сохранён.
+
+**Tests:** 6 новых в `tests/test_triumphs.py::TestSheetsBackfill` + `TestReplayEventsIntoCountersShared` (unavailable, empty, accumulator equivalence, Iron Worker cross-device update, monotonic max defense, local + Sheets identical для same events).
+
+##### 4.62.X. Extended catalog candidates (brainstorm reference) `[reference — мигрировано в 4.62.1.x granular tasks (22.05.2026)]`
 
 **⚠️ Это reference brainstorm от 21.05.2026.** Идеи перенесены в granular задачи 4.62.1.4 (energy split) / 4.62.1.5 (work per-vacancy) / 4.62.1.9 (streak/days played) / 4.62.1.10 (bank) / 4.62.1.11 (forge) / 4.62.1.13 (lifestyle) / 4.62.1.14 (collection) — см. Phase 2 Catalog categories выше. Этот блок оставлен как **дизайн-source** для контекста и balance discussion при implementation конкретных задач.
 

@@ -23,6 +23,7 @@ from config import HISTORY_FILE
 from triumphs import (
     available_seals,
     backfill_from_history,
+    backfill_from_sheets_history,
     claim_all,
     claim_triumph,
     get_progress,
@@ -108,23 +109,61 @@ def _check_first_launch_backfill_prompt(state) -> bool:
     return True
 
 
-def _do_backfill(state) -> None:
-    """Запускает backfill_from_history + печатает feedback."""
-    print(f'\n{Fore.LIGHTBLUE_EX}🔄 Сканирую history...{Style.RESET_ALL}')
-    feedback = backfill_from_history(state, history_jsonl_path=HISTORY_FILE)
+def _print_feedback(feedback: dict, source_label: str) -> None:
+    """Helper для печати backfill feedback (shared между Sheets/local)."""
     if not feedback:
-        print(f'{Fore.LIGHTBLACK_EX}История прочитана, но event-based triumph counters '
-              f'без изменений (catalog пуст или нет соответствующих events).{Style.RESET_ALL}')
+        print(f'{Fore.LIGHTBLACK_EX}История прочитана ({source_label}), но '
+              f'event-based triumph counters без изменений (catalog пуст или '
+              f'нет соответствующих events).{Style.RESET_ALL}')
         return
-    print(f'\n{Fore.LIGHTGREEN_EX}✅ Backfill завершён.{Style.RESET_ALL} Добавлено:')
+    print(f'\n{Fore.LIGHTGREEN_EX}✅ Backfill завершён ({source_label}).'
+          f'{Style.RESET_ALL} Добавлено:')
     for triumph_id, delta in feedback.items():
         name = TRIUMPHS.get(triumph_id, {}).get('name', triumph_id)
         print(f'  • {name}: +{delta}')
+
+
+def _do_backfill_local(state) -> None:
+    """Backfill через local jsonl. Используется в first-launch prompt
+    (legacy behavior) и как fallback в [b] menu option."""
+    print(f'\n{Fore.LIGHTBLUE_EX}🔄 Сканирую local history.jsonl...{Style.RESET_ALL}')
+    feedback = backfill_from_history(state, history_jsonl_path=HISTORY_FILE)
+    _print_feedback(feedback, 'local jsonl')
     try:
         from persistence import save_characteristic
         save_characteristic()
     except Exception:  # noqa: BLE001
         pass
+
+
+def _do_backfill_sheets(state) -> None:
+    """4.62.6 — Cross-device backfill через Sheets `history` лист.
+
+    Sheets-first с auto-fallback на local jsonl если Sheets недоступен.
+    Печатает source label чтобы игрок знал откуда credit (cross-device полная
+    картина vs local-only из этой CLI machine).
+    """
+    print(f'\n{Fore.LIGHTBLUE_EX}🌐 Pulling history из Sheets '
+          f'(cross-device)...{Style.RESET_ALL}')
+    feedback = backfill_from_sheets_history(state)
+    if feedback:
+        _print_feedback(feedback, 'Sheets cross-device')
+    else:
+        # Either Sheets unavailable, или Sheets вернул empty events.
+        # Try local fallback — может быть offline.
+        print(f'{Fore.LIGHTYELLOW_EX}⚠ Sheets недоступен или пустой — '
+              f'fallback на local jsonl.{Style.RESET_ALL}')
+        feedback = backfill_from_history(state, history_jsonl_path=HISTORY_FILE)
+        _print_feedback(feedback, 'local fallback')
+    try:
+        from persistence import save_characteristic
+        save_characteristic()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# Backwards-compat alias для existing call sites (first-launch prompt).
+_do_backfill = _do_backfill_local
 
 
 # --- Render helpers ---
@@ -489,7 +528,12 @@ def _print_main_commands(state) -> None:
     unlocked_seals = len(available_seals(state))
     print(f'  [{Fore.LIGHTCYAN_EX}s{Style.RESET_ALL}] 🏅 Seals & Titles '
           f'({unlocked_seals}/{total_seals} unlocked)')
-    print(f'  [{Fore.LIGHTCYAN_EX}r{Style.RESET_ALL}] 🔄 Sync from history (вручную)')
+    # 4.62.6 — Backfill через Sheets (cross-device, recommended) с auto-fallback
+    # на local jsonl. До 4.62.6 был только [r] local-only.
+    print(f'  [{Fore.LIGHTCYAN_EX}b{Style.RESET_ALL}] 🌐 Backfill из Sheets '
+          f'(cross-device, recommended)')
+    print(f'  [{Fore.LIGHTCYAN_EX}r{Style.RESET_ALL}] 🔄 Re-sync local jsonl '
+          f'(offline fallback)')
     print(f'  [{Fore.LIGHTCYAN_EX}0{Style.RESET_ALL}] Назад')
 
 
@@ -603,8 +647,11 @@ def open_triumphs_menu(state) -> None:
 
         if choice == '0':
             return
+        if choice in ('b', 'и'):  # 4.62.6 — Sheets backfill (cross-device)
+            _do_backfill_sheets(state)
+            continue
         if choice in ('r', 'р'):
-            _do_backfill(state)
+            _do_backfill_local(state)
             continue
         if choice == 'a':
             _do_claim_all(state)

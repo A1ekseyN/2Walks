@@ -552,33 +552,23 @@ def _format_progress_bar(
     return _TIER_SEP.join(segments)
 
 
-# --- Backfill from history.jsonl ---
+# --- Backfill from history (jsonl file + Sheets) ---
 
-def backfill_from_history(
-    state,
-    history_jsonl_path: str = 'history.jsonl',
-) -> dict[str, int]:
-    """Сканит history.jsonl и накапливает event-based counters retroactively.
+def _replay_events_into_counters(state, events: list[dict]) -> dict[str, int]:
+    """Internal: reset event-based counters → replay events → update max-trackers
+    (Iron Worker `state.work.longest_shift_hours`) → recheck tier unlocks →
+    push unclaimed.
 
-    Идемпотентно: повторный вызов с тем же history не дублирует counters
-    (логика — пересчитываем с нуля только для event-based, потом recheck tiers).
+    Shared logic для `backfill_from_history` (local jsonl) и
+    `backfill_from_sheets_history` (cross-device через Sheets `history` лист).
+    Caller отвечает за получение list events (file parsing / Sheets API).
 
-    Returns dict `{triumph_id: backfilled_count_delta}` — сколько ДОБАВЛЕНО к
-    counter в результате этого вызова (для UI feedback «backfill добавил +N»).
-
-    Silent-fail если файла нет / corrupted: возвращает пустой dict, state не
-    мутируется.
-
-    Metric-based triumphs не нуждаются в backfill — `register_event` сам
-    recheck'ает metrics. Этот helper только для event-based counters.
+    Returns `{triumph_id: count_delta}` feedback dict.
     """
     if state is None:
         return {}
-    if not os.path.exists(history_jsonl_path):
-        return {}
 
     # 1. Reset event-based counters (для idempotency повторных backfill'ов).
-    # Метric-based триумфы не трогаем — у них нет counter.
     event_based_ids = [
         tid for tid, spec in TRIUMPHS.items() if 'event_hooks' in spec
     ]
@@ -588,56 +578,51 @@ def backfill_from_history(
     }
     for tid in event_based_ids:
         ts = _ensure_triumph_state(state, tid)
-        ts['count'] = 0  # reset для recompute
+        ts['count'] = 0
 
-    # 2. Сканим history.jsonl, replay events через counter logic (без unlock
-    # notifications — мы просто пересчитываем counters).
-    try:
-        with open(history_jsonl_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
+    # 2. Replay events.
+    # 4.62.1.5.1 — Iron Worker max-tracker: scan work_done для max(hours).
+    # Generic pattern — если в будущем появятся другие max-trackers (biggest
+    # drop, longest streak), добавляются здесь же.
+    max_shift = int(getattr(state.work, 'longest_shift_hours', 0))
+    for event in events:
+        event_type = event.get('type', '')
+        payload = event.get('payload', {})
+        if not event_type:
+            continue
+
+        # Iron Worker max-tracker.
+        if event_type == 'work_done':
+            hours = int(payload.get('hours', 0) or 0)
+            if hours > max_shift:
+                max_shift = hours
+
+        # Event-based counters.
+        for tid in event_based_ids:
+            spec = TRIUMPHS[tid]
+            if event_type not in spec.get('event_hooks', []):
+                continue
+            event_filter = spec.get('event_filter')
+            if event_filter is not None:
                 try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                event_type = event.get('type', '')
-                payload = event.get('payload', {})
-                if not event_type:
-                    continue
-
-                # Replay event-based counter increments only (не recheck'аем
-                # metrics — они auto-handle в register_event).
-                for tid in event_based_ids:
-                    spec = TRIUMPHS[tid]
-                    if event_type not in spec.get('event_hooks', []):
+                    if not event_filter(payload):
                         continue
-                    event_filter = spec.get('event_filter')
-                    if event_filter is not None:
-                        try:
-                            if not event_filter(payload):
-                                continue
-                        except Exception:  # noqa: BLE001
-                            continue
-                    delta_fn = spec.get('count_delta', lambda _p: 1)
-                    try:
-                        delta = int(delta_fn(payload))
-                    except Exception:  # noqa: BLE001
-                        delta = 1
-                    if delta > 0:
-                        state.triumphs[tid]['count'] += delta
-    except OSError:
-        # Восстанавливаем counts если file read failed после reset.
-        for tid, original in before_counts.items():
-            state.triumphs[tid]['count'] = original
-        return {}
+                except Exception:  # noqa: BLE001
+                    continue
+            delta_fn = spec.get('count_delta', lambda _p: 1)
+            try:
+                delta = int(delta_fn(payload))
+            except Exception:  # noqa: BLE001
+                delta = 1
+            if delta > 0:
+                state.triumphs[tid]['count'] += delta
 
-    # 3. Recheck все tier unlocks (event-based и metric-based) после backfill.
-    # 4.62.4 — Newly-unlocked tier'ы попадают в `unclaimed_unlocks` через
-    # append_unclaimed (для claim mechanic). Backfill через manual prompt =
-    # batch-credit за прошлую активность, игрок должен прокликать ack каждый.
-    feedback = {}
+    # 3. Apply max-tracker updates.
+    state.work.longest_shift_hours = max_shift
+
+    # 4. Recheck все tier unlocks (event-based + metric-based) + collect
+    # unlocks для unclaimed queue.
+    feedback: dict[str, int] = {}
     all_new_unlocks: list[dict] = []
     for tid in event_based_ids:
         spec = TRIUMPHS[tid]
@@ -656,7 +641,6 @@ def backfill_from_history(
         if delta != 0:
             feedback[tid] = delta
 
-    # Также recheck metric-based (на случай если они ещё не auto-unlock'нуты).
     for tid, spec in TRIUMPHS.items():
         if 'metric' not in spec:
             continue
@@ -672,7 +656,67 @@ def backfill_from_history(
                 'is_capstone': tier_idx == len(spec.get('tiers', [])),
             })
 
-    # Push в unclaimed queue (dedupe inside append_unclaimed).
     append_unclaimed(state, all_new_unlocks)
-
     return feedback
+
+
+def backfill_from_history(
+    state,
+    history_jsonl_path: str = 'history.jsonl',
+) -> dict[str, int]:
+    """Backfill через **local** `history.jsonl` (CLI machine only).
+
+    Limitation: web events с сервера не учитываются — у server'а свой jsonl.
+    Для cross-device backfill см. `backfill_from_sheets_history`.
+
+    Идемпотентно: повторный вызов с тем же history не дублирует counters
+    (логика — пересчитываем с нуля только для event-based, потом recheck tiers).
+
+    Returns dict `{triumph_id: backfilled_count_delta}`. Silent-fail если файла
+    нет / corrupted.
+    """
+    if state is None:
+        return {}
+    if not os.path.exists(history_jsonl_path):
+        return {}
+
+    try:
+        events: list[dict] = []
+        with open(history_jsonl_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return {}
+
+    return _replay_events_into_counters(state, events)
+
+
+def backfill_from_sheets_history(state) -> dict[str, int]:
+    """4.62.6 (25.05.2026) — Backfill через **Sheets `history` лист**
+    (cross-device).
+
+    Pulls ALL events через `HistoryLogRepo.since(0)` — это включает события
+    из CLI И web (server), в отличие от `backfill_from_history` который читает
+    только local jsonl. Это позволяет existing player'у получить полный credit
+    за прошлую активность даже когда часть событий записана с phone web на
+    server и не присутствует в local jsonl.
+
+    Идемпотентно (как и file-based backfill — reset → replay). Silent-fail
+    если Sheets недоступен.
+    """
+    if state is None:
+        return {}
+    try:
+        from google_sheets_db import HistoryLogRepo
+        events = HistoryLogRepo().since(0)
+    except Exception:  # noqa: BLE001 — Sheets unavailable / network error
+        return {}
+    if not events:
+        return {}
+    return _replay_events_into_counters(state, events)

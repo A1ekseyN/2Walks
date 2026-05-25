@@ -802,3 +802,150 @@ class TestSealEntryInClaimQueue:
         ])
         claim_triumph(state, 'foo', kind='seal')
         assert state.unclaimed_unlocks == []
+
+
+# ============================================================================
+# 4.62.6 — Sheets backfill (cross-device)
+# ============================================================================
+
+from triumphs import backfill_from_sheets_history
+
+
+class TestSheetsBackfill:
+    """Backfill через Sheets `history` лист (cross-device replay)."""
+
+    def test_sheets_unavailable_returns_empty(self, monkeypatch):
+        """Если HistoryLogRepo бросает (Sheets недоступен) → empty dict."""
+        # Mock import чтобы import HistoryLogRepo внутри backfill упал.
+        import sys
+        original_module = sys.modules.get('google_sheets_db')
+        class FailingModule:
+            class HistoryLogRepo:
+                def __init__(self):
+                    raise RuntimeError('Sheets unavailable')
+        monkeypatch.setitem(sys.modules, 'google_sheets_db', FailingModule)
+        try:
+            state = GameState.default_new_game()
+            feedback = backfill_from_sheets_history(state)
+            assert feedback == {}
+        finally:
+            if original_module is not None:
+                sys.modules['google_sheets_db'] = original_module
+            else:
+                sys.modules.pop('google_sheets_db', None)
+
+    def test_sheets_empty_returns_empty(self, monkeypatch):
+        """Если Sheets возвращает [] events → empty dict."""
+        import sys
+        class FakeRepo:
+            def since(self, ts):
+                return []
+        class FakeModule:
+            HistoryLogRepo = FakeRepo
+        monkeypatch.setitem(sys.modules, 'google_sheets_db', FakeModule)
+        state = GameState.default_new_game()
+        feedback = backfill_from_sheets_history(state)
+        assert feedback == {}
+
+    def test_sheets_backfill_accumulates_via_shared_logic(self, mock_catalog, monkeypatch):
+        """Sheets backfill использует тот же replay-helper что и local jsonl
+        backfill → result identical для одинаковых events."""
+        import sys
+        events = [
+            {'type': 'adventure_done', 'payload': {}},
+            {'type': 'adventure_done', 'payload': {}},
+            {'type': 'work_done', 'payload': {'hours': 3}},
+            {'type': 'work_done', 'payload': {'hours': 5}},
+        ]
+        class FakeRepo:
+            def since(self, ts):
+                return events
+        class FakeModule:
+            HistoryLogRepo = FakeRepo
+        monkeypatch.setitem(sys.modules, 'google_sheets_db', FakeModule)
+
+        state = GameState.default_new_game()
+        feedback = backfill_from_sheets_history(state)
+        assert state.triumphs['adventurer']['count'] == 2
+        assert state.triumphs['worker']['count'] == 8  # hours accumulator
+
+    def test_sheets_backfill_updates_iron_worker_max(self, mock_catalog, monkeypatch):
+        """Iron Worker max-tracker — Sheets backfill scan'ит work_done events
+        для max(hours). Cross-device позволяет server's web events
+        учитываться (которых нет в local jsonl)."""
+        import sys
+        events = [
+            {'type': 'work_done', 'payload': {'hours': 50}},
+            {'type': 'work_done', 'payload': {'hours': 200}},  # max
+            {'type': 'work_done', 'payload': {'hours': 100}},
+        ]
+        class FakeRepo:
+            def since(self, ts):
+                return events
+        class FakeModule:
+            HistoryLogRepo = FakeRepo
+        monkeypatch.setitem(sys.modules, 'google_sheets_db', FakeModule)
+
+        state = GameState.default_new_game()
+        backfill_from_sheets_history(state)
+        assert state.work.longest_shift_hours == 200
+
+    def test_sheets_backfill_does_not_decrease_max(self, mock_catalog, monkeypatch):
+        """Если state.work.longest_shift_hours уже больше чем max в Sheets
+        events → не уменьшаем (защита от downgrade)."""
+        import sys
+        events = [
+            {'type': 'work_done', 'payload': {'hours': 50}},
+        ]
+        class FakeRepo:
+            def since(self, ts):
+                return events
+        class FakeModule:
+            HistoryLogRepo = FakeRepo
+        monkeypatch.setitem(sys.modules, 'google_sheets_db', FakeModule)
+
+        state = GameState.default_new_game()
+        state.work.longest_shift_hours = 500  # existing big value
+        backfill_from_sheets_history(state)
+        assert state.work.longest_shift_hours == 500  # not decreased
+
+
+class TestReplayEventsIntoCountersShared:
+    """Local + Sheets backfill share `_replay_events_into_counters` — verify
+    behavior identical when given identical events."""
+
+    def test_local_and_sheets_produce_same_result(self, mock_catalog, monkeypatch, tmp_path):
+        """Same events → same counter state regardless of source."""
+        import sys
+        from triumphs import backfill_from_history
+        events = [
+            {'type': 'adventure_done', 'payload': {}},
+            {'type': 'work_done', 'payload': {'hours': 10}},
+        ]
+
+        # Local backfill через temp jsonl.
+        history = tmp_path / 'history.jsonl'
+        history.write_text(
+            '\n'.join(json.dumps(e) for e in events),
+            encoding='utf-8',
+        )
+        state_local = GameState.default_new_game()
+        backfill_from_history(state_local, history_jsonl_path=str(history))
+
+        # Sheets backfill через mock.
+        class FakeRepo:
+            def since(self, ts):
+                return events
+        class FakeModule:
+            HistoryLogRepo = FakeRepo
+        monkeypatch.setitem(sys.modules, 'google_sheets_db', FakeModule)
+        state_sheets = GameState.default_new_game()
+        backfill_from_sheets_history(state_sheets)
+
+        # Identical counters.
+        assert state_local.triumphs['adventurer']['count'] == \
+               state_sheets.triumphs['adventurer']['count']
+        assert state_local.triumphs['worker']['count'] == \
+               state_sheets.triumphs['worker']['count']
+        assert state_local.work.longest_shift_hours == \
+               state_sheets.work.longest_shift_hours

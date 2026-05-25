@@ -133,7 +133,11 @@ Counter в `state.triumphs[id]['count']` accumulates на каждом matching 
 
 **Backfill из `history.jsonl`** через `backfill_from_history(state, path)` — replay'ит все события файла, accumulate counters, recheck tier unlocks. Идемпотентен (reset counters → replay).
 
-**Backfill ограничение:** читает только LOCAL `history.jsonl` (CLI machine). Server's web events в server's jsonl. См. отложенную задачу 4.62.6 «Backfill UX — Sheets history source».
+**Backfill sources (since 4.62.6 / 0.2.5x):** два варианта в Triumphs menu —
+- `[b] 🌐 Backfill из Sheets` (recommended) — `backfill_from_sheets_history(state)` через `HistoryLogRepo.since(0)`, cross-device (CLI + server's web events). Sheets-first с auto-fallback на local jsonl при network error.
+- `[r] 🔄 Re-sync local jsonl` — `backfill_from_history(state, path)`, только local file (offline fallback).
+
+Оба пути используют shared internal `_replay_events_into_counters(state, events)` helper — identical behavior для одинаковых events.
 
 ### Max-tracking (гибрид metric + hook)
 
@@ -459,8 +463,8 @@ Engine не поддерживает `count_mode='max'` напрямую — `co
 | Phase | Что | Status |
 |---|---|---|
 | **2 Catalog (cont.)** | 8 категорий ещё не реализованы: Drops / Forge / Bank / Streak / Level / Money / Lifestyle / Collection | todo |
-| **4.62.2.1 Bonuses** | Gameplay-эффекты на capstones (Marathoner 10M → +5% Stamina, Hard Worker 10k → +5% ЗП, и т.п.) | ready |
+| **4.62.2.1 Bonuses** | Gameplay-эффекты на capstones (Marathoner 10M → +5% Stamina, Hard Worker 10k → +5% ЗП, и т.п.) | **deferred** — отложено до balance design (25.05.2026) |
 | **4.62.2.2 Active rewards** | Active abilities (Lucky Day, Streak Saver, Premium Shift) | blocked by 4.58 |
 | **4.62.5 Hidden** | `???` маска до unlock'а — surprise discovery | optional |
-| **4.62.6 Backfill UX** | `[b]` manual trigger в menu + Sheets `history` лист как source (cross-device unified backfill вместо local jsonl-only) | new |
+| **4.62.6 Backfill UX** | `[b]` Sheets `history` cross-device + auto-fallback на local jsonl | **done (0.2.5x)** |
 | **4.62.7 Web UI** | Web section для Triumphs + pinned banner | ready |
