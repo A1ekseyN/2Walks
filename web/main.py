@@ -793,7 +793,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        adventure_error: Optional[str] = None,
                        inventory_sort: str = 'default',
                        loadout_error: Optional[str] = None,
-                       bank_error: Optional[str] = None) -> dict:
+                       bank_error: Optional[str] = None,
+                       triumphs_error: Optional[str] = None) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -1046,6 +1047,11 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # списком + meta (since_dt, elapsed_label). has_events=False если
         # пусто (template не рендерит banner). Очищается ниже после rendering.
         "away_report": _build_away_report_view(state),
+        # 4.62.7 — Triumphs view (pinned banner + unclaimed banner + main
+        # section с categories/seals/backfill). Pre-computed dict с nested
+        # structure для template rendering.
+        "triumphs_view": _build_triumphs_view(state),
+        "triumphs_error": triumphs_error,
     }
 
 
@@ -3090,4 +3096,410 @@ async def api_drop_sell_new():
         "money": state.money,
         "inventory_size": len(state.inventory),
         "pending_drop": _pending_drop_snapshot(state),
+    })
+
+
+# ============================================================================
+# 4.62.7 — Triumphs Web UI (Pinned banner + Unclaimed banner + Title badge +
+# Main section с categories/seals + backfill button).
+# Полная архитектура: docs/triumphs.md.
+# ============================================================================
+
+_PINNED_CAP_WEB = 3
+
+
+def _build_triumphs_view(state) -> dict:
+    """Pre-computed view для Triumphs section + top banners + title badge.
+
+    Возвращает dict с подразделами:
+    - `score`, `title` — общая инфа
+    - `unclaimed` — {count, sample_names (≤3), more} для banner
+    - `pinned_rows` — list[dict] для pinned banner (≤3)
+    - `pin_cap_reached: bool` — disable новых pin кнопок
+    - `categories` — list[dict] с triumph'ами per category (с pin/unclaimed
+      flags + progress)
+    - `seals` — list[dict] (5 seals со статусом + worn flag)
+    - `cat_count_done`, `cat_count_total` — для header'а
+
+    Каждый triumph row уже включает `progress_pct`, `is_pinned`,
+    `has_unclaimed`, `unclaimed_count` для template (zero-logic в Jinja).
+    """
+    from triumphs import (
+        get_progress, get_unclaimed_for, is_seal_unlocked, total_score,
+    )
+    from triumphs_data import CATEGORIES, SEALS, TRIUMPHS
+
+    pinned_ids = list(state.pinned_triumphs or [])
+    unclaimed = list(state.unclaimed_unlocks or [])
+
+    # Pinned rows (≤3, skip orphan ids).
+    pinned_rows = []
+    for tid in pinned_ids[:_PINNED_CAP_WEB]:
+        if tid not in TRIUMPHS:
+            continue
+        p = get_progress(state, tid)
+        if p is None:
+            continue
+        pinned_rows.append({
+            'id': tid,
+            'name': p['name'],
+            'current_tier': p['current_tier'],
+            'total_tiers': p['total_tiers'],
+            'current_value': p['current_value'],
+            'next_threshold': p['next_threshold'],
+            'progress_pct': p['progress_pct'],
+            'is_capstone': p['is_capstone'],
+            'has_unclaimed': len(get_unclaimed_for(state, tid)) > 0,
+        })
+
+    # Unclaimed banner — count + первые 3 имени.
+    seen: list[tuple] = []
+    for entry in unclaimed:
+        tid = entry.get('triumph_id')
+        kind = entry.get('kind', 'triumph')
+        if not tid or (tid, kind) in seen:
+            continue
+        seen.append((tid, kind))
+    sample_names = []
+    for tid, kind in seen[:3]:
+        if kind == 'seal':
+            name = str(SEALS.get(tid, {}).get('name', tid)) + ' (Seal)'
+        else:
+            name = str(TRIUMPHS.get(tid, {}).get('name', tid))
+        sample_names.append(name)
+    unclaimed_view = {
+        'count': len(unclaimed),
+        'sample_names': sample_names,
+        'more': max(0, len(seen) - 3),
+    }
+
+    # Categories — sub-collapsibles в main section.
+    present_cats = {spec.get('category', 'misc') for spec in TRIUMPHS.values()}
+    ordered_cats = sorted(
+        present_cats,
+        key=lambda c: CATEGORIES.get(c, {}).get('order', 999),
+    )
+    categories_view = []
+    for cat_key in ordered_cats:
+        cat_meta = CATEGORIES.get(cat_key, {})
+        triumph_ids = sorted([
+            tid for tid, spec in TRIUMPHS.items()
+            if spec.get('category') == cat_key
+        ])
+        triumphs_list = []
+        unlocked_count = 0
+        for tid in triumph_ids:
+            p = get_progress(state, tid)
+            if p is None:
+                continue
+            if p['current_tier'] > 0:
+                unlocked_count += 1
+            unclaimed_count = len(get_unclaimed_for(state, tid))
+            triumphs_list.append({
+                'id': tid,
+                'name': p['name'],
+                'current_tier': p['current_tier'],
+                'total_tiers': p['total_tiers'],
+                'current_value': p['current_value'],
+                'next_threshold': p['next_threshold'],
+                'progress_pct': p['progress_pct'],
+                'is_capstone': p['is_capstone'],
+                'is_pinned': tid in pinned_ids,
+                'has_unclaimed': unclaimed_count > 0,
+                'unclaimed_count': unclaimed_count,
+            })
+        categories_view.append({
+            'key': cat_key,
+            'label': cat_meta.get('label', cat_key.title()),
+            'unlocked': unlocked_count,
+            'total': len(triumph_ids),
+            'has_unclaimed': any(t['has_unclaimed'] for t in triumphs_list),
+            'triumphs': triumphs_list,
+        })
+
+    # Seals — sub-section. Order по CATEGORIES.
+    seals_list = []
+    for cat_key in sorted(
+        SEALS.keys(),
+        key=lambda c: CATEGORIES.get(c, {}).get('order', 999),
+    ):
+        meta = SEALS[cat_key]
+        cat_triumph_ids = [
+            tid for tid, spec in TRIUMPHS.items()
+            if spec.get('category') == cat_key
+        ]
+        total_t = len(cat_triumph_ids)
+        capstone_count = sum(
+            1 for tid in cat_triumph_ids
+            if int(state.triumphs.get(tid, {}).get('tier', 0))
+            >= len(TRIUMPHS[tid].get('tiers', []))
+            and len(TRIUMPHS[tid].get('tiers', [])) > 0
+        )
+        is_unlocked = is_seal_unlocked(state, cat_key)
+        is_worn = (state.title == meta['name'])
+        seals_list.append({
+            'cat_key': cat_key,
+            'name': meta['name'],
+            'icon': meta['icon'],
+            'is_unlocked': is_unlocked,
+            'is_worn': is_worn,
+            'capstones_count': capstone_count,
+            'total_triumphs': total_t,
+        })
+
+    cat_count_done = sum(
+        1 for c in categories_view if c['unlocked'] == c['total']
+    )
+    seals_unlocked = sum(1 for s in seals_list if s['is_unlocked'])
+
+    return {
+        'score': total_score(state),
+        'title': state.title,
+        'unclaimed': unclaimed_view,
+        'pinned_rows': pinned_rows,
+        'pin_cap_reached': len(pinned_ids) >= _PINNED_CAP_WEB,
+        'categories': categories_view,
+        'seals': seals_list,
+        'cat_count_done': cat_count_done,
+        'cat_count_total': len(categories_view),
+        'seals_unlocked': seals_unlocked,
+        'seals_total': len(seals_list),
+        'has_pinned': len(pinned_rows) > 0,
+        'has_unclaimed': len(unclaimed) > 0,
+    }
+
+
+# --- Pydantic models ---
+
+class TriumphPinRequest(BaseModel):
+    triumph_id: str
+
+
+class TriumphClaimRequest(BaseModel):
+    triumph_id: str
+    kind: str = 'triumph'
+
+
+class TriumphSealRequest(BaseModel):
+    cat_key: str
+
+
+# --- Validate-and-apply helpers ---
+
+def _validate_and_apply_pin(state, triumph_id: str) -> Optional[str]:
+    """Toggle pin. Cap 3 enforced. Returns error text, STALE_MARKER, или None.
+
+    Web behavior: при cap 3 и попытке pin 4-го → returns error (UI button
+    должен быть disabled, но safety net на server side). Smart-replace
+    остаётся только в CLI.
+    """
+    from triumphs_data import TRIUMPHS
+    if triumph_id not in TRIUMPHS:
+        return f'Неизвестный triumph: {triumph_id}'
+    pinned = list(state.pinned_triumphs or [])
+    if triumph_id in pinned:
+        pinned.remove(triumph_id)
+    else:
+        if len(pinned) >= _PINNED_CAP_WEB:
+            return (f'У тебя уже {_PINNED_CAP_WEB} закреплено. '
+                    f'Сначала открепи что-то.')
+        pinned.append(triumph_id)
+    state.pinned_triumphs = pinned
+    stale = _persist_and_handle_stale(endpoint='triumph_pin')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_claim(state, triumph_id: str, kind: str) -> Optional[str]:
+    """Claim unclaimed entries для triumph'а+kind."""
+    from triumphs import claim_triumph
+    if kind not in ('triumph', 'seal'):
+        return f'Неизвестный kind: {kind}'
+    count = claim_triumph(state, triumph_id, kind=kind)
+    if count == 0:
+        return f'Нечего собирать (нет unclaimed entries для {triumph_id}).'
+    stale = _persist_and_handle_stale(endpoint='triumph_claim')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_claim_all(state) -> Optional[str]:
+    from triumphs import claim_all
+    count = claim_all(state)
+    if count == 0:
+        return 'Нечего собирать (queue пустой).'
+    stale = _persist_and_handle_stale(endpoint='triumph_claim_all')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_seal_toggle(state, cat_key: str) -> Optional[str]:
+    """Toggle title: wear / take off."""
+    from triumphs import is_seal_unlocked, set_title
+    from triumphs_data import SEALS
+    if cat_key not in SEALS:
+        return f'Неизвестный seal: {cat_key}'
+    if not is_seal_unlocked(state, cat_key):
+        return 'Seal ещё не открыт (нужно capstone’нуть все triumph’ы категории).'
+    name = SEALS[cat_key]['name']
+    if state.title == name:
+        set_title(state, None)
+    else:
+        set_title(state, name)
+    stale = _persist_and_handle_stale(endpoint='triumph_seal_toggle')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_backfill_sheets(state) -> Optional[str]:
+    """4.62.6 — Manual Sheets cross-device backfill из web UI."""
+    from triumphs import backfill_from_sheets_history
+    feedback = backfill_from_sheets_history(state)
+    if not feedback:
+        return ('Sheets недоступен или history пустой. '
+                'Попробуй позже или используй CLI [r] re-sync local.')
+    stale = _persist_and_handle_stale(endpoint='triumph_backfill')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+# --- Web endpoints (Form, HTMX swap) ---
+
+@app.post("/web/triumphs/pin", response_class=HTMLResponse)
+async def web_triumphs_pin(request: Request, triumph_id: str = Form(...)):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_pin(state, triumph_id)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, triumphs_error=err)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/web/triumphs/claim", response_class=HTMLResponse)
+async def web_triumphs_claim(request: Request,
+                             triumph_id: str = Form(...),
+                             kind: str = Form('triumph')):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_claim(state, triumph_id, kind)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, triumphs_error=err)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/web/triumphs/claim_all", response_class=HTMLResponse)
+async def web_triumphs_claim_all(request: Request):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_claim_all(state)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, triumphs_error=err)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/web/triumphs/seal_toggle", response_class=HTMLResponse)
+async def web_triumphs_seal_toggle(request: Request, cat_key: str = Form(...)):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_seal_toggle(state, cat_key)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, triumphs_error=err)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/web/triumphs/backfill_sheets", response_class=HTMLResponse)
+async def web_triumphs_backfill(request: Request):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_backfill_sheets(state)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, triumphs_error=err)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+# --- API mirrors (JSON) ---
+
+@app.post("/api/triumphs/pin")
+async def api_triumphs_pin(req: TriumphPinRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_pin(state, req.triumph_id)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "pinned": list(state.pinned_triumphs or [])})
+
+
+@app.post("/api/triumphs/claim")
+async def api_triumphs_claim(req: TriumphClaimRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_claim(state, req.triumph_id, req.kind)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({
+        "ok": True,
+        "unclaimed_count": len(state.unclaimed_unlocks or []),
+    })
+
+
+@app.post("/api/triumphs/claim_all")
+async def api_triumphs_claim_all():
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_claim_all(state)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "unclaimed_count": 0})
+
+
+@app.post("/api/triumphs/seal_toggle")
+async def api_triumphs_seal_toggle(req: TriumphSealRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_seal_toggle(state, req.cat_key)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True, "title": state.title})
+
+
+@app.post("/api/triumphs/backfill_sheets")
+async def api_triumphs_backfill():
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_backfill_sheets(state)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({
+        "ok": True,
+        "unclaimed_count": len(state.unclaimed_unlocks or []),
     })

@@ -29,25 +29,28 @@ Trigger (action) → Triumph progress → Capstone (last tier) → Seal → Titl
 - **Claim queue** (4.62.4) — новые tier-unlocks требуют **явного acknowledge** через menu (Destiny-2 паттерн «нашёл — нужно собрать»).
 - **Score** — каждый unlocked tier даёт `POINTS_PER_TIER` (10) очков → суммарный `total_score(state)`.
 
-**Не входит** в систему на момент 0.2.5v: gameplay-бонусы за capstones (Phase 4 — задача 4.62.2.1), Web UI (Phase 5 — задача 4.62.7), Hidden triumphs (4.62.5).
+**Не входит** в систему на момент 0.2.5y: gameplay-бонусы за capstones (Phase 4 — задача 4.62.2.1, **deferred** 25.05.2026 до balance design), Hidden triumphs (4.62.5). Web UI **добавлен** в 0.2.5y (задача 4.62.7) — параллельная вёрстка к CLI menu.
 
 ---
 
 ## 2. Архитектура
 
-3 файла + auto-hook'и в существующих модулях:
+3 base модуля + Web UI слой + auto-hook'и в существующих модулях:
 
 | Модуль | Слой | Содержит |
 |---|---|---|
 | `triumphs_data.py` | Static catalog | `POINTS_PER_TIER`, `CATEGORIES`, `SEALS`, `TRIUMPHS` (dict[id, spec]), helper `_GYM_SKILL_FIELDS` |
-| `triumphs.py` | Pure engine | `register_event` / `init_metric_check` / `get_progress` / `total_score` / `backfill_from_history`, claim helpers (`append_unclaimed`, `claim_triumph`, `claim_all`, `get_unclaimed_for`, `backfill_unclaimed_from_existing`), seal helpers (`is_seal_unlocked`, `available_seals`, `available_titles`, `set_title`, `check_seal_unlocks`), progress bar formatter `_format_progress_bar` |
+| `triumphs.py` | Pure engine | `register_event` / `init_metric_check` / `get_progress` / `total_score` / `backfill_from_history` / `backfill_from_sheets_history`, claim helpers (`append_unclaimed`, `claim_triumph`, `claim_all`, `get_unclaimed_for`, `backfill_unclaimed_from_existing`), seal helpers (`is_seal_unlocked`, `available_seals`, `available_titles`, `set_title`, `check_seal_unlocks`), progress bar formatter `_format_progress_bar` |
 | `triumphs_menu.py` | CLI UI | `open_triumphs_menu` (3-level navigation: main → category → detail), Pin/Unpin toggle, Claim flow, Seals view, `render_pinned_status_bar` (для `functions.status_bar`) |
+| `web/main.py` | Web UI (since 0.2.5y / 4.62.7) | `_build_triumphs_view(state) -> dict` (pre-computed nested view: pinned_rows / unclaimed / categories / seals со всеми flags), `_validate_and_apply_pin/claim/claim_all/seal_toggle/backfill_sheets` helpers, 10 endpoints (5 web Form HTMX + 5 API JSON Pydantic) |
+| `web/templates/_status_fragment.html` | Web template | Top banners над Stats (unclaimed + pinned), title badge в Stats header (float-right), main `<section id="triumphs">` после Gym (collapsible + sub-collapsibles per category + Seals sub-section + Backfill button) |
 
 Auto-hook'и:
 
 - **`history.py:log_event`** — после write event'а вызывает `register_event(state, type, **payload)` + `append_unclaimed` для returned unlocks + `check_seal_unlocks` + `append_unclaimed` для seal unlocks. Try/except / silent fail / lazy import чтобы избежать circular dependency.
 - **`characteristics.py:init_game_state`** — на startup: `backfill_unclaimed_from_existing` (one-shot synth для уже-unlocked tier'ов из state.triumphs) + `init_metric_check` (auto-unlock metric-based) + `check_seal_unlocks` (для existing players у которых уже все capstones категории закрыты).
 - **`functions.py:status_bar`** — на каждом tick'е CLI печатает `render_pinned_status_bar(state)` (unclaimed banner + pinned section) + строку `👑 <title>` если `state.title` non-None.
+- **`web/main.py:_dashboard_context`** — на каждом GET / POST web возвращает `triumphs_view = _build_triumphs_view(state)` в template context → top banners + title badge + main section рендерятся conditionally (visible если есть pinned / unclaimed / title).
 
 ---
 
@@ -261,6 +264,38 @@ Lazy imports + try/except чтобы избежать circular dependency.
 
 ---
 
+## 9.5 Web UI architecture (4.62.7 / 0.2.5y)
+
+Параллельная вёрстка к CLI menu. 3 слоя UI в `web/templates/_status_fragment.html`:
+
+**1. Top banners над Stats** (conditional render, всегда visible если active):
+- **Unclaimed banner** `🎁 N закрытых не собрано` + sample names + `[✓ Собрать все]` button → POST `/web/triumphs/claim_all`.
+- **Pinned banner** `📌 Pinned N/3` + 3 строки с progress bars (HTML5 `<progress>`) + ✨ marker если pinned имеет unclaimed.
+
+**2. Title badge** в Stats header (`📊 Stats   👑 <title>` float-right) — visible если `state.title` non-None. Match с CLI placement над локацией.
+
+**3. Main `<section id="triumphs">`** после Gym — collapsible `<details>`:
+- Header: `🏆 Triumphs · Score: N · X/Y категорий · Z/M seals`
+- 5 sub-collapsibles per category (🏃 / 🔋 / 🗺 / 🏋 / 🏭) с triumph rows внутри: name + 📌/✨ markers + progress bar + tier label + `[📌 Pin/Unpin]` + `[✓ Собрать (N)]` buttons
+- Sub-collapsible `🏅 Seals & Titles` (5 seals со статусом UNLOCKED/LOCKED + `[Носить/Снять]` toggle для unlocked)
+- `[🌐 Backfill из Sheets (cross-device)]` button внизу с `hx-confirm`
+
+**Endpoints (10 total в `web/main.py`):** все mutation endpoints через `_validate_and_apply_*` helper'ы с STALE handling через `_persist_and_handle_stale`. Web endpoints возвращают `_render_dashboard_or_stale(...)` для HTMX swap. API mirrors возвращают JSON с Pydantic models (`TriumphPinRequest`, `TriumphClaimRequest`, `TriumphSealRequest`).
+
+| Route | Что |
+|---|---|
+| `POST /web/triumphs/pin` + `/api/triumphs/pin` | Pin/Unpin toggle (form `triumph_id` / JSON `{triumph_id}`) |
+| `POST /web/triumphs/claim` + `/api/triumphs/claim` | Claim one triumph's unclaimed entries (form/JSON `triumph_id`, `kind`) |
+| `POST /web/triumphs/claim_all` + `/api/triumphs/claim_all` | Clear весь queue |
+| `POST /web/triumphs/seal_toggle` + `/api/triumphs/seal_toggle` | Wear/take-off title (form/JSON `cat_key`) |
+| `POST /web/triumphs/backfill_sheets` + `/api/triumphs/backfill_sheets` | Cross-device manual backfill |
+
+**Pin cap UX:** при cap 3 кнопка Pin **disabled** + tooltip «Сначала открепи (3/3 pinned)». Smart-replace prompt **только в CLI** (modal в HTMX overkill для single user app). Server-side safety net в `_validate_and_apply_pin` — returns error если cap (UI должен предотвратить, но защита от direct API calls).
+
+**Auto-claim flow:** клик `[✓ Собрать]` → POST → engine clears unclaimed entries → persist → HTMX swap `#status-bar` → re-render показывает обновлённый banner (или его отсутствие если queue пустой). Так же для seal_toggle — клик «Носить» → state.title = name → re-render badge в Stats header.
+
+---
+
 ## 10. Pytest защита
 
 `tests/conftest.py:_disable_triumphs_register_event_for_non_triumphs_tests` (autouse) → `triumphs.register_event` → `lambda state, type, **p: []` для всех тестов кроме `test_triumphs.py` / `test_triumphs_catalog.py`. Без этого fixture'а auto-hook срабатывал бы во всех integration тестах (web endpoint'ы / CLI flows) и мутировал `state.triumphs` лишними счётчиками → ломал fine-grained assertions.
@@ -448,13 +483,22 @@ Engine не поддерживает `count_mode='max'` напрямую — `co
    ```
 3. Тесты + changelog.
 
+### Что **НЕ нужно** менять при добавлении нового triumph'а / категории
+
+- **CLI menu** — `triumphs_menu.py` читает catalog dynamically (через `TRIUMPHS.items()` + `CATEGORIES.keys()`). Новый triumph автоматически появится в category view, новая категория — в main menu.
+- **Web UI** (`web/main.py:_build_triumphs_view` + template) — те же dynamic patterns. Новые entries автоматически рендерятся в banners / main section / Seals. Pin/Unpin/Claim buttons работают через generic endpoints.
+- **State schema** — `state.triumphs` это dict[str, dict] — новые ID просто добавляют entry на первом progress.
+- **Auto-hook** — `history.log_event` уже всё подключено через `register_event`/`check_seal_unlocks`.
+
+То есть для metric-based triumph: один edit в `triumphs_data.py:TRIUMPHS` + тесты = done. Для event-based: + проверить что нужный `log_event` уже вызывается. **Это by-design simplicity** — система спроектирована для быстрого расширения caталога без touchpoint'ов в UI или mutation modules.
+
 ---
 
 ## 13. Связанные документы
 
 - [`TASKS.md`](../TASKS.md) — секция «4.62. Triumphs» с полным breakdown подзадач (Phase 1-6, 23 granular tasks).
 - [`CLAUDE.md`](../CLAUDE.md) — module map entry `triumphs.py + triumphs_data.py + triumphs_menu.py` с архитектурным overview.
-- [`changelog.txt`](../changelog.txt) — версии 0.2.5j-v содержат подробное описание каждого этапа имплементации.
+- [`changelog.txt`](../changelog.txt) — версии 0.2.5j-y содержат подробное описание каждого этапа имплементации (foundation 0.2.5j-l, catalog 0.2.5m-t + 0.2.5w Iron Worker, pinned 0.2.5u, seals 0.2.5v, backfill UX 0.2.5x, web UI 0.2.5y).
 
 ---
 
@@ -467,4 +511,4 @@ Engine не поддерживает `count_mode='max'` напрямую — `co
 | **4.62.2.2 Active rewards** | Active abilities (Lucky Day, Streak Saver, Premium Shift) | blocked by 4.58 |
 | **4.62.5 Hidden** | `???` маска до unlock'а — surprise discovery | optional |
 | **4.62.6 Backfill UX** | `[b]` Sheets `history` cross-device + auto-fallback на local jsonl | **done (0.2.5x)** |
-| **4.62.7 Web UI** | Web section для Triumphs + pinned banner | ready |
+| **4.62.7 Web UI** | Web section для Triumphs + pinned banner + title badge + 10 endpoints | **done (0.2.5y)** |

@@ -2525,8 +2525,8 @@ def test_gym_skills_use_nested_details():
         response = client.get("/status")
     body = response.text
     gym_pos = body.find('id="gym"')
-    # Следующая секция после Gym = Bank (с 0.2.4w / 4.48.9), затем Bonuses.
-    next_section_pos = body.find('id="bank"', gym_pos)
+    # Следующая секция после Gym = Triumphs (с 0.2.5y / 4.62.7), затем Bank.
+    next_section_pos = body.find('id="triumphs"', gym_pos)
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
     # (после 0.2.4j / 4.22 — 20 навыков: + 3 energy_optimization_* после move_opt).
@@ -5103,4 +5103,202 @@ def test_equipment_section_shows_full_bonus_for_non_broken_item():
     # Не сломан → +10, без СЛОМАН marker.
     assert '+10' in head_row
     assert '🔨 СЛОМАН' not in head_row
+
+
+# ============================================================================
+# 4.62.7 — Triumphs Web UI (pinned banner + unclaimed banner + title badge +
+# main section с pin/claim/seal/backfill endpoints).
+# ============================================================================
+
+def test_dashboard_renders_triumphs_section_after_gym():
+    """Main Triumphs section с id="triumphs" присутствует в HTML."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    assert response.status_code == 200
+    body = response.text
+    # Section is between Gym and Bank.
+    gym_pos = body.find('id="gym"')
+    triumphs_pos = body.find('id="triumphs"')
+    bank_pos = body.find('id="bank"')
+    assert gym_pos < triumphs_pos < bank_pos
+
+
+def test_pinned_banner_visible_when_pinned():
+    """При пинне ≥1 triumph'а — banner над Stats."""
+    state = GameState.default_new_game()
+    state.pinned_triumphs = ['marathoner']
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'id="triumphs-pinned"' in body
+    # Marathoner name присутствует в pinned section.
+    pinned_pos = body.find('id="triumphs-pinned"')
+    pinned_section = body[pinned_pos:pinned_pos + 2000]
+    assert 'Marathoner' in pinned_section
+
+
+def test_pinned_banner_hidden_when_empty():
+    """Если ничего не запинено — banner отсутствует."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/status")
+    assert 'id="triumphs-pinned"' not in response.text
+
+
+def test_unclaimed_banner_visible_when_queue_nonempty():
+    """При unclaimed > 0 — banner с count + claim_all button."""
+    state = GameState.default_new_game()
+    state.unclaimed_unlocks = [
+        {'triumph_id': 'marathoner', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+        {'triumph_id': 'marathoner', 'tier': 2, 'unlocked_ts': 2.0, 'kind': 'triumph'},
+    ]
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    assert 'id="triumphs-unclaimed"' in body
+    assert '2 закрытых' in body
+    assert '/web/triumphs/claim_all' in body
+
+
+def test_title_badge_visible_in_stats_header():
+    """state.title non-None → badge 👑 <title> в Stats header."""
+    state = GameState.default_new_game()
+    state.title = 'Marathoner'
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/status")
+    body = response.text
+    # Badge в Stats header.
+    stats_pos = body.find('id="stats"')
+    stats_section = body[stats_pos:stats_pos + 1500]
+    assert '👑 Marathoner' in stats_section
+
+
+def test_web_pin_toggle_form():
+    """POST /web/triumphs/pin — pin/unpin toggle через form."""
+    _setup_state()
+    state = game.state
+    assert state.pinned_triumphs == []
+    with TestClient(app) as client:
+        # Pin
+        r1 = client.post("/web/triumphs/pin", data={"triumph_id": "marathoner"})
+        assert r1.status_code == 200
+        assert 'marathoner' in state.pinned_triumphs
+        # Unpin (toggle)
+        r2 = client.post("/web/triumphs/pin", data={"triumph_id": "marathoner"})
+        assert r2.status_code == 200
+        assert 'marathoner' not in state.pinned_triumphs
+
+
+def test_web_pin_cap_3_blocked():
+    """4-й pin при cap 3 → error message в triumphs_error, state не мутируется."""
+    state = GameState.default_new_game()
+    state.pinned_triumphs = ['marathoner', 'stamina', 'endurance']
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/web/triumphs/pin", data={"triumph_id": "adventurer"})
+    assert r.status_code == 200
+    # adventurer НЕ добавлен.
+    assert 'adventurer' not in state.pinned_triumphs
+    assert len(state.pinned_triumphs) == 3
+    # Error message в body.
+    assert '3 закреплено' in r.text
+
+
+def test_web_claim_form():
+    """POST /web/triumphs/claim — clear unclaimed entries для triumph'а."""
+    state = GameState.default_new_game()
+    state.unclaimed_unlocks = [
+        {'triumph_id': 'marathoner', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+    ]
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post(
+            "/web/triumphs/claim",
+            data={"triumph_id": "marathoner", "kind": "triumph"},
+        )
+    assert r.status_code == 200
+    assert state.unclaimed_unlocks == []
+
+
+def test_web_claim_all_form():
+    """POST /web/triumphs/claim_all — clear весь queue."""
+    state = GameState.default_new_game()
+    state.unclaimed_unlocks = [
+        {'triumph_id': 'marathoner', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+        {'triumph_id': 'stamina', 'tier': 2, 'unlocked_ts': 2.0, 'kind': 'triumph'},
+    ]
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/web/triumphs/claim_all")
+    assert r.status_code == 200
+    assert state.unclaimed_unlocks == []
+
+
+def test_api_pin_toggle_json():
+    """POST /api/triumphs/pin — JSON Pydantic mirror."""
+    _setup_state()
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/triumphs/pin",
+            json={"triumph_id": "marathoner"},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert "marathoner" in data["pinned"]
+
+
+def test_api_claim_json():
+    """POST /api/triumphs/claim — JSON Pydantic mirror."""
+    state = GameState.default_new_game()
+    state.unclaimed_unlocks = [
+        {'triumph_id': 'marathoner', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+    ]
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/triumphs/claim",
+            json={"triumph_id": "marathoner", "kind": "triumph"},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["unclaimed_count"] == 0
+
+
+def test_api_seal_toggle_rejects_locked():
+    """POST /api/triumphs/seal_toggle когда seal locked → 422."""
+    _setup_state()
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/triumphs/seal_toggle",
+            json={"cat_key": "steps"},
+        )
+    assert r.status_code == 422
+    data = r.json()
+    assert data["ok"] is False
+    assert 'не открыт' in data["error"]
+
+
+def test_web_seal_toggle_sets_title_when_unlocked(monkeypatch):
+    """Когда seal unlocked → toggle сетит/снимает state.title."""
+    import triumphs
+    # Mock is_seal_unlocked → True для cat='steps'
+    monkeypatch.setattr(triumphs, 'is_seal_unlocked',
+                        lambda s, k: True)
+    _setup_state()
+    state = game.state
+    with TestClient(app) as client:
+        # Надеть
+        r1 = client.post("/web/triumphs/seal_toggle", data={"cat_key": "steps"})
+        assert r1.status_code == 200
+        assert state.title == 'Marathoner'  # SEALS['steps']['name']
+        # Снять (toggle)
+        r2 = client.post("/web/triumphs/seal_toggle", data={"cat_key": "steps"})
+        assert r2.status_code == 200
+        assert state.title is None
 

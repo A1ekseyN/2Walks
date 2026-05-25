@@ -4693,15 +4693,19 @@ CLI shell для будущих категорий. Empty state когда catal
 
 ### Phase 5 — Web UI
 
-##### 4.62.7. Web section для Triumphs `[L / M / todo (blocked by ~5 категорий + 4.62.4)]`
+##### 4.62.7. Web section для Triumphs `[L / M / done (25.05.2026, 0.2.5y)]`
 
-Web-секция отображения Triumphs параллельно с CLI.
+Web parity с CLI. До 0.2.5y triumph'ы были visible ТОЛЬКО в CLI (команда `t`).
 
-- `<section id="triumphs">` в `_status_fragment.html` — collapsible details. Banner pinned triumphs (≤ 3) over collapsed section.
-- Pinned area сверху Stats (компактно — 3 строки с progress bars).
-- Pre-computed view: `web/main.py:_build_triumphs_view(state)` — list categories + progress + tier status.
-- Решить визуальный стиль progress: HTML `<progress>` (consistency с Level) или unicode `▰▱` (consistency с CLI).
-- При implementation 1.3.6 (web/main.py split) — `web/routes/triumphs.py` + `web/views/triumphs.py`.
+**Реализация:**
+- 3 слоя UI: top banners (unclaimed + pinned) над Stats, title badge в Stats header (float-right), main section `<section id="triumphs">` после Gym с sub-collapsibles per category + Seals sub-collapsible + Backfill button.
+- Pre-computed view: `web/main.py:_build_triumphs_view(state)` — nested dict с pinned_rows, unclaimed, categories (с triumph rows + pin/claim flags), seals, score/title.
+- Progress bars: HTML5 `<progress>` (consistency с Level — а не unicode ▰▱ как CLI).
+- 10 endpoints (5 web Form HTMX + 5 API JSON Pydantic): pin / claim (kind='triumph'|'seal') / claim_all / seal_toggle / backfill_sheets. STALE handling через `_persist_and_handle_stale`.
+- Pin cap UX в web: disabled button + tooltip (smart-replace prompt только в CLI).
+- 13 новых тестов в TestClient.
+
+**Отложено в 1.3.6 web/main.py split:** при выделении web/routes/ + web/views/ — `web/routes/triumphs.py` + `web/views/triumphs.py`.
 
 ---
 

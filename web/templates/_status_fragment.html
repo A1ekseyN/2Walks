@@ -98,9 +98,67 @@
 </section>
 {% endif %}
 
+{# 4.62.7 — Unclaimed banner (Destiny-2 claim queue). Visible если ≥1
+   unclaimed entry. Player должен явно нажать [✓ Собрать все] чтобы acknowledge. #}
+{% if triumphs_view.has_unclaimed %}
+<section id="triumphs-unclaimed" style="margin-bottom: 1rem;">
+    <article style="border-left: 4px solid #10b981; padding: 0.5rem 0.75rem; margin: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+                <strong>🎁 {{ triumphs_view.unclaimed.count }} закрытых не собрано</strong>
+                <small style="display: block; color: var(--pico-muted-color);">
+                    {{ triumphs_view.unclaimed.sample_names | join(', ') }}{% if triumphs_view.unclaimed.more > 0 %} и ещё {{ triumphs_view.unclaimed.more }}{% endif %}
+                </small>
+            </div>
+            <form hx-post="/web/triumphs/claim_all" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                <button type="submit" class="outline" style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                    ✓ Собрать все ({{ triumphs_view.unclaimed.count }})
+                </button>
+            </form>
+        </div>
+    </article>
+</section>
+{% endif %}
+
+{# 4.62.7 — Pinned banner (≤3 priority triumph'ов с progress bars). #}
+{% if triumphs_view.has_pinned %}
+<section id="triumphs-pinned" style="margin-bottom: 1rem;">
+    <article style="border-left: 4px solid #f59e0b; padding: 0.5rem 0.75rem; margin: 0;">
+        <header style="margin: 0 0 0.5rem 0;">
+            <strong>📌 Pinned ({{ triumphs_view.pinned_rows | length }}/3)</strong>
+        </header>
+        {% for p in triumphs_view.pinned_rows %}
+        <div style="margin: 0.4rem 0;">
+            <div class="stat-row" style="margin: 0;">
+                <span>
+                    <strong>{{ p.name }}</strong>{% if p.has_unclaimed %} <span title="Есть несобранные tier'ы">✨</span>{% endif %}
+                </span>
+                <span style="font-size: 0.85em;">
+                    {% if p.is_capstone %}
+                        <span style="color: #d97706;">🏆 Capstone ({{ p.total_tiers }}/{{ p.total_tiers }})</span>
+                    {% else %}
+                        {{ "{:,}".format(p.current_value) }} / {{ "{:,}".format(p.next_threshold) }}
+                        <small>(Tier {{ p.current_tier }}/{{ p.total_tiers }})</small>
+                    {% endif %}
+                </span>
+            </div>
+            <progress value="{{ p.progress_pct | int }}" max="100" style="width: 100%; height: 0.45rem; margin: 0;"></progress>
+        </div>
+        {% endfor %}
+    </article>
+</section>
+{% endif %}
+
 <section id="stats">
     <article>
-        <header><strong>📊 Stats</strong></header>
+        <header>
+            <strong>📊 Stats</strong>
+            {% if triumphs_view.title %}
+            <span style="float: right; font-size: 0.85em; color: #d97706;">
+                👑 {{ triumphs_view.title }}
+            </span>
+            {% endif %}
+        </header>
 
         {# Кликабельный блок Steps — клик открывает inline форму ввода (4.48.2). #}
         <div id="steps-section" class="{% if steps_form_open %}form-visible{% endif %}">
@@ -474,6 +532,134 @@
                 {% endfor %}
             </form>
         {% endif %}
+    </details>
+</section>
+
+{# 4.62.7 — Triumphs main section: categories + seals + backfill button.
+   Collapsible <details>, по default closed. Sub-collapsibles per category.
+   Pinned + Unclaimed уже в top-banners над Stats. Полная архитектура:
+   docs/triumphs.md. #}
+<section id="triumphs">
+    <details>
+        <summary>
+            🏆 <strong>Triumphs</strong>
+            <small>· Score: {{ triumphs_view.score }} · {{ triumphs_view.cat_count_done }}/{{ triumphs_view.cat_count_total }} категорий · {{ triumphs_view.seals_unlocked }}/{{ triumphs_view.seals_total }} seals</small>
+        </summary>
+
+        {% if triumphs_error %}
+        <small style="color: var(--pico-color-pumpkin-600, #b45309);">❌ {{ triumphs_error }}</small>
+        {% endif %}
+
+        {# Categories — каждая в своём sub-details. #}
+        {% for cat in triumphs_view.categories %}
+        <details class="triumph-category" style="margin-top: 0.5rem;">
+            <summary>
+                {{ cat.label }}
+                <small>· {{ cat.unlocked }}/{{ cat.total }}{% if cat.has_unclaimed %} <span title="Есть несобранные tier'ы">✨</span>{% endif %}</small>
+            </summary>
+            {% for t in cat.triumphs %}
+            <div style="border-bottom: 1px solid var(--pico-color-zinc-200, #e5e7eb); padding: 0.5rem 0;">
+                <div class="stat-row" style="margin: 0;">
+                    <span>
+                        <strong>{{ t.name }}</strong>{% if t.is_pinned %} <span title="Закреплён в pinned">📌</span>{% endif %}{% if t.has_unclaimed %} <span title="Несобранные tier'ы">✨</span>{% endif %}
+                    </span>
+                    <span style="font-size: 0.85em;">
+                        {% if t.is_capstone %}
+                            <span style="color: #d97706;">🏆 Capstone ({{ t.total_tiers }}/{{ t.total_tiers }})</span>
+                        {% else %}
+                            {{ "{:,}".format(t.current_value) }} / {{ "{:,}".format(t.next_threshold) }}
+                            <small>(Tier {{ t.current_tier }}/{{ t.total_tiers }})</small>
+                        {% endif %}
+                    </span>
+                </div>
+                <progress value="{{ t.progress_pct | int }}" max="100" style="width: 100%; height: 0.4rem; margin: 0.2rem 0;"></progress>
+                <div style="margin-top: 0.25rem; display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                    {# Pin/Unpin button — disabled if cap reached and not already pinned. #}
+                    {% if t.is_pinned %}
+                    <form hx-post="/web/triumphs/pin" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                        <input type="hidden" name="triumph_id" value="{{ t.id }}">
+                        <button type="submit" class="secondary outline"
+                                style="margin: 0; padding: 0.15rem 0.4rem; font-size: 0.75em;">
+                            📌 Открепить
+                        </button>
+                    </form>
+                    {% elif triumphs_view.pin_cap_reached %}
+                    <button type="button" disabled class="outline"
+                            title="Сначала открепи что-то ({{ triumphs_view.pinned_rows | length }}/3 pinned)"
+                            style="margin: 0; padding: 0.15rem 0.4rem; font-size: 0.75em; opacity: 0.5; cursor: not-allowed;">
+                        📌 Pin (3/3)
+                    </button>
+                    {% else %}
+                    <form hx-post="/web/triumphs/pin" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                        <input type="hidden" name="triumph_id" value="{{ t.id }}">
+                        <button type="submit" class="outline"
+                                style="margin: 0; padding: 0.15rem 0.4rem; font-size: 0.75em;">
+                            📌 Pin
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    {# Claim button — only if has unclaimed entries для этого triumph'а. #}
+                    {% if t.has_unclaimed %}
+                    <form hx-post="/web/triumphs/claim" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                        <input type="hidden" name="triumph_id" value="{{ t.id }}">
+                        <input type="hidden" name="kind" value="triumph">
+                        <button type="submit" class="contrast outline"
+                                style="margin: 0; padding: 0.15rem 0.4rem; font-size: 0.75em;">
+                            ✓ Собрать ({{ t.unclaimed_count }})
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </details>
+        {% endfor %}
+
+        {# Seals & Titles sub-section. #}
+        <details class="triumph-seals" style="margin-top: 0.5rem;">
+            <summary>
+                🏅 <strong>Seals & Titles</strong>
+                <small>· {{ triumphs_view.seals_unlocked }}/{{ triumphs_view.seals_total }} unlocked{% if triumphs_view.title %} · 👑 {{ triumphs_view.title }}{% endif %}</small>
+            </summary>
+            {% for seal in triumphs_view.seals %}
+            <div style="padding: 0.5rem 0; border-bottom: 1px solid var(--pico-color-zinc-200, #e5e7eb);">
+                <div class="stat-row" style="margin: 0;">
+                    <span>
+                        {{ seal.icon }} <strong>{{ seal.name }}</strong>{% if seal.is_worn %} <small style="color: #d97706;">(надет)</small>{% endif %}
+                    </span>
+                    <span style="font-size: 0.85em;">
+                        {% if seal.is_unlocked %}
+                            <span style="color: #059669;">✅ UNLOCKED</span>
+                        {% else %}
+                            <small>🔒 {{ seal.capstones_count }}/{{ seal.total_triumphs }} capstones</small>
+                        {% endif %}
+                    </span>
+                </div>
+                {% if seal.is_unlocked %}
+                <form hx-post="/web/triumphs/seal_toggle" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0.25rem 0 0 0;">
+                    <input type="hidden" name="cat_key" value="{{ seal.cat_key }}">
+                    <button type="submit" class="outline"
+                            style="margin: 0; padding: 0.15rem 0.4rem; font-size: 0.75em;">
+                        {% if seal.is_worn %}Снять{% else %}Носить{% endif %}
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </details>
+
+        {# 4.62.6 — Backfill button (Sheets cross-device). #}
+        <div style="margin-top: 1rem;">
+            <form hx-post="/web/triumphs/backfill_sheets" hx-target="#status-bar" hx-swap="innerHTML"
+                  hx-confirm="Backfill triumph counters из Sheets `history` (cross-device)? Может занять несколько секунд."
+                  style="margin: 0;">
+                <button type="submit" class="secondary outline"
+                        style="margin: 0; padding: 0.3rem 0.6rem; font-size: 0.85em;">
+                    🌐 Backfill из Sheets (cross-device)
+                </button>
+            </form>
+        </div>
     </details>
 </section>
 
