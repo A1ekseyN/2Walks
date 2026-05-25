@@ -452,3 +452,172 @@ def test_backfill_skips_corrupt_lines(mock_catalog, tmp_path):
     state = GameState.default_new_game()
     backfill_from_history(state, history_jsonl_path=str(history))
     assert state.triumphs['adventurer']['count'] == 2  # 2 valid events
+
+
+# ============================================================================
+# 4.62.4 — Unclaimed unlocks (claim mechanic)
+# ============================================================================
+
+from triumphs import (
+    append_unclaimed,
+    backfill_unclaimed_from_existing,
+    claim_all,
+    claim_triumph,
+    get_unclaimed_for,
+)
+
+
+class TestUnclaimedQueue:
+    """Tests for 4.62.4 claim queue."""
+
+    def test_append_adds_entry(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [{'triumph_id': 'foo', 'tier_index': 1}])
+        assert len(state.unclaimed_unlocks) == 1
+        assert state.unclaimed_unlocks[0]['triumph_id'] == 'foo'
+        assert state.unclaimed_unlocks[0]['tier'] == 1
+        assert 'unlocked_ts' in state.unclaimed_unlocks[0]
+
+    def test_append_dedupes(self):
+        """Same triumph_id+tier второй раз = no-op."""
+        state = GameState.default_new_game()
+        append_unclaimed(state, [{'triumph_id': 'foo', 'tier_index': 1}])
+        append_unclaimed(state, [{'triumph_id': 'foo', 'tier_index': 1}])
+        assert len(state.unclaimed_unlocks) == 1
+
+    def test_append_keeps_different_tiers(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 1},
+            {'triumph_id': 'foo', 'tier_index': 2},
+        ])
+        assert len(state.unclaimed_unlocks) == 2
+
+    def test_append_empty_noop(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [])
+        assert state.unclaimed_unlocks == []
+
+    def test_get_unclaimed_for_filters(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 1},
+            {'triumph_id': 'bar', 'tier_index': 1},
+            {'triumph_id': 'foo', 'tier_index': 2},
+        ])
+        assert len(get_unclaimed_for(state, 'foo')) == 2
+        assert len(get_unclaimed_for(state, 'bar')) == 1
+        assert get_unclaimed_for(state, 'baz') == []
+
+    def test_claim_triumph_removes_entries(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 1},
+            {'triumph_id': 'foo', 'tier_index': 2},
+            {'triumph_id': 'bar', 'tier_index': 1},
+        ])
+        count = claim_triumph(state, 'foo')
+        assert count == 2
+        assert len(state.unclaimed_unlocks) == 1
+        assert state.unclaimed_unlocks[0]['triumph_id'] == 'bar'
+
+    def test_claim_triumph_unknown_returns_zero(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [{'triumph_id': 'foo', 'tier_index': 1}])
+        count = claim_triumph(state, 'unknown')
+        assert count == 0
+        assert len(state.unclaimed_unlocks) == 1
+
+    def test_claim_all_clears_queue(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 1},
+            {'triumph_id': 'bar', 'tier_index': 1},
+        ])
+        count = claim_all(state)
+        assert count == 2
+        assert state.unclaimed_unlocks == []
+
+    def test_claim_all_empty_queue_zero(self):
+        state = GameState.default_new_game()
+        assert claim_all(state) == 0
+
+    def test_register_event_populates_unclaimed_via_helper(self, mock_catalog):
+        """register_event возвращает unlocks; auto-hook в history.log_event
+        push'ит их в unclaimed. Здесь тестируем что unlocks приходят правильной
+        формы для append_unclaimed."""
+        state = GameState.default_new_game()
+        state.steps.total_used = 100_000
+        unlocks = register_event(state, 'work_done', hours=1)
+        # Marathoner должен unlock tier 1+2 (10k, 100k).
+        marathoner_unlocks = [u for u in unlocks if u['triumph_id'] == 'marathoner']
+        assert len(marathoner_unlocks) == 2
+        # Симулируем auto-hook.
+        append_unclaimed(state, unlocks)
+        assert len(get_unclaimed_for(state, 'marathoner')) == 2
+
+
+class TestBackfillUnclaimedFromExisting:
+    """4.62.4 one-shot backfill для existing players."""
+
+    def test_synth_creates_entries_for_unlocked_tiers(self, mock_catalog):
+        """Existing player с unlocked tier'ами получает synth unclaimed
+        entries для каждого tier'а."""
+        state = GameState.default_new_game()
+        # Симулируем что Marathoner tier 2 уже unlocked.
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        count = backfill_unclaimed_from_existing(state)
+        # 2 unclaimed entries (tier 1 + tier 2).
+        assert count == 2
+        unclaimed = get_unclaimed_for(state, 'marathoner')
+        assert len(unclaimed) == 2
+        tiers = sorted(e['tier'] for e in unclaimed)
+        assert tiers == [1, 2]
+
+    def test_synth_skips_tier_zero(self, mock_catalog):
+        """Triumph с tier=0 (not unlocked) → no synth entries."""
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 0, 'unlocked_at': {}, 'count': 0}
+        count = backfill_unclaimed_from_existing(state)
+        assert count == 0
+        assert state.unclaimed_unlocks == []
+
+    def test_synth_idempotent(self, mock_catalog):
+        """Повторный вызов с уже-backfilled queue не создаёт duplicates
+        (dedupe в append_unclaimed)."""
+        state = GameState.default_new_game()
+        state.triumphs['marathoner'] = {'tier': 2, 'unlocked_at': {}, 'count': 0}
+        backfill_unclaimed_from_existing(state)
+        first_count = len(state.unclaimed_unlocks)
+        backfill_unclaimed_from_existing(state)
+        assert len(state.unclaimed_unlocks) == first_count
+
+
+class TestUnclaimedRoundTrip:
+    """4.62.4 round-trip через to_dict / from_dict."""
+
+    def test_to_dict_includes_unclaimed(self):
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 1},
+            {'triumph_id': 'bar', 'tier_index': 2},
+        ])
+        d = state.to_dict()
+        assert 'unclaimed_unlocks' in d
+        assert len(d['unclaimed_unlocks']) == 2
+
+    def test_from_dict_restores_unclaimed(self):
+        d = GameState.default_new_game().to_dict()
+        d['unclaimed_unlocks'] = [
+            {'triumph_id': 'foo', 'tier': 1, 'unlocked_ts': 1.0},
+        ]
+        state = GameState.from_dict(d)
+        assert len(state.unclaimed_unlocks) == 1
+        assert state.unclaimed_unlocks[0]['triumph_id'] == 'foo'
+
+    def test_legacy_save_no_unclaimed_field_defaults_empty(self):
+        """Сейв до 4.62.4 (без unclaimed_unlocks key) → default []."""
+        d = GameState.default_new_game().to_dict()
+        del d['unclaimed_unlocks']
+        state = GameState.from_dict(d)
+        assert state.unclaimed_unlocks == []

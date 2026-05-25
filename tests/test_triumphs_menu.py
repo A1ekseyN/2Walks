@@ -211,7 +211,9 @@ def test_open_menu_unknown_command_shows_error(monkeypatch, capsys):
 
 
 def test_open_menu_with_catalog_shows_categories(monkeypatch, capsys):
-    """Catalog с 1 triumph → отображается в category секции."""
+    """Catalog с 1 triumph → main menu показывает категорию (но НЕ имя
+    triumph'а — после 4.62.4 main menu только список категорий, имена
+    видны в category view)."""
     state = GameState.default_new_game()
     state.triumphs_backfill_dismissed = True
     state.steps.total_used = 50_000
@@ -230,7 +232,8 @@ def test_open_menu_with_catalog_shows_categories(monkeypatch, capsys):
     open_triumphs_menu(state)
     out = capsys.readouterr().out
     assert '🏃 Шаги' in out
-    assert 'Marathoner' in out
+    # Category counter shows (0/1) или (1/1) в зависимости от unlock'а.
+    assert '(0/1)' in out or '(1/1)' in out
 
 
 # --- _render_triumph_line ---
@@ -326,3 +329,178 @@ def test_pinned_status_bar_caps_at_3(monkeypatch):
     # Используем количество '▰' / '▱' секций как proxy для количества triumph lines.
     progress_lines = sum(1 for line in output.split('\n') if '▰' in line or '▱' in line)
     assert progress_lines == 3
+
+
+# ============================================================================
+# 4.62.4 — Pinned UI + Claim mechanic
+# ============================================================================
+
+class TestPinUnpinToggle:
+    """Pin/Unpin toggle через [1] в detail view."""
+
+    def setup_method(self, method):
+        # Mock save_characteristic to no-op (avoid Sheets calls in unit tests).
+        import persistence
+        self._orig_save = persistence.save_characteristic
+        persistence.save_characteristic = lambda: 'OK'
+
+    def teardown_method(self, method):
+        import persistence
+        persistence.save_characteristic = self._orig_save
+
+    def test_pin_adds_to_list(self, monkeypatch):
+        from triumphs_menu import _toggle_pin
+        catalog = {'foo': {'name': 'Foo', 'category': 'misc', 'tiers': [10],
+                            'metric': lambda s: 0}}
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+        import triumphs_menu
+        monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+        state = GameState.default_new_game()
+        _toggle_pin(state, 'foo')
+        assert state.pinned_triumphs == ['foo']
+
+    def test_unpin_removes_from_list(self, monkeypatch):
+        from triumphs_menu import _toggle_pin
+        catalog = {'foo': {'name': 'Foo', 'category': 'misc', 'tiers': [10],
+                            'metric': lambda s: 0}}
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+        import triumphs_menu
+        monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+        state = GameState.default_new_game()
+        state.pinned_triumphs = ['foo']
+        _toggle_pin(state, 'foo')
+        assert state.pinned_triumphs == []
+
+    def test_pin_cap_3_smart_replace_accept(self, monkeypatch):
+        """При попытке pin 4-го → prompt → выбираем '1' → replace."""
+        from triumphs_menu import _toggle_pin
+        catalog = {
+            'a': {'name': 'A', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+            'b': {'name': 'B', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+            'c': {'name': 'C', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+            'd': {'name': 'D', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+        }
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+        import triumphs_menu
+        monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+        state = GameState.default_new_game()
+        state.pinned_triumphs = ['a', 'b', 'c']
+        # User input '1' → replace position 1 (= 'a')
+        monkeypatch.setattr('builtins.input', lambda *a, **k: '1')
+        _toggle_pin(state, 'd')
+        assert state.pinned_triumphs == ['d', 'b', 'c']
+
+    def test_pin_cap_3_smart_replace_cancel(self, monkeypatch):
+        """При попытке pin 4-го → prompt → 'c' → no change."""
+        from triumphs_menu import _toggle_pin
+        catalog = {
+            'a': {'name': 'A', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+            'b': {'name': 'B', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+            'c': {'name': 'C', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+            'd': {'name': 'D', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+        }
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+        import triumphs_menu
+        monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+        state = GameState.default_new_game()
+        state.pinned_triumphs = ['a', 'b', 'c']
+        monkeypatch.setattr('builtins.input', lambda *a, **k: 'c')
+        _toggle_pin(state, 'd')
+        # No change.
+        assert state.pinned_triumphs == ['a', 'b', 'c']
+
+
+class TestClaimUI:
+    """Claim mechanic UI helpers."""
+
+    def setup_method(self, method):
+        import persistence
+        self._orig_save = persistence.save_characteristic
+        persistence.save_characteristic = lambda: 'OK'
+
+    def teardown_method(self, method):
+        import persistence
+        persistence.save_characteristic = self._orig_save
+
+    def test_do_claim_clears_unclaimed_for_triumph(self, monkeypatch, capsys):
+        from triumphs import append_unclaimed
+        from triumphs_menu import _do_claim
+        catalog = {'foo': {'name': 'Foo', 'category': 'misc', 'tiers': [10],
+                            'metric': lambda s: 0}}
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+        import triumphs_menu
+        monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+        state = GameState.default_new_game()
+        append_unclaimed(state, [{'triumph_id': 'foo', 'tier_index': 1}])
+        monkeypatch.setattr('builtins.input', lambda *a, **k: '')
+        _do_claim(state, 'foo')
+        assert state.unclaimed_unlocks == []
+        out = capsys.readouterr().out
+        assert 'Foo' in out
+        assert '1 tier' in out
+
+    def test_do_claim_all_clears_queue(self, monkeypatch, capsys):
+        from triumphs import append_unclaimed
+        from triumphs_menu import _do_claim_all
+        catalog = {
+            'foo': {'name': 'Foo', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+            'bar': {'name': 'Bar', 'category': 'misc', 'tiers': [10], 'metric': lambda s: 0},
+        }
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+        import triumphs_menu
+        monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+        state = GameState.default_new_game()
+        append_unclaimed(state, [
+            {'triumph_id': 'foo', 'tier_index': 1},
+            {'triumph_id': 'foo', 'tier_index': 2},
+            {'triumph_id': 'bar', 'tier_index': 1},
+        ])
+        monkeypatch.setattr('builtins.input', lambda *a, **k: '')
+        _do_claim_all(state)
+        assert state.unclaimed_unlocks == []
+        out = capsys.readouterr().out
+        assert '3 tier' in out
+
+
+class TestStatusBarUnclaimed:
+    """render_pinned_status_bar shows unclaimed banner."""
+
+    def test_unclaimed_banner_appears_when_queue_nonempty(self, monkeypatch):
+        from triumphs import append_unclaimed
+        from triumphs_menu import render_pinned_status_bar
+        catalog = {'foo': {'name': 'Foo', 'category': 'misc', 'tiers': [10],
+                            'metric': lambda s: 0}}
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+        import triumphs_menu
+        monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+        state = GameState.default_new_game()
+        append_unclaimed(state, [{'triumph_id': 'foo', 'tier_index': 1}])
+        out = render_pinned_status_bar(state)
+        assert '🎁' in out
+        assert '1 закрыто' in out
+        assert 'Foo' in out
+
+    def test_pinned_with_unclaimed_marker(self, monkeypatch):
+        """Pinned triumph с unclaimed entries показывает ✨ в строке."""
+        from triumphs import append_unclaimed
+        from triumphs_menu import render_pinned_status_bar
+        catalog = {'foo': {'name': 'Foo', 'category': 'misc', 'tiers': [10],
+                            'metric': lambda s: 0}}
+        monkeypatch.setattr(triumphs, 'TRIUMPHS', catalog)
+        import triumphs_menu
+        monkeypatch.setattr(triumphs_menu, 'TRIUMPHS', catalog)
+        state = GameState.default_new_game()
+        state.pinned_triumphs = ['foo']
+        append_unclaimed(state, [{'triumph_id': 'foo', 'tier_index': 1}])
+        out = render_pinned_status_bar(state)
+        # Pinned section header + triumph row.
+        assert 'Pinned' in out
+        # Both ✨ (unclaimed marker) и 📌 (pinned marker) присутствуют где-то.
+        assert '✨' in out
+        assert '📌' in out
+
+    def test_empty_when_no_pinned_no_unclaimed(self):
+        from triumphs_menu import render_pinned_status_bar
+        state = GameState.default_new_game()
+        out = render_pinned_status_bar(state)
+        assert out == ''

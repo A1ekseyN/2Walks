@@ -108,10 +108,15 @@ def log_event(event_type: str, **payload: Any) -> None:
     # 4.62.0.2 — Triumphs auto-hook. Lazy import чтобы избежать circular
     # (triumphs → triumphs_data → ... → potentially history). game state
     # читается lazy — если init_game_state ещё не отработал, no-op.
+    # 4.62.4 — Кроме register_event, добавляем unlocks в `unclaimed_unlocks`
+    # для Destiny-2 claim mechanic. Новые tier'ы ждут acknowledge через [c]
+    # в Triumphs detail view.
     try:
-        from triumphs import register_event
+        from triumphs import register_event, append_unclaimed
         from characteristics import game
         if game.state is not None:
-            register_event(game.state, event_type, **payload)
+            unlocks = register_event(game.state, event_type, **payload)
+            if unlocks:
+                append_unclaimed(game.state, unlocks)
     except Exception:  # noqa: BLE001 — triumph hook не должен ломать log_event
         pass

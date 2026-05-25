@@ -93,9 +93,22 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # (без необходимости ждать первого register_event через log_event).
     # Решает UX: открыл Triumphs menu → видишь unlock'и сразу, не «потыкай».
     # Silent-fail — triumphs не критичный feature.
+    # 4.62.4 (25.05.2026) — Newly unlocked tier'ы попадают в `unclaimed_unlocks`
+    # claim queue (нужно явно [c] прокликать в menu). + One-shot backfill
+    # uncliaimed для существующих pre-4.62.4 unlocks (synthesize entries для
+    # уже-unlocked tier'ов в state.triumphs, чтобы старые достижения тоже
+    # требовали acknowledge).
     try:
-        from triumphs import init_metric_check
-        init_metric_check(s)
+        from triumphs import init_metric_check, append_unclaimed, backfill_unclaimed_from_existing
+        # Сначала synth-backfill для старых unlocked tier'ов (только если
+        # queue пустой — это one-shot per save, после первого launch с 4.62.4
+        # queue будет non-empty или claim'нут).
+        if not s.unclaimed_unlocks:
+            backfill_unclaimed_from_existing(s)
+        # Теперь recheck metrics — может добавить новые unlocks которых ещё нет.
+        new_unlocks = init_metric_check(s)
+        if new_unlocks:
+            append_unclaimed(s, new_unlocks)
     except Exception:  # noqa: BLE001
         pass
 

@@ -259,6 +259,121 @@ def total_score(state) -> int:
     return total
 
 
+# --- 4.62.4 — Unclaimed unlocks (Destiny-2 claim mechanic) ---
+
+import time as _time
+
+
+def append_unclaimed(state, unlocks: list[dict]) -> None:
+    """Добавляет newly-unlocked tier'ы в `state.unclaimed_unlocks` (dedupe).
+
+    Каждый unlock `{triumph_id, tier_index, ...}` мапится в unclaimed entry
+    `{triumph_id, tier, unlocked_ts}`. Dedupe по `(triumph_id, tier)` — повторный
+    register_event для уже-unclaimed tier'а no-op (нет дублирования если у
+    игрока entry уже висит).
+
+    Используется из `history.log_event` auto-hook (после register_event),
+    из `init_metric_check` (startup auto-unlocks) и из `backfill_from_history`.
+    """
+    if state is None or not unlocks:
+        return
+    if not hasattr(state, 'unclaimed_unlocks') or state.unclaimed_unlocks is None:
+        state.unclaimed_unlocks = []
+    existing_keys = {
+        (e.get('triumph_id'), int(e.get('tier', 0)))
+        for e in state.unclaimed_unlocks
+    }
+    now_ts = _time.time()
+    for u in unlocks:
+        tid = u.get('triumph_id')
+        tier = int(u.get('tier_index', 0))
+        if not tid or (tid, tier) in existing_keys:
+            continue
+        state.unclaimed_unlocks.append({
+            'triumph_id': tid,
+            'tier': tier,
+            'unlocked_ts': now_ts,
+        })
+        existing_keys.add((tid, tier))
+
+
+def get_unclaimed_for(state, triumph_id: str) -> list[dict]:
+    """Возвращает список unclaimed entries для одного triumph'а (any tier).
+
+    Empty list если нет unclaimed для этого triumph'а. Используется UI для
+    показа ✨ marker'а + count в detail view.
+    """
+    if state is None or not state.unclaimed_unlocks:
+        return []
+    return [
+        e for e in state.unclaimed_unlocks
+        if e.get('triumph_id') == triumph_id
+    ]
+
+
+def claim_triumph(state, triumph_id: str) -> int:
+    """Помечает все unclaimed entries для triumph'а как claimed (удаляет их).
+
+    Returns count claimed tier'ов (для UI feedback).
+    """
+    if state is None or not state.unclaimed_unlocks:
+        return 0
+    before = len(state.unclaimed_unlocks)
+    state.unclaimed_unlocks = [
+        e for e in state.unclaimed_unlocks
+        if e.get('triumph_id') != triumph_id
+    ]
+    return before - len(state.unclaimed_unlocks)
+
+
+def claim_all(state) -> int:
+    """Claim все unclaimed entries за один раз.
+
+    Returns count claimed entries (для UI feedback).
+    """
+    if state is None or not state.unclaimed_unlocks:
+        return 0
+    count = len(state.unclaimed_unlocks)
+    state.unclaimed_unlocks = []
+    return count
+
+
+def backfill_unclaimed_from_existing(state) -> int:
+    """4.62.4 (one-shot для existing players): создаёт unclaimed entries для
+    всех уже-unlocked tier'ов в `state.triumphs` которых ещё нет в queue.
+
+    Используется при первом launch версии 4.62.4 для игроков у которых уже
+    есть unlocked triumph'ы (например Marathoner tier 3, Skill Master tier 2).
+    Без этого helper'а старые unlocks остались бы invisible — claim queue был
+    бы пустой, игрок никогда не «acknowledged» прошлые достижения.
+
+    Идемпотентен через dedupe в append_unclaimed (повторный вызов не создаёт
+    duplicates). Возвращает count добавленных entries.
+    """
+    if state is None:
+        return 0
+    synthetic_unlocks: list[dict] = []
+    for triumph_id, ts in (state.triumphs or {}).items():
+        unlocked_tier = int(ts.get('tier', 0))
+        if unlocked_tier <= 0:
+            continue
+        # Synthesize unlock entry для каждого tier'а 1..unlocked_tier.
+        spec = TRIUMPHS.get(triumph_id)
+        if spec is None:
+            continue
+        total_tiers = len(spec.get('tiers', []))
+        for tier_idx in range(1, unlocked_tier + 1):
+            synthetic_unlocks.append({
+                'triumph_id': triumph_id,
+                'tier_index': tier_idx,
+                'name': spec.get('name', triumph_id),
+                'is_capstone': tier_idx == total_tiers,
+            })
+    before = len(state.unclaimed_unlocks or [])
+    append_unclaimed(state, synthetic_unlocks)
+    return len(state.unclaimed_unlocks) - before
+
+
 # --- Progress bar formatter ---
 
 def _format_progress_bar(
@@ -418,12 +533,24 @@ def backfill_from_history(
         return {}
 
     # 3. Recheck все tier unlocks (event-based и metric-based) после backfill.
+    # 4.62.4 — Newly-unlocked tier'ы попадают в `unclaimed_unlocks` через
+    # append_unclaimed (для claim mechanic). Backfill через manual prompt =
+    # batch-credit за прошлую активность, игрок должен прокликать ack каждый.
     feedback = {}
+    all_new_unlocks: list[dict] = []
     for tid in event_based_ids:
-        spec_with_id = dict(TRIUMPHS[tid])
+        spec = TRIUMPHS[tid]
+        spec_with_id = dict(spec)
         spec_with_id['_id'] = tid
         current = _read_current_value(state, spec_with_id)
-        _check_tier_unlocks(state, tid, TRIUMPHS[tid], current)
+        newly = _check_tier_unlocks(state, tid, spec, current)
+        for tier_idx in newly:
+            all_new_unlocks.append({
+                'triumph_id': tid,
+                'tier_index': tier_idx,
+                'name': spec.get('name', tid),
+                'is_capstone': tier_idx == len(spec.get('tiers', [])),
+            })
         delta = state.triumphs[tid]['count'] - before_counts[tid]
         if delta != 0:
             feedback[tid] = delta
@@ -435,6 +562,16 @@ def backfill_from_history(
         spec_with_id = dict(spec)
         spec_with_id['_id'] = tid
         current = _read_current_value(state, spec_with_id)
-        _check_tier_unlocks(state, tid, spec, current)
+        newly = _check_tier_unlocks(state, tid, spec, current)
+        for tier_idx in newly:
+            all_new_unlocks.append({
+                'triumph_id': tid,
+                'tier_index': tier_idx,
+                'name': spec.get('name', tid),
+                'is_capstone': tier_idx == len(spec.get('tiers', [])),
+            })
+
+    # Push в unclaimed queue (dedupe inside append_unclaimed).
+    append_unclaimed(state, all_new_unlocks)
 
     return feedback

@@ -228,6 +228,15 @@ class GameState:
     # Default False для legacy сейвов (prompt появится один раз).
     triumphs_backfill_dismissed: bool = False
 
+    # 4.62.4 — Unclaimed triumph unlocks (Destiny-2 style claim mechanic).
+    # Список dict'ов `{triumph_id: str, tier: int, unlocked_ts: float}` —
+    # tier'ы которые unlock'нулись но игрок ещё не зашёл в detail view и
+    # не нажал «Собрать». Status_bar показывает count + имена. Когда игрок
+    # claim'ит — entry удаляется. Назначение — заставить игрока acknowledge
+    # достижения (без этого triumph закрывается в фоне без emotional payoff).
+    # Round-trip через flat-key 'unclaimed_unlocks' ([] для legacy).
+    unclaimed_unlocks: list[dict] = field(default_factory=list)
+
     # 4.54.1 — Optimistic concurrency через timestamp. `last_modified` —
     # Unix-ts момента последнего успешного save в Sheets; round-trip'ится
     # как обычное поле. На load в Sheets отсутствующий ключ → default 0.0
@@ -429,6 +438,7 @@ class GameState:
             title=d.get('title') if d.get('title') else None,
             # 4.62.0.2 — backfill dismiss flag, default False для legacy.
             triumphs_backfill_dismissed=bool(d.get('triumphs_backfill_dismissed') or False),
+            unclaimed_unlocks=list(d.get('unclaimed_unlocks') or []),
             # 4.54.1 — Optimistic concurrency timestamp. Default 0.0 для legacy
             # сейвов до 4.54 — первый save_safe запишет реальный time.time().
             last_modified=float(d.get('last_modified') or 0.0),
@@ -466,6 +476,7 @@ class GameState:
         self.title = new.title
         # 4.62.0.2 — backfill dismiss flag.
         self.triumphs_backfill_dismissed = new.triumphs_backfill_dismissed
+        self.unclaimed_unlocks = new.unclaimed_unlocks
         # 4.54.1 — last_modified подхватывается из свежего load'а Sheets.
         # last_loaded_snapshot обновлять здесь нельзя — caller (try_reload_state
         # или init_game_state) должен явно вызвать take_snapshot() после того
@@ -594,6 +605,7 @@ class GameState:
             'title': self.title,
             # 4.62.0.2 — backfill prompt dismiss flag.
             'triumphs_backfill_dismissed': self.triumphs_backfill_dismissed,
+            'unclaimed_unlocks': self.unclaimed_unlocks,
 
             # 4.54.1 — Optimistic concurrency timestamp (round-trip с Sheets).
             # `last_loaded_snapshot` НЕ сериализуется — runtime-only diff helper.

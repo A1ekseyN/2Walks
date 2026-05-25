@@ -4614,16 +4614,29 @@ CLI shell для будущих категорий. Empty state когда catal
 
 **Тесты:** все tiers категории unlock → seal triggers, title в state.
 
-##### 4.62.4. Pinned / Tracked triumphs `[L / S / todo (blocked by 4.62.0.3)]`
+##### 4.62.4. Pinned / Tracked + Claim mechanic `[L / S / done (25.05.2026, 0.2.5u — расширена claim queue)]`
 
-**Заменяет custom Goals из 4.44.** Игрок выбирает 1-3 триумфа для приоритетного показа.
+**Заменяет custom Goals из 4.44.** Объединена с **Destiny-2 Claim mechanic** (изначально не была частью task'а, добавлено в обсуждении 25.05.2026).
 
+**Pinned (как изначально планировалось):**
 - `state.pinned_triumphs: list[str]` (cap = 3).
-- UI: в меню Triumphs — кнопка `📌 Pin / Unpin` на каждом триумфе.
-- Display: pinned триумфы видны крупнее в начале меню; секция в status_bar (compact view: 3 строки с progress bars).
-- При unlock pinned-триумфа toast становится более заметным.
+- Pin/Unpin toggle в Detail view через `[1]` (CLI на цифрах).
+- Smart replace prompt при попытке pin 4-го: «У тебя уже 3 закреплено. Какой заменить?»
+- Auto-unpin на capstone = НЕТ (capstone остаётся как trophy в pinned).
+- Display: pinned section в начале menu + в status_bar (через `render_pinned_status_bar`).
 
-**Тесты:** pin / unpin, cap=3, persistence.
+**Claim mechanic (добавлено 25.05.2026):**
+- `state.unclaimed_unlocks: list[dict]` — queue tier'ов которые unlocked но не acknowledged.
+- Engine API в `triumphs.py`: `append_unclaimed` (dedupe), `get_unclaimed_for`, `claim_triumph`, `claim_all`, `backfill_unclaimed_from_existing`.
+- Auto-hook в `history.log_event`: каждый unlock → push в queue.
+- One-shot backfill в `init_game_state` для existing players — synth entries для уже-unlocked tier'ов в state.triumphs (option b).
+- UI: `[c] ✓ Собрать (N)` в Detail view + `[a] ✓ Собрать все (N)` в Main menu.
+- Visual markers: ✨ на triumph line / на category в Main menu / на pinned line.
+- Status bar banner: «🎁 N закрыто: имя1, имя2, имя3 (и ещё X) — открой [t]».
+
+**CLI 3-level navigation rewrite:** main menu → category view → detail view. До 4.62.4 было flat list всех triumph'ов без drill-down.
+
+**Тесты:** 25 новых (17 engine + 8 UI). Pin/Unpin, cap=3 + smart replace, claim single/all, backfill_from_existing, round-trip unclaimed, status bar markers.
 
 ---
 
