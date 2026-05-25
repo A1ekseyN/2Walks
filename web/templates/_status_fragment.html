@@ -994,7 +994,7 @@
     <details>
         <summary>
             🏆 <strong>Triumphs</strong>
-            <small>· Score: {{ triumphs_view.score }} · {{ triumphs_view.cat_count_done }}/{{ triumphs_view.cat_count_total }} категорий · {{ triumphs_view.seals_unlocked }}/{{ triumphs_view.seals_total }} seals</small>
+            <small>· Score: {{ triumphs_view.score }} · {{ triumphs_view.total_tier_unlocks }}/{{ triumphs_view.total_tier_slots }} tiers · {{ triumphs_view.seals_unlocked }}/{{ triumphs_view.seals_total }} seals</small>
         </summary>
 
         {% if triumphs_error %}
@@ -1006,7 +1006,7 @@
         <details class="triumph-category" style="margin-top: 0.5rem; background: rgba(59, 130, 246, 0.04); border-left: 3px solid #3b82f6; border-radius: 6px; padding: 0.4rem 0.6rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);">
             <summary>
                 {{ cat.label }}
-                <small>· {{ cat.unlocked }}/{{ cat.total }}{% if cat.has_unclaimed %} <span title="Есть несобранные tier'ы">✨</span>{% endif %}</small>
+                <small>· {{ cat.unlocked_tiers }}/{{ cat.total_tiers }}{% if cat.has_unclaimed %} <span title="Есть несобранные tier'ы">✨</span>{% endif %}</small>
             </summary>
             {% for t in cat.triumphs %}
             <div style="border-bottom: 1px solid var(--pico-color-zinc-200, #e5e7eb); padding: 0.5rem 0;">

@@ -3189,6 +3189,14 @@ def _build_triumphs_view(state) -> dict:
         ])
         triumphs_list = []
         unlocked_count = 0
+        # 4.62.7.2 — Tier-level counts (vs triumph-level в `unlocked`/`total`).
+        # 4.62.7.3 (refinement 25.05.2026): теперь считаем **claimed** tiers
+        # (= unlocked - unclaimed), не просто unlocked. User feedback:
+        # «логичнее показывать 0/5 пока не собрал». Когда игрок claim'нет —
+        # count растёт. Match с UX: ✨ marker сигналит «есть несобранные»,
+        # number растёт по мере acknowledge.
+        claimed_tiers_count = 0
+        total_tiers_count = 0
         for tid in triumph_ids:
             p = get_progress(state, tid)
             if p is None:
@@ -3196,6 +3204,11 @@ def _build_triumphs_view(state) -> dict:
             if p['current_tier'] > 0:
                 unlocked_count += 1
             unclaimed_count = len(get_unclaimed_for(state, tid))
+            # Claimed = unlocked - unclaimed. Negative impossible
+            # (clamp 0 как safety если данные неконсистентны).
+            claimed_for_triumph = max(0, p['current_tier'] - unclaimed_count)
+            claimed_tiers_count += claimed_for_triumph
+            total_tiers_count += p['total_tiers']
             triumphs_list.append({
                 'id': tid,
                 'name': p['name'],
@@ -3216,6 +3229,13 @@ def _build_triumphs_view(state) -> dict:
             'label': cat_meta.get('label', cat_key.title()),
             'unlocked': unlocked_count,
             'total': len(triumph_ids),
+            # 4.62.7.2/3 — Claimed tier progress (= unlocked - unclaimed)
+            # used в category label. Растёт по мере того как игрок click'ает
+            # claim buttons. Total = max possible tiers в категории.
+            # Field name `unlocked_tiers` kept для backwards-compat с template,
+            # но semantic теперь "claimed" (см. comment выше).
+            'unlocked_tiers': claimed_tiers_count,
+            'total_tiers': total_tiers_count,
             'has_unclaimed': any(t['has_unclaimed'] for t in triumphs_list),
             'triumphs': triumphs_list,
         })
@@ -3254,6 +3274,9 @@ def _build_triumphs_view(state) -> dict:
         1 for c in categories_view if c['unlocked'] == c['total']
     )
     seals_unlocked = sum(1 for s in seals_list if s['is_unlocked'])
+    # 4.62.7.2 — Sum tier unlocks across categories (для top header label).
+    total_tier_unlocks = sum(c['unlocked_tiers'] for c in categories_view)
+    total_tier_slots = sum(c['total_tiers'] for c in categories_view)
 
     return {
         'score': total_score(state),
@@ -3267,6 +3290,9 @@ def _build_triumphs_view(state) -> dict:
         'cat_count_total': len(categories_view),
         'seals_unlocked': seals_unlocked,
         'seals_total': len(seals_list),
+        # 4.62.7.2 — Granular tier counts для top header.
+        'total_tier_unlocks': total_tier_unlocks,
+        'total_tier_slots': total_tier_slots,
         'has_pinned': len(pinned_rows) > 0,
         'has_unclaimed': len(unclaimed) > 0,
     }

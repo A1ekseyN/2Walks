@@ -29,7 +29,7 @@ Trigger (action) → Triumph progress → Capstone (last tier) → Seal → Titl
 - **Claim queue** (4.62.4) — новые tier-unlocks требуют **явного acknowledge** через menu (Destiny-2 паттерн «нашёл — нужно собрать»).
 - **Score** — каждый unlocked tier даёт `POINTS_PER_TIER` (10) очков → суммарный `total_score(state)`.
 
-**Не входит** в систему на момент 0.2.5z: gameplay-бонусы за capstones (Phase 4 — задача 4.62.2.1, **deferred** 25.05.2026 до balance design), Hidden triumphs (4.62.5). Web UI **добавлен** в 0.2.5y (4.62.7) — параллельная вёрстка к CLI menu, **UX-polished** в 0.2.5z (4.62.7.1 — per-tier claim + section перенесена в конец dashboard'а).
+**Не входит** в систему на момент 0.2.6: gameplay-бонусы за capstones (Phase 4 — задача 4.62.2.1, **deferred** 25.05.2026 до balance design), Hidden triumphs (4.62.5). Web UI **добавлен** в 0.2.5y (4.62.7) — параллельная вёрстка к CLI menu, **UX-polished** в 0.2.5z (4.62.7.1 — per-tier claim + section перенесена в конец dashboard'а) и **дополнительно** в 0.2.6 (4.62.7.2/3 — claimed tier counts в category labels: `🏃 Шаги · 3/5` вместо misleading `1/1`, growing по мере claim'ов).
 
 ---
 
@@ -209,6 +209,12 @@ Destiny-2 паттерн: при unlock игрок видит индикатор
 5. После claim: `🎉 Marathoner: Tier 1 собран! Score: 280 (ещё 2 осталось)` + одна entry удаляется из queue + persist + re-render обновляет label на следующий tier.
 
 **Per-tier semantic (4.62.7.1 / 0.2.5z):** один клик = один tier (oldest first). Раньше (0.2.5u..0.2.5y) клик `[✓ Собрать (3)]` clear'ил все 3 tier'а одним batch'ем — заменено на per-tier для emotional payoff каждого acknowledgment (Destiny-2 style). Sort order для «oldest»: `unlocked_ts ASC, tier ASC` (если несколько tier'ов unlocked одним batch register_event — берётся меньший tier).
+
+**Claimed tier counts в category labels (4.62.7.2/3 / 0.2.6):** category sub-collapsible label показывает **claimed tiers** (= `current_tier - unclaimed_count` per triumph, summed по категории) / total possible tiers. Marathoner tier 3/5 с 3 unclaimed → `🏃 Шаги · 0/5 ✨`. После claim_all → `3/5`. Реализовано в `_build_triumphs_view` (web) + `_category_counts` (CLI) — both consistent. Эволюция через 2 шага: (1) 4.62.7.2 сменил triumph count на tier count (`1/1` → `3/5`); (2) 4.62.7.3 уточнил — counter показывает **claimed** не **unlocked** (по user feedback «логичнее 0/5 пока не собрал»).
+
+**Synth-backfill anti-loop + persist (4.62.4.1 fix / 0.2.6):** real-world incident — у Oleksii state.triumphs содержал 17 unlocked tier'ов но `unclaimed_unlocks` был пустой → banner никогда не появлялся. Root cause: `init_game_state` делал synth backfill в RAM, но **не persist'ил** → первый GET / web вызывал `try_reload_state.update_from_dict(Sheets)` который OVERRIDES RAM значением [] из Sheets → 17 entries silently теряются. Fix двойной:
+- **Persist after init backfill** — `characteristics.init_game_state` если `synth_added > 0` → immediate `save_characteristic()` (silent-fail). Закрывает race.
+- **Anti-loop marker** `state.triumphs['__synth_done__']['done']` ставится после первого `backfill_unclaimed_from_existing`. Backfill runs только если marker NOT set. Без него после user claim_all → следующий restart re-populates queue (infinite loop). С marker'ом — true one-shot, queue остаётся empty после первого claim_all.
 
 **Batch claim:** в main menu отдельная кнопка `[a] ✓ Собрать все (N)` clear'ит весь queue (через `claim_all`) — для quick-clear при большом backfill (17 unlocks прокликивать по одному нудно).
 
@@ -513,7 +519,7 @@ Engine не поддерживает `count_mode='max'` напрямую — `co
 
 - [`TASKS.md`](../TASKS.md) — секция «4.62. Triumphs» с полным breakdown подзадач (Phase 1-6, 23 granular tasks).
 - [`CLAUDE.md`](../CLAUDE.md) — module map entry `triumphs.py + triumphs_data.py + triumphs_menu.py` с архитектурным overview.
-- [`changelog.txt`](../changelog.txt) — версии 0.2.5j-z содержат подробное описание каждого этапа имплементации (foundation 0.2.5j-l, catalog 0.2.5m-t + 0.2.5w Iron Worker, pinned 0.2.5u, seals 0.2.5v, backfill UX 0.2.5x, web UI 0.2.5y, per-tier claim + section move 0.2.5z).
+- [`changelog.txt`](../changelog.txt) — версии 0.2.5j..0.2.6 содержат подробное описание каждого этапа имплементации (foundation 0.2.5j-l, catalog 0.2.5m-t + 0.2.5w Iron Worker, pinned 0.2.5u, seals 0.2.5v, backfill UX 0.2.5x, web UI 0.2.5y, per-tier claim + section move 0.2.5z, **0.2.6:** UX polish + critical synth-backfill fix + claimed tier counts).
 
 ---
 
@@ -528,3 +534,5 @@ Engine не поддерживает `count_mode='max'` напрямую — `co
 | **4.62.6 Backfill UX** | `[b]` Sheets `history` cross-device + auto-fallback на local jsonl | **done (0.2.5x)** |
 | **4.62.7 Web UI** | Web section для Triumphs + pinned banner + title badge + 10 endpoints | **done (0.2.5y)** |
 | **4.62.7.1 Web UX polish** | Per-tier claim (один клик = один tier oldest first) + section move в конец dashboard'а | **done (0.2.5z)** |
+| **4.62.7.2/3 Category labels** | Claimed tier counts (`3/5` вместо `1/1`); growing по мере claim'ов | **done (0.2.6)** |
+| **4.62.4.1 Synth-backfill fix** | Persist after init + anti-loop flag — fix critical race где 17 backfilled entries silently терялись на первом GET / | **done (0.2.6)** |

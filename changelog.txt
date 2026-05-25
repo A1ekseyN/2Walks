@@ -11,6 +11,24 @@ Version: 0.2.6 (25.05.2026):
   2. **Anti-loop flag** — новый marker `state.triumphs['__synth_done__']['done']` в `triumphs.py:backfill_unclaimed_from_existing`. Backfill runs только если flag NOT set. Без flag после user claim_all → следующий restart re-populates queue (infinite loop). С flag — true one-shot, queue остаётся empty после первого claim_all.
   3. **Skip pseudo-entries в synthesis** — `__seal__` / `__synth_done__` теперь skipped (раньше могли создавать invalid entries в queue если кто-то не следил за `if triumph_id.startswith('__')`).
   **Cost:** +1 Sheets save на startup для existing players (only-once per save lifecycle через flag). Brand-new players без unlocked tier'ов — flag set, no entries, no extra Sheets write. **Что увидит Oleksii после deploy 0.2.6:** restart → init → backfill 17 entries + flag set → persist в Sheets → первый F5 на iPhone web → banner «🎁 17 закрытых не собрано: Marathoner, Skill Master, Stamina и ещё 14 — открой [t]» появится. Можно прокликать per-tier или batch через [✓ Собрать все]. **Тесты:** 3 новых в `tests/test_triumphs.py::TestBackfillUnclaimedFromExisting` — `test_synth_flag_set_after_run`, `test_synth_skipped_after_user_claim_all` (verify anti-loop), `test_synth_skips_pseudo_entries`. 1298 passed, mypy 0 issues.
+- Feature (task 4.62.7.2/3 — claimed tier counts в category labels): эволюция в 2 шага после live testing 0.2.6:
+  - **4.62.7.2:** раньше `🏃 Шаги · 1/1` означало «1 of 1 triumph has any progress» — но Marathoner был на Tier 3/5 (60% сделано), а label показывал misleading «всё done». Сменил на tier counts → `3/5` (sum unlocked tiers / max tiers).
+  - **4.62.7.3 (refinement):** user feedback — «логичнее показывать 0/5 пока не собрал, а потом 1/5, 2/5, 3/5 по мере claim'ов». Counter теперь считает **claimed** tiers (= unlocked - unclaimed). Match с UX: ✨ marker сигналит «есть несобранные», число растёт по мере acknowledge через `[✓ Собрать tier N]` или `[✓ Собрать все]`.
+  **Changes:**
+  - `web/main.py:_build_triumphs_view` — per-category `unlocked_tiers` + `total_tiers` (sum по triumph'ам категории) + top-level `total_tier_unlocks` + `total_tier_slots`.
+  - `web/templates/_status_fragment.html` — category sub-collapsible label: `{{ unlocked_tiers }}/{{ total_tiers }}` (был `{{ unlocked }}/{{ total }}` triumphs). Top header: «Score: 210 · 17/196 tiers · 0/5 seals» (был «1/5 категорий» — misleading).
+  - `triumphs_menu.py:_category_counts` — return signature тот же `(int, int)`, но semantic переключён на tier counts. CLI menu автоматически подхватывает.
+  **Example для Oleksii state (17 unlocked, 0 claimed):**
+  ```
+  Until user claims:                  After claim_all:
+  🏃 Шаги · 0/5 ✨                   🏃 Шаги · 3/5
+  🗺 Приключения · 0/40 ✨           🗺 Приключения · 2/40
+  🏋 Тренировки · 0/105 ✨           🏋 Тренировки · 12/105
+  🏭 Работа · 0/30                   🏭 Работа · 0/30
+  🔋 Энергия · 0/16                  🔋 Энергия · 0/16
+  Total: 0/196 tiers · 0/5 seals     Total: 17/196 tiers · 0/5 seals
+  ```
+  (До 4.62.7.2 — `1/1`, `2/8`, `8/21`, `0/6`, `0/4` — misleading triumph count.)
 - **Note:** version bump с 0.2.5z до 0.2.6 — исчерпали letter suffix в 0.2.5 series (a..z, 26 итераций над Triumphs feature + предыдущие). Следующая фаза работы (4.62.2.1 Bonuses когда balance ready / Phase 2 catalog completion / etc) пойдёт в 0.2.6 series.
 
 Version: 0.2.5z (25.05.2026):

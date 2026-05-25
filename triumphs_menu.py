@@ -211,14 +211,26 @@ def _render_triumph_line(state, triumph_id: str) -> str:
 
 
 def _category_counts(state, cat_key: str) -> tuple[int, int]:
-    """Returns (unlocked_count, total_count) для category."""
+    """4.62.7.2/3 (25.05.2026) — Returns (claimed_tiers, total_tiers) для
+    category. Эволюция:
+    - До 0.2.6: возвращал (triumphs_with_progress, total_triumphs) — misleading
+      (Marathoner tier 3/5 показывался как `1/1`).
+    - 4.62.7.2: tier counts (`3/5` для Marathoner tier 3/5).
+    - 4.62.7.3: **claimed** tier counts (= unlocked - unclaimed) — отражает
+      реально acknowledge'нутые игроком tier'ы, не просто unlocked. Пока есть
+      ✨ marker (unclaimed entries), число растёт по мере claim'ов.
+    """
     triumph_ids = [tid for tid, spec in TRIUMPHS.items() if spec.get('category') == cat_key]
-    total = len(triumph_ids)
-    unlocked = sum(
-        1 for tid in triumph_ids
-        if int(state.triumphs.get(tid, {}).get('tier', 0)) > 0
+    claimed_tiers = 0
+    for tid in triumph_ids:
+        unlocked = int(state.triumphs.get(tid, {}).get('tier', 0))
+        unclaimed = len(get_unclaimed_for(state, tid))
+        claimed_tiers += max(0, unlocked - unclaimed)
+    total_tiers = sum(
+        len(TRIUMPHS[tid].get('tiers', []))
+        for tid in triumph_ids
     )
-    return unlocked, total
+    return claimed_tiers, total_tiers
 
 
 def _category_has_unclaimed(state, cat_key: str) -> bool:

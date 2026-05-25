@@ -232,8 +232,12 @@ def test_open_menu_with_catalog_shows_categories(monkeypatch, capsys):
     open_triumphs_menu(state)
     out = capsys.readouterr().out
     assert '🏃 Шаги' in out
-    # Category counter shows (0/1) или (1/1) в зависимости от unlock'а.
-    assert '(0/1)' in out or '(1/1)' in out
+    # 4.62.7.2 — Category counter shows (unlocked_tiers/total_tiers).
+    # Marathoner [10k, 100k, 1M] = 3 tiers total. state.triumphs пустой
+    # (init_metric_check не вызывается в этом test setup) → '(0/3)'.
+    # До 0.2.6 показывал '(1/1)' (triumph count). Главное verify что формат
+    # стал X/3 (tier count), не X/1 (triumph count).
+    assert '(0/3)' in out
 
 
 # --- _render_triumph_line ---

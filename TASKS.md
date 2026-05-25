@@ -4717,6 +4717,34 @@ Web parity с CLI. До 0.2.5y triumph'ы были visible ТОЛЬКО в CLI (
 
 **Тесты:** 8 новых в `tests/test_triumphs.py` (TestClaimOneTier 5 + TestNextUnclaimedTier 3) + updates: `test_dashboard_renders_triumphs_section_at_bottom` (was after_gym), `test_gym_skills_use_nested_details` (next after Gym теперь Bank), `test_web_claim_form_one_tier`, `test_api_claim_json_one_tier`.
 
+##### 4.62.7.2 / 4.62.7.3. Category labels: tier counts → claimed counts `[L / XS / done (25.05.2026, 0.2.6)]`
+
+После live testing 0.2.5z user feedback: «`🏃 Шаги · 1/1` misleading — Marathoner на Tier 3/5, а label показывает «всё done»». Эволюция в 2 шага:
+
+- **4.62.7.2:** category sub-collapsible label сменён с `unlocked_count/total_triumphs` на **`unlocked_tiers/total_tiers`** (sum tiers по triumph'ам). `🏃 Шаги · 1/1` → `3/5`. Top header `N/5 категорий` → `X/Y tiers · 0/5 seals`.
+- **4.62.7.3 (refinement):** второй user feedback — «логичнее показывать 0/5 пока не собрал, а потом 1/5..3/5 по мере claim'ов». Counter теперь = **claimed** tiers (= `current_tier - unclaimed_count` per triumph, summed). Marathoner с 3 unclaimed → `🏃 Шаги · 0/5 ✨`; после `claim_all` → `3/5`. Match с UX — number растёт по мере acknowledge через `[✓ Собрать tier N]` или `[✓ Собрать все]`.
+
+**Изменения:**
+- `web/main.py:_build_triumphs_view` — per-triumph `claimed_for_triumph = max(0, current_tier - unclaimed_count)` + top-level `total_tier_unlocks` / `total_tier_slots`.
+- `web/templates/_status_fragment.html` — category label + top header использует tier counts.
+- `triumphs_menu.py:_category_counts` — CLI symmetrично переключён на claimed semantic.
+
+##### 4.62.4.1. Synth-backfill fix: persist after init + anti-loop flag `[H / S / done (25.05.2026, 0.2.6)]`
+
+**Critical real-world incident 25.05.2026:** у Oleksii `state.triumphs` содержит 17 unlocked tier'ов (score 170 ✓), но `unclaimed_unlocks: []` → banner «🎁 N закрытых не собрано» никогда не появлялся.
+
+**Root cause:** race в `init_game_state` ↔ `web/sync.try_reload_state`:
+1. Server startup → `init_game_state` → `backfill_unclaimed_from_existing(s)` синтезирует 17 entries **в RAM**.
+2. Первый GET / → `try_reload_state` → `game.state.update_from_dict(GameStateRepo().load())` — overrides RAM значением из Sheets (где queue ещё []).
+3. Backfilled 17 entries silently потеряны на каждом restart'е.
+
+**Fix (двойной):**
+- **Persist after init backfill** в `characteristics.init_game_state` — если `synth_added > 0` → immediate `save_characteristic()` (silent-fail). Закрывает race до того как `try_reload_state` сможет override.
+- **Anti-loop flag** `state.triumphs['__synth_done__']['done']` в `backfill_unclaimed_from_existing`. Backfill runs только если flag NOT set. Без него после user `claim_all` следующий restart re-populates queue (infinite loop, queue не очистить). С flag — true one-shot.
+- Bonus: skip pseudo-entries (`__seal__`, `__synth_done__`) в synthesis.
+
+**Cost:** +1 Sheets save на startup для existing players (only-once через flag). **Тесты:** 3 новых в `tests/test_triumphs.py::TestBackfillUnclaimedFromExisting` (flag set after run, skipped after claim_all, skip pseudo-entries).
+
 ---
 
 ### Phase 6 — Optional / deferred
