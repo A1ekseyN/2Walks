@@ -117,38 +117,34 @@ class Adventure:
               '\n🎁 Могут выпасть: ring · necklace · helmet · shoes · t-shirt (по ~20% каждый).')
 
         print('\nДоступные приключения: ')
+        # 4.34 — data-driven рендер цепочки разблокировки. Прогресс-бар (как в
+        # Triumphs, глифы ▰▱) показывается только у ПЕРВОЙ запертой прогулки
+        # (реально прокачиваемой); более глубокие — просто «🔒 заблокировано».
+        from adventure_data import (
+            ADVENTURE_PREREQ, ADVENTURE_RU_LABELS, ADVENTURE_UNLOCK_THRESHOLD,
+        )
+        from triumphs import _format_progress_bar
+
         counters = state.adventure.counters
-        print(f'\t1. Прогулка вокруг озера: {self.get_adventure_requirement("walk_easy")} - (Награда: {self._format_reward("walk_easy")})')
-
-        if counters.get('walk_easy', 0) >= 3:
-            print(f'\t2. Прогулка по району:    {self.get_adventure_requirement("walk_normal")} - (Награда: {self._format_reward("walk_normal")})')
-        else:
-            print(f'\t- Пройдите "Прогулку вокруг озера" ещё: {3 - counters.get("walk_easy", 0)} раз.')
-
-        if counters.get('walk_normal', 0) >= 3:
-            print(f'\t3. Прогулка в лес:        {self.get_adventure_requirement("walk_hard")} - (Награда: {self._format_reward("walk_hard")})')
-        else:
-            print(f'\t- Пройдите "Прогулку по району" ещё: {3 - counters.get("walk_normal", 0)} раз.')
-
-        if counters.get('walk_hard', 0) >= 3:
-            print(f'\t4. Прогулка 15к шагов:    {self.get_adventure_requirement("walk_15k")} - (Награда: {self._format_reward("walk_15k")})')
-        else:
-            print(f'\t- Пройдите "Прогулку в лес" ещё: {3 - counters.get("walk_hard", 0)} раз.')
-
-        if counters.get('walk_15k', 0) >= 3:
-            print(f'\t5. Прогулка 20к шагов:    {self.get_adventure_requirement("walk_20k")} - (Награда: {self._format_reward("walk_20k")})')
-        else:
-            print(f'\t- Пройдите прогулку на 15к ещё: {3 - counters.get("walk_15k", 0)} раз.')
-
-        if counters.get('walk_20k', 0) >= 3:
-            print(f'\t6. Прогулка 25к шагов:    {self.get_adventure_requirement("walk_25k")} - (Награда: {self._format_reward("walk_25k")})')
-        else:
-            print(f'\t- Пройдите прогулку на 20к ещё: {3 - counters.get("walk_20k", 0)} раз.')
-
-        if counters.get('walk_25k', 0) >= 3:
-            print(f'\t7. Прогулка 30к шагов:    {self.get_adventure_requirement("walk_30k")} - (Награда: {self._format_reward("walk_30k")})')
-        else:
-            print(f'\t- Пройдите прогулку на 25к ещё: {3 - counters.get("walk_25k", 0)} раз.')
+        threshold = ADVENTURE_UNLOCK_THRESHOLD
+        first_locked_shown = False
+        for key, adv in self.adventures.items():
+            adv_name = adv['name']
+            label = ADVENTURE_RU_LABELS[adv_name]
+            prereq = ADVENTURE_PREREQ.get(adv_name)
+            unlocked = prereq is None or counters.get(prereq, 0) >= threshold
+            if unlocked:
+                print(f'\t{key}. {label}: {self.get_adventure_requirement(adv_name)} '
+                      f'- (Награда: {self._format_reward(adv_name)})')
+            elif not first_locked_shown:
+                cur = min(counters.get(prereq, 0), threshold)
+                bar = _format_progress_bar(cur, threshold, width=threshold)
+                pct = round(cur / threshold * 100)
+                print(f'\t- 🔒 {label}: {bar} {cur}/{threshold} ({pct}%) '
+                      f'— пройдите «{ADVENTURE_RU_LABELS[prereq]}»')
+                first_locked_shown = True
+            else:
+                print(f'\t- 🔒 {label}: заблокировано')
 
         print('\t0. Выход')
 

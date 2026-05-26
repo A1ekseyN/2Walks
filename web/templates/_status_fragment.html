@@ -423,7 +423,8 @@
                     <strong>{% if adv.locked %}🔒 {% endif %}{{ adv.label }}</strong>
                 </div>
                 {% if adv.locked %}
-                    <small class="equipment-empty">{{ adv.unlock_hint }}</small>
+                    {# 4.34 — глиф-бар прогресса разблокировки (только у первой запертой). #}
+                    <small class="equipment-empty">{% if adv.unlock_bar %}<span style="letter-spacing: 1px;">{{ adv.unlock_bar }}</span> {% endif %}{{ adv.unlock_hint }}</small>
                 {% else %}
                     <small>
                         🏃 -{{ adv.cost_steps }} · 🔋 -{{ adv.cost_energy }} · 🕑 ~{{ format_minutes(adv.cost_time_min) }}

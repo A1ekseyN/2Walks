@@ -3326,7 +3326,11 @@ def test_adventure_view_walk_normal_locked_until_3_walk_easy():
     walk_normal = next(a for a in view['adventures'] if a['name'] == 'walk_normal')
     assert walk_normal['locked'] is True
     assert 'Прогулка вокруг озера' in walk_normal['unlock_hint']
-    assert '1 прохож' in walk_normal['unlock_hint']  # 3 - 2 = 1 осталось
+    # 4.34 — прогресс-формат: 2/3 (67%) + глиф-бар у первой запертой.
+    assert '2/3' in walk_normal['unlock_hint']
+    assert '67%' in walk_normal['unlock_hint']
+    assert walk_normal['unlock_bar'] is not None
+    assert '▰▰▱' == walk_normal['unlock_bar']
 
 
 def test_adventure_view_walk_normal_unlocked_after_3_walk_easy():
@@ -3337,6 +3341,26 @@ def test_adventure_view_walk_normal_unlocked_after_3_walk_easy():
     view = _build_adventure_view(state)
     walk_normal = next(a for a in view['adventures'] if a['name'] == 'walk_normal')
     assert walk_normal['locked'] is False
+
+
+def test_adventure_view_progress_bar_only_on_first_locked():
+    """4.34 — глиф-бар прогресса только у ПЕРВОЙ запертой прогулки; более
+    глубокие запертые показывают «заблокировано» без бара."""
+    from web.main import _build_adventure_view
+    state = _state_for_adventure()
+    state.adventure.counters['walk_easy'] = 0  # всё кроме walk_easy заперто
+    _setup_state(state)
+    view = _build_adventure_view(state)
+    walk_normal = next(a for a in view['adventures'] if a['name'] == 'walk_normal')
+    walk_hard = next(a for a in view['adventures'] if a['name'] == 'walk_hard')
+    # Первая запертая — бар есть.
+    assert walk_normal['locked'] is True
+    assert walk_normal['unlock_bar'] == '▱▱▱'  # 0/3
+    assert '0/3' in walk_normal['unlock_hint']
+    # Глубже — бара нет, просто «заблокировано».
+    assert walk_hard['locked'] is True
+    assert walk_hard['unlock_bar'] is None
+    assert walk_hard['unlock_hint'] == 'заблокировано'
 
 
 def test_adventure_view_can_afford_reflects_resources():

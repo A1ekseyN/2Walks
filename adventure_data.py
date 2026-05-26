@@ -86,3 +86,31 @@ adventure_data_table = {
         'drops': [('s+grade', drop_percent_item_s_walk_30k)],
     },
 }
+
+
+# --- Unlock chain (task 4.34) — единый источник правды для CLI и web ---
+# Прогулка открывается, когда предыдущая в цепочке пройдена ≥ THRESHOLD раз.
+# walk_easy всегда открыта (нет prereq → нет записи в ADVENTURE_PREREQ).
+# Раньше порог дублировался: литерал 3 в 7 местах adventure.py + dict в web/main.py.
+ADVENTURE_UNLOCK_THRESHOLD = 3
+
+# adv_name → prereq adv_name.
+ADVENTURE_PREREQ: dict[str, str] = {
+    'walk_normal': 'walk_easy',
+    'walk_hard':   'walk_normal',
+    'walk_15k':    'walk_hard',
+    'walk_20k':    'walk_15k',
+    'walk_25k':    'walk_20k',
+    'walk_30k':    'walk_25k',
+}
+
+# Human-readable RU-лейблы прогулок (для UI разблокировки + меню).
+ADVENTURE_RU_LABELS: dict[str, str] = {
+    'walk_easy':   'Прогулка вокруг озера',
+    'walk_normal': 'Прогулка по району',
+    'walk_hard':   'Прогулка в лес',
+    'walk_15k':    'Прогулка 15к шагов',
+    'walk_20k':    'Прогулка 20к шагов',
+    'walk_25k':    'Прогулка 25к шагов',
+    'walk_30k':    'Прогулка 30к шагов',
+}

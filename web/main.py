@@ -1519,16 +1519,8 @@ _ADVENTURE_DISPLAY: tuple[tuple[str, str], ...] = (
     ('walk_30k',    'Прогулка 30к шагов'),
 )
 
-# Unlock prerequisites: adv_name → (required_counter_key, required_count, prereq_label).
-# walk_easy всегда unlocked (no entry в dict).
-_ADVENTURE_UNLOCK: dict[str, tuple[str, int, str]] = {
-    'walk_normal': ('walk_easy', 3, 'Прогулка вокруг озера'),
-    'walk_hard':   ('walk_normal', 3, 'Прогулка по району'),
-    'walk_15k':    ('walk_hard', 3, 'Прогулка в лес'),
-    'walk_20k':    ('walk_15k', 3, 'Прогулка 15к шагов'),
-    'walk_25k':    ('walk_20k', 3, 'Прогулка 20к шагов'),
-    'walk_30k':    ('walk_25k', 3, 'Прогулка 25к шагов'),
-}
+# Unlock prerequisites переехали в adventure_data (4.34 — единый источник для
+# CLI + web): ADVENTURE_PREREQ + ADVENTURE_UNLOCK_THRESHOLD + ADVENTURE_RU_LABELS.
 
 # Human-readable labels для drop probability display. Полные формы вместо
 # одиночных букв — игроку понятнее «B-Grade [29%]» чем «B [29%]». Consistent
@@ -1601,18 +1593,35 @@ def _build_adventure_view(state) -> dict:
 
     adv_helper = Adventure(adventure_data_table, state)
 
+    # 4.34 — единый источник цепочки разблокировки + порога.
+    from adventure_data import (
+        ADVENTURE_PREREQ, ADVENTURE_RU_LABELS, ADVENTURE_UNLOCK_THRESHOLD,
+    )
+    from triumphs import _format_progress_bar
+
     items: list[dict] = []
+    first_locked_shown = False  # прогресс-бар только у первой запертой (4.34)
     for name, label in _ADVENTURE_DISPLAY:
         # Locked check.
         locked = False
         unlock_hint = None
-        if name in _ADVENTURE_UNLOCK:
-            prereq_key, prereq_count, prereq_label = _ADVENTURE_UNLOCK[name]
+        unlock_bar = None
+        prereq_key = ADVENTURE_PREREQ.get(name)
+        if prereq_key is not None:
             current_count = state.adventure.counters.get(prereq_key, 0)
-            if current_count < prereq_count:
+            if current_count < ADVENTURE_UNLOCK_THRESHOLD:
                 locked = True
-                remaining = prereq_count - current_count
-                unlock_hint = f'Нужно ещё {remaining} прохождений «{prereq_label}»'
+                cur = min(current_count, ADVENTURE_UNLOCK_THRESHOLD)
+                if not first_locked_shown:
+                    # Первая запертая (реально прокачиваемая) — глиф-бар + прогресс.
+                    unlock_bar = _format_progress_bar(
+                        cur, ADVENTURE_UNLOCK_THRESHOLD, width=ADVENTURE_UNLOCK_THRESHOLD)
+                    pct = round(cur / ADVENTURE_UNLOCK_THRESHOLD * 100)
+                    unlock_hint = (f'{cur}/{ADVENTURE_UNLOCK_THRESHOLD} ({pct}%) прохождений '
+                                   f'«{ADVENTURE_RU_LABELS[prereq_key]}»')
+                    first_locked_shown = True
+                else:
+                    unlock_hint = 'заблокировано'
 
         # Cost (адаптированный под move_opt + energy_opt skills).
         adv_data = next(
@@ -1654,6 +1663,7 @@ def _build_adventure_view(state) -> dict:
             'label': label,
             'locked': locked,
             'unlock_hint': unlock_hint,
+            'unlock_bar': unlock_bar,
             'cost_steps': base_steps,
             'cost_energy': base_energy,
             'cost_time_min': final_time_min,
@@ -1738,12 +1748,17 @@ def _validate_and_apply_adventure(state, adv_name: str) -> Optional[str]:
     valid_names = {name for name, _ in _ADVENTURE_DISPLAY}
     if adv_name not in valid_names:
         return f'Неизвестное приключение: {adv_name}'
-    # Check unlock.
-    if adv_name in _ADVENTURE_UNLOCK:
-        prereq_key, prereq_count, prereq_label = _ADVENTURE_UNLOCK[adv_name]
-        if state.adventure.counters.get(prereq_key, 0) < prereq_count:
-            remaining = prereq_count - state.adventure.counters.get(prereq_key, 0)
-            return f'Заблокировано: нужно ещё {remaining} прохождений «{prereq_label}»'
+    # Check unlock (4.34 — единый источник: adventure_data).
+    from adventure_data import (
+        ADVENTURE_PREREQ, ADVENTURE_RU_LABELS, ADVENTURE_UNLOCK_THRESHOLD,
+    )
+    prereq_key = ADVENTURE_PREREQ.get(adv_name)
+    if prereq_key is not None:
+        current_count = state.adventure.counters.get(prereq_key, 0)
+        if current_count < ADVENTURE_UNLOCK_THRESHOLD:
+            remaining = ADVENTURE_UNLOCK_THRESHOLD - current_count
+            return (f'Заблокировано: нужно ещё {remaining} прохождений '
+                    f'«{ADVENTURE_RU_LABELS[prereq_key]}»')
 
     # Compute cost via adventure helper (учитывает move_opt + energy_opt skills).
     from adventure import Adventure
