@@ -2,26 +2,21 @@
    при первом GET /, при submit POST /web/steps (HTMX swap), и через GET /status
    (endpoint оставлен для будущих action endpoints / кнопки Refresh). #}
 
-{# 4.2 — «Пока тебя не было» report. Показывается на первом рендере после
-   init_game_state (uvicorn restart или новой сессии). _build_away_report_view
-   очищает state.startup_report после build чтобы banner появился единожды. #}
-{% if away_report.has_events %}
-<section id="away-report" style="margin-bottom: 1rem;">
-    <article style="border-left: 4px solid var(--pico-color-azure-500, #3b82f6); background: var(--pico-color-azure-50, #eff6ff);">
-        <header style="margin-bottom: 0.5rem;">
-            <strong>🕒 Пока тебя не было</strong>
-            <small style="display: block; color: var(--pico-muted-color);">
-                Последний вход: {{ away_report.since_dt }} · прошло {{ away_report.elapsed_label }}
-            </small>
-        </header>
-        <ul style="margin: 0; padding-left: 1rem;">
-            {% for item in away_report['items'] %}
-            <li>{{ item.emoji }} {{ item.text }}</li>
-            {% endfor %}
-        </ul>
-    </article>
-</section>
+{# 4.48.5.5 — Cloud sync badge. Переехал из shell (dashboard.html) во фрагмент:
+   теперь sync делает async GET /reload, и при сбое badge должен прийти вместе
+   со swap'нутым фрагментом (shell уже отрендерен без него). #}
+{% if last_reload and not last_reload.ok %}
+<article style="background: var(--pico-color-pumpkin-100, #fff3e0); border-left: 3px solid var(--pico-color-pumpkin-500, #d97706); padding: 0.5rem 0.75rem; margin-bottom: 1rem;">
+    <small>
+        ⚠️ Cloud sync failed at {{ last_reload.at.strftime('%H:%M:%S') }} — showing cached data.
+        {% if last_reload.error %}<br><em>{{ last_reload.error }}</em>{% endif %}
+    </small>
+</article>
 {% endif %}
+
+{# 4.48.5.5 — away-report переехал в shell (dashboard.html, вне #status-bar):
+   в async-reload потоке GET / строит+очищает его (defer_sync), а swap GET /reload
+   не должен его стирать. Здесь его больше нет. #}
 
 {# 4.48.3 — «🎁 Находка» banner после авто-финализации приключения. Один
    render: state.last_adventure_drop set'ится в _finalize_adventure_with_drop_capture,

@@ -244,6 +244,48 @@ def test_dashboard_has_navigating_overlay_css_rule():
     assert 'id="save-overlay-text"' in body
 
 
+# ----- 4.48.5.5: async-reload shell (мгновенный GET / + GET /reload) -----
+
+def test_dashboard_shell_has_async_reload_trigger():
+    """GET / рендерит body.reloading + невидимый hx-trigger='load' на /reload
+    (страница сама подтягивает свежие данные после мгновенного рендера)."""
+    _setup_state()
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    assert 'hx-get="/reload' in body
+    assert 'hx-trigger="load"' in body
+    assert 'class="reloading"' in body
+    # CSS-правило overlay на загрузке.
+    assert 'body.reloading #save-overlay' in body
+
+
+def test_dashboard_overlay_text_new_day(monkeypatch):
+    """pending_rollover (date_last_enter != сегодня) → серверный текст спиннера
+    про новый день."""
+    state = GameState.default_new_game()
+    state.date_last_enter = '2020-01-01'  # заведомо не сегодня
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert 'Начался новый день' in response.text
+
+
+def test_dashboard_overlay_text_same_day():
+    """Тот же день → нейтральный текст «Синхронизирую данные», без «новый день»
+    в overlay-span (beforeunload-JS строка про новый день — отдельная, остаётся)."""
+    from datetime import datetime as _dt
+    state = GameState.default_new_game()
+    state.date_last_enter = str(_dt.now().date())
+    _setup_state(state)
+    with TestClient(app) as client:
+        response = client.get("/")
+    body = response.text
+    assert 'Синхронизирую данные' in body
+    # Серверный overlay-span НЕ содержит «Начался новый день» в этот день.
+    assert 'Начался новый день' not in body
+
+
 def test_dashboard_does_not_have_htmx_polling_on_status_bar():
     """HTMX polling намеренно отключён в 0.2.0j — цифры обновляются только при
     F5 / submit формы. Таймеры активных сессий двигаются JS на клиенте.
@@ -683,8 +725,28 @@ def test_no_active_session_renders_no_progress_bars():
 
 # ----- Sync (task 4.54.0) -----
 
-def test_get_root_triggers_sheets_reload(monkeypatch):
-    """GET / должен дёргать GameStateRepo.load() (свежие данные из Sheets)."""
+def test_get_reload_triggers_sheets_reload(monkeypatch):
+    """GET /reload (async-reload, 4.48.5.5) дёргает GameStateRepo.load() — свежие
+    данные из Sheets. GET / больше НЕ ходит в Sheets (мгновенный shell-рендер),
+    тяжёлый sync делегирован /reload."""
+    from google_sheets_db import GameStateRepo
+    calls = []
+
+    def counting_load(self):
+        calls.append(1)
+        return game.state.to_dict() if game.state else {}
+
+    monkeypatch.setattr(GameStateRepo, "load", counting_load)
+    _setup_state()
+
+    with TestClient(app) as client:
+        client.get("/reload")
+
+    assert len(calls) == 1
+
+
+def test_get_root_does_not_trigger_sheets_reload(monkeypatch):
+    """GET / (shell) НЕ ходит в Sheets — defer_sync read-only рендер из памяти."""
     from google_sheets_db import GameStateRepo
     calls = []
 
@@ -698,7 +760,7 @@ def test_get_root_triggers_sheets_reload(monkeypatch):
     with TestClient(app) as client:
         client.get("/")
 
-    assert len(calls) == 1
+    assert calls == []
 
 
 def test_get_status_does_not_trigger_sheets_reload(monkeypatch):
@@ -719,8 +781,9 @@ def test_get_status_does_not_trigger_sheets_reload(monkeypatch):
     assert calls == []
 
 
-def test_get_root_with_sheets_error_returns_200_and_shows_badge(monkeypatch):
-    """Сетевая ошибка во время reload — возвращаем 200 + кэшированный state + badge."""
+def test_reload_with_sheets_error_returns_200_and_shows_badge(monkeypatch):
+    """Сетевая ошибка во время GET /reload — 200 + кэшированный state + badge
+    (badge живёт во фрагменте, приходит со swap'ом). 4.48.5.5."""
     from google_sheets_db import GameStateRepo
 
     def failing_load(self):
@@ -730,7 +793,7 @@ def test_get_root_with_sheets_error_returns_200_and_shows_badge(monkeypatch):
     _setup_state()
 
     with TestClient(app) as client:
-        response = client.get("/")
+        response = client.get("/reload")
 
     assert response.status_code == 200
     body = response.text
@@ -740,11 +803,11 @@ def test_get_root_with_sheets_error_returns_200_and_shows_badge(monkeypatch):
     assert "Stats" in body
 
 
-def test_dashboard_no_badge_when_reload_succeeds():
-    """Успешный reload — badge не должен показываться."""
+def test_reload_no_badge_when_reload_succeeds():
+    """Успешный reload — badge не показывается во фрагменте."""
     _setup_state()
     with TestClient(app) as client:
-        response = client.get("/")
+        response = client.get("/reload")
     body = response.text
     assert "Cloud sync failed" not in body
 
@@ -1889,7 +1952,8 @@ def test_dashboard_after_rollover_form_min_is_1():
     _setup_state(state)
 
     with TestClient(app) as client:
-        response = client.get("/")
+        # Rollover делает /reload (GET / — defer_sync read-only, 4.48.5.5).
+        response = client.get("/reload")
 
     body = response.text
     assert 'min="1"' in body
@@ -1912,7 +1976,8 @@ def test_rollover_does_not_clear_active_work_session():
     _setup_state(state)
 
     with TestClient(app) as client:
-        client.get("/")
+        # Rollover делает /reload (GET / — defer_sync read-only, 4.48.5.5).
+        client.get("/reload")
 
     # Steps сбросились (rollover), но work не тронут.
     assert state.steps.today == 0

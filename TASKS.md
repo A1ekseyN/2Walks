@@ -2819,6 +2819,24 @@ B1 blob last_modified: 1779300150.71383 ← правильно
 
 **Тесты:** 2 новых (`test_dashboard_has_navigation_overlay_handler` + `test_dashboard_has_navigating_overlay_css_rule`). 1053 passed.
 
+#### 4.48.5.5. Web async-reload: устранение «зависания» на смене дня `[M / M / done (26.05.2026, 0.2.6)]`
+
+**Контекст:** 4.48.5.2 (client-side overlay) не убрал проблему до конца — overlay живёт на *выгружаемой* странице, его CSS-анимация замораживается во время full-page navigation, и при долгом new-day reload (5 Sheets round-trip'ов) пользователь видит пустой экран с нативным браузерным индикатором. Корень: `GET /` синхронно блокировался на `try_reload_state()` до отдачи HTML.
+
+**Решение (Variant A — async-reload, выбран пользователем 26.05.2026):** декомпозиция «мгновенный рендер + асинхронный sync».
+
+1. **`GET /` — лёгкий shell, мгновенно.** Рендерит контент из in-memory state через новый флаг `_dashboard_context(defer_sync=True)` — БЕЗ Sheets / rollover / persist / finalizers (read-only). `pending_rollover` вычисляется чистой in-memory сверкой `date_last_enter` с `datetime.now().date()` (источник правды — сервер, без Sheets).
+2. **Новый `GET /reload`** — делает тяжёлый sync (`try_reload_state`: Sheets load + max-merge + day rollover detect/persist + snapshot) + полный `_dashboard_context` (energy regen / level-up / auto-finalize) → возвращает `_status_fragment.html`. Страница дёргает его через невидимый `<div hx-get="/reload" hx-trigger="load" hx-target="#status-bar">`.
+3. **Overlay-спиннер** (`#save-overlay`) — показывается мгновенно при первом рендере (`body.reloading`, ставится сервером при `auto_reload`), серверный текст: «🌅 Начался новый день — обновляю счётчики…» если `pending_rollover`, иначе «Синхронизирую данные…» (без эмодзи). Снимается в `htmx:afterSwap`. Спиннер реально анимируется — живёт на УЖЕ загруженной странице. `htmx:beforeRequest` не затирает текст для `/reload` (мутации показывают «Сохраняем...»).
+4. **`defer_sync`** гейтит non-идемпотентный rollover (иначе двойной `new_day` лог: GET / без persist → /reload перечитывает yesterday из Sheets → второй rollover), auto-finalize сессий и все persist-вызовы. View-билдеры + away-report строятся в обоих режимах (чистый display).
+5. **Cloud sync badge** переехал из shell (`dashboard.html`) во `_status_fragment.html` — при сбое Sheets в `/reload` приходит вместе со swap'ом (shell уже отрендерен без него).
+
+**Файлы:** `web/main.py` (GET / shell + `/reload` + `defer_sync`), `dashboard.html` (overlay-on-load CSS + reload-триггер + JS), `_status_fragment.html` (badge).
+
+**Тесты:** 5 обновлены (reload/rollover/badge-поведение перенесено с GET / на GET /reload) + 3 новых (`test_dashboard_shell_has_async_reload_trigger`, `test_dashboard_overlay_text_new_day`, `test_dashboard_overlay_text_same_day`) + 1 (`test_get_root_does_not_trigger_sheets_reload`). 1302 passed, mypy 0 issues.
+
+**Заменяет** client-side подход 4.48.5.2 (beforeunload-overlay оставлен как доп. feedback на краткий navigation-gap, который теперь почти мгновенный).
+
 ##### 4.48.5.1.1. Deferred log_event в Adventure финализаторе `[L / XS / todo (опциональное продолжение 4.48.5.1)]`
 
 **Контекст:** `Adventure.adventure_check_done` (`adventure.py`) фаерит `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save. При STALE rollback'е в `_finalize_adventure_with_drop_capture` (4.48.5.1) эти entries остаются в `history.jsonl` / Sheets `history` лист — phantom события которые не отражают реального state.

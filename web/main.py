@@ -794,7 +794,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        inventory_sort: str = 'default',
                        loadout_error: Optional[str] = None,
                        bank_error: Optional[str] = None,
-                       triumphs_error: Optional[str] = None) -> dict:
+                       triumphs_error: Optional[str] = None,
+                       defer_sync: bool = False) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
 
     `steps_error` / `steps_form_open` — флаги для отрисовки формы ввода шагов:
@@ -804,17 +805,28 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     в блоке Work). При None — никаких сообщений.
 
     `skill_error` — аналогично для блока Skills (4.48.8).
+
+    `defer_sync` (4.48.5.5) — read-only режим для мгновенного shell-рендера
+    GET /. При True пропускаются все side-effect / Sheets / persist вызовы
+    (day rollover, level-up persist, auto-finalize сессий, auto-collect drop) —
+    рендерим текущий in-memory state как есть. Тяжёлый authoritative sync делает
+    `GET /reload` (defer_sync=False) сразу после загрузки страницы. Так GET /
+    не блокируется на Sheets и не дублирует не-идемпотентный `new_day` лог.
+    View-билдеры и away-report строятся в обоих режимах (это чистый display).
     """
     state = game.state
     if state is None:
         raise RuntimeError("game.state не инициализирован — должен быть вызван init_game_state() в lifespan.")
 
     # Day rollover (4.54.0.2). Defense-in-depth: основной триггер —
-    # try_reload_state на GET /, но если вкладка живёт через midnight и
+    # try_reload_state на GET /reload, но если вкладка живёт через midnight и
     # делает только submit формы (которые не зовут try_reload_state), без
     # этой проверки рендер показал бы вчерашние today/used/daily_bonus.
     # save_game_date_last_enter idempotent: на тот же день no-op.
-    save_game_date_last_enter(state)
+    # defer_sync: пропускаем — rollover не идемпотентен (пишет new_day лог),
+    # его делает /reload.
+    if not defer_sync:
+        save_game_date_last_enter(state)
 
     # Energy regen (0.2.1c follow-up). Каждый рендер пересчитываем энергию
     # по той же формуле, что в CLI (functions.energy_time_charge). Persist
@@ -832,29 +844,25 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # изменился — иначе CLI после рестарта не увидит новый level (и start_*
     # mutation тоже подхватит, но это требует от игрока что-то сделать).
     char_level = CharLevel(state)
-    pre_level = state.char_level.level
-    char_level.update_level()
-    if state.char_level.level != pre_level:
-        persist_state_to_cloud()
+    if not defer_sync:
+        pre_level = state.char_level.level
+        char_level.update_level()
+        if state.char_level.level != pre_level:
+            persist_state_to_cloud()
 
-    # Auto-finalize тренировки навыка (4.48.4 / 0.2.1e). Если state.training.end
-    # < now — повышает уровень навыка на +1 и сбрасывает state.training.
+    # Auto-finalize сессий по таймеру (training / work / adventure). Каждый
+    # рендер проверяет .end и если время вышло — начисляет награду + persist.
+    # Так web не требует отдельного "Claim"-клика (CLI делает то же в main loop).
     # 4.48.5.1 (0.2.5a): atomic save-first pattern — STALE → rollback +
-    # state.finalize_stale=True (поднят будет в _render_dashboard_or_stale).
-    skill_training_check_done(state)
-
-    # Auto-finalize работы по таймеру: каждый рендер dashboard'а / fragment'а
-    # проверяет state.work.end и если время вышло — начисляет зарплату и
-    # обнуляет смену. Так web-сценарий не требует отдельного "Claim"-клика
-    # (CLI делает то же самое в main loop'е).
-    work_check_done(state)
-
-    # 4.48.3 — Auto-finalize приключения по таймеру + захват дропа для
-    # «🎁 Находка» banner'а. Wrapper-helper детектит transition
-    # active=True→False через delta inventory/pending_drop и пишет item в
-    # state.last_adventure_drop (runtime-only). Banner живёт сквозь F5,
-    # очищается в _persist_and_handle_stale на любом успешном mutation.
-    _finalize_adventure_with_drop_capture(state)
+    # state.finalize_stale=True (поднят в _render_dashboard_or_stale).
+    # 4.48.3: adventure-финализатор захватывает дроп в state.last_adventure_drop
+    # (runtime-only) для «🎁 Находка» banner'а сквозь F5.
+    # defer_sync: пропускаем — финализаторы делают persist (Sheets write);
+    # /reload через 1-2 сек закроет завершённые сессии (см. 4.48.5.5).
+    if not defer_sync:
+        skill_training_check_done(state)
+        work_check_done(state)
+        _finalize_adventure_with_drop_capture(state)
 
     # 4.48.9 — Auto-accrue банковских процентов на каждом render. Симметрично
     # CLI bank_menu (capitalize-on-change). preview_deposit_amount /
@@ -872,9 +880,11 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # и pending воскреснет. Помещаем ПОСЛЕ всех auto-finalize'ов чтобы любое
     # освобождение слота из них (work / training не освобождают, но для
     # будущих расширений) тоже попало под этот хук.
-    from bonus import auto_collect_pending_drop
-    if auto_collect_pending_drop(state) is not None:
-        persist_state_to_cloud()
+    # defer_sync: пропускаем — auto-collect делает persist; /reload подхватит.
+    if not defer_sync:
+        from bonus import auto_collect_pending_drop
+        if auto_collect_pending_drop(state) is not None:
+            persist_state_to_cloud()
 
     # Параметры для JS-таймера энергии в _status_fragment.html (data-attrs).
     # JS раз в 60 сек обновляет цифру, считая `min(energy + floor((now-stamp)/interval), max)`.
@@ -1093,19 +1103,58 @@ async def healthz():
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, sort: str = 'default'):
-    """Главная страница — read-only dashboard.
+    """Главная страница — лёгкий shell, мгновенный рендер (4.48.5.5 / async-reload).
 
-    На каждом GET / (заход / F5 / pull-to-refresh) подтягиваем свежий state
-    из Sheets через `try_reload_state()`. При сетевой ошибке оставляем
-    кэшированный state — UI покажет badge на основе `last_reload.ok` (4.54.0).
+    **Раньше** GET / синхронно блокировался на `try_reload_state()` (2-5 Sheets
+    round-trip'ов, особенно на смене дня → persist), и страница «зависала» с
+    пустым экраном + нативный браузерный индикатор. Свой overlay-спиннер жил на
+    *выгружаемой* странице и не анимировался во время навигации.
 
-    `sort` (4.48.6) — query param для inventory sort dropdown
-    (default/grade/price/bonus). Через query string чтобы выживало F5.
+    **Теперь** GET / НЕ ходит в Sheets и НЕ делает мутаций (никакого rollover /
+    finalize / persist). Рендерит shell из in-memory `game.state` со скелетоном
+    в `#status-bar` + overlay-спиннером, затем страница сама дёргает `GET /reload`
+    (HTMX `hx-trigger="load"`), который делает тяжёлый sync и swap'ает свежий
+    fragment. Спиннер — настоящий, анимированный, с серверным текстом.
+
+    `pending_rollover` — чистая in-memory сверка `date_last_enter` с сегодняшней
+    датой (БЕЗ Sheets, БЕЗ side-effect — сам rollover делает уже `/reload`).
+    Сервер — источник правды для текста спиннера («новый день» vs «синхронизация»).
+
+    `sort` (4.48.6) — пробрасывается в `/reload?sort=` чтобы inventory sort
+    выживал F5.
+    """
+    state = game.state
+    if state is None:
+        raise RuntimeError("game.state не инициализирован — должен быть вызван init_game_state() в lifespan.")
+    # pending_rollover до построения контекста — defer_sync не трогает дату, но
+    # сверка идёт с текущим in-memory date_last_enter (источник правды — сервер).
+    pending_rollover = bool(state.date_last_enter) and \
+        str(datetime.now().date()) != str(state.date_last_enter)
+    # Полный контент из памяти (read-only), без Sheets / rollover / persist.
+    context = _dashboard_context(request, inventory_sort=sort, defer_sync=True)
+    context["auto_reload"] = True
+    context["pending_rollover"] = pending_rollover
+    context["inventory_sort"] = sort
+    return _render_dashboard_or_stale(request, "dashboard.html", context)
+
+
+@app.get("/reload", response_class=HTMLResponse)
+async def reload_fragment(request: Request, sort: str = 'default'):
+    """Async-reload endpoint (4.48.5.5). Вызывается через HTMX `hx-trigger="load"`
+    сразу после мгновенного рендера GET /.
+
+    Делает то, что раньше блокировало GET /: `try_reload_state()` (Sheets load +
+    max-merge + day rollover detect/persist + snapshot) → строит полный context
+    через `_dashboard_context` (energy regen / level-up / finalizers) → возвращает
+    `_status_fragment.html` для swap в `#status-bar`.
+
+    `try_reload_state` silent-fail на сетевой ошибке (рендерит из cached RAM +
+    badge через last_reload), поэтому endpoint всегда отдаёт валидный fragment —
+    скелетон в `#status-bar` гарантированно заменяется.
     """
     try_reload_state()
     context = _dashboard_context(request, inventory_sort=sort)
-    # Новый сигнатура Starlette 1.0+: TemplateResponse(request, name, context).
-    return _render_dashboard_or_stale(request, "dashboard.html", context)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 
 @app.get("/status", response_class=HTMLResponse)
