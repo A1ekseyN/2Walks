@@ -250,12 +250,21 @@ def init_metric_check(state) -> list[dict]:
 
 
 def total_score(state) -> int:
-    """Sum points по unlocked tiers всех triumph'ов в catalog'е."""
+    """Sum points по **claimed** tiers всех triumph'ов в catalog'е.
+
+    Очки начисляются только за СОБРАННЫЕ tier'ы (Destiny-2 паттерн «нашёл →
+    собрал → засчиталось»), а не за unlock. Claimed = unlocked − unclaimed
+    (та же формула, что в web category labels, 4.62.7.3). До фикса score
+    считался по unlocked tier → рассинхрон с «X/Y tiers» counter'ом
+    (Score 210 при 0/196 claimed).
+    """
     total = 0
     for triumph_id, spec in TRIUMPHS.items():
         unlocked_tier = int(state.triumphs.get(triumph_id, {}).get('tier', 0))
+        unclaimed_count = len(get_unclaimed_for(state, triumph_id))
+        claimed_tier = max(0, unlocked_tier - unclaimed_count)
         points_per = int(spec.get('points_per_tier', POINTS_PER_TIER))
-        total += unlocked_tier * points_per
+        total += claimed_tier * points_per
     return total
 
 

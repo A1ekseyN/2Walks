@@ -27,7 +27,7 @@ Trigger (action) → Triumph progress → Capstone (last tier) → Seal → Titl
 
 - **Pinned** (4.62.4) — игрок выбирает до 3 triumph'ов для приоритетного показа в status_bar.
 - **Claim queue** (4.62.4) — новые tier-unlocks требуют **явного acknowledge** через menu (Destiny-2 паттерн «нашёл — нужно собрать»).
-- **Score** — каждый unlocked tier даёт `POINTS_PER_TIER` (10) очков → суммарный `total_score(state)`.
+- **Score** — каждый **собранный (claimed)** tier даёт `POINTS_PER_TIER` (10) очков → суммарный `total_score(state)`. **Важно (0.2.6 fix):** очки начисляются за claimed tier'ы (`unlocked − unclaimed`), а НЕ за unlock — Destiny-2 паттерн «нашёл → собрал → засчиталось». До фикса score считался по unlocked tier и рассинхронивался с `X/Y tiers` counter'ом (Score 210 при 0/196 claimed).
 
 **Не входит** в систему на момент 0.2.6: gameplay-бонусы за capstones (Phase 4 — задача 4.62.2.1, **deferred** 25.05.2026 до balance design), Hidden triumphs (4.62.5). Web UI **добавлен** в 0.2.5y (4.62.7) — параллельная вёрстка к CLI menu, **UX-polished** в 0.2.5z (4.62.7.1 — per-tier claim + section перенесена в конец dashboard'а) и **дополнительно** в 0.2.6 (4.62.7.2/3 — claimed tier counts в category labels: `🏃 Шаги · 3/5` вместо misleading `1/1`, growing по мере claim'ов).
 
@@ -325,7 +325,7 @@ Lazy imports + try/except чтобы избежать circular dependency.
 
 ## 11. Каталог triumph'ов (0.2.5v, 25.05.2026)
 
-**Score system:** `POINTS_PER_TIER = 10`. Capstone = 10 × num_tiers points (50 для 5-tier triumph'а, 40 для 4-tier).
+**Score system:** `POINTS_PER_TIER = 10`. Capstone = 10 × num_tiers points (50 для 5-tier triumph'а, 40 для 4-tier). Очки начисляются только за **собранные (claimed)** tier'ы (`total_score` = Σ `max(0, tier − unclaimed_count) × points_per`, 0.2.6 fix) — несобранные unlock'и сидят в queue и дают 0 очков.
 
 **Total: 40 triumph'ов в 5 категориях, 5 seals** (с 0.2.5w +1 Iron Worker в Work).
 

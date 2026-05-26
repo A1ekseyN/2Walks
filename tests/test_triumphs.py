@@ -213,18 +213,30 @@ def test_total_score_empty_state(mock_catalog):
     assert total_score(state) == 0
 
 
-def test_total_score_with_unlocked_tiers(mock_catalog):
-    """Marathoner tier 2 + Adventurer tier 1 = (2 + 1) * 10 = 30."""
+def test_total_score_counts_only_claimed_tiers(mock_catalog):
+    """Score = claimed tiers only (Destiny-2: unlock не даёт очков, claim даёт).
+
+    Marathoner tier 2 + Adventurer tier 1 разблокированы, но сидят в
+    unclaimed queue → score 0. После claim_all → (2 + 1) × 10 = 30.
+    """
+    from triumphs import append_unclaimed, claim_all
+
     state = GameState.default_new_game()
     state.steps.total_used = 200_000
 
+    # Воспроизводим реальный поток log_event: register_event возвращает
+    # unlock'и, append_unclaimed кладёт их в очередь.
     for _ in range(10):
-        register_event(state, 'adventure_done')
+        append_unclaimed(state, register_event(state, 'adventure_done'))
 
-    # Sanity.
+    # Sanity: tier'ы разблокированы, но всё ещё в unclaimed.
     assert state.triumphs['marathoner']['tier'] == 2
     assert state.triumphs['adventurer']['tier'] == 1
-    # Score: 2 marathoner + 1 adventurer = 3 tier'а × 10 points = 30.
+    # Пока не собрано — очков нет.
+    assert total_score(state) == 0
+
+    # После claim — очки начисляются.
+    claim_all(state)
     assert total_score(state) == 30
 
 

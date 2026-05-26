@@ -4745,6 +4745,14 @@ Web parity с CLI. До 0.2.5y triumph'ы были visible ТОЛЬКО в CLI (
 
 **Cost:** +1 Sheets save на startup для existing players (only-once через flag). **Тесты:** 3 новых в `tests/test_triumphs.py::TestBackfillUnclaimedFromExisting` (flag set after run, skipped after claim_all, skip pseudo-entries).
 
+##### 4.62.7.4. Score consistency: total_score → claimed tiers `[M / XS / done (26.05.2026, 0.2.6)]`
+
+User feedback 26.05.2026: «`Score: 210 · 0/196 tiers` — score начисляется хотя триумфы не собраны». Root cause — рассинхрон семантики, появившийся в 4.62.7.3: лейблы категорий + `X/Y tiers` counter перевели на **claimed** tiers (`unlocked − unclaimed`), а `total_score` остался на **unlocked**. Очки капали на unlock, а должны на claim (Destiny-2 паттерн).
+
+**Fix:** `triumphs.py:total_score` теперь считает claimed tiers той же формулой: `Σ max(0, tier − len(get_unclaimed_for(state, id))) × points_per`. Общий helper → фикс автоматически в CLI (status_bar / menu) и web (top header). Seals в score не входят (без изменений). После фикса у Oleksii (17→21 unlocked, 0 claimed) header показывает `Score: 0 · 0/196 tiers`; очки растут синхронно со счётчиком по мере claim'ов.
+
+**Тесты:** `test_total_score_counts_only_claimed_tiers` (бывший `test_total_score_with_unlocked_tiers`) — unlock → score 0 → claim_all → score 30; воспроизводит реальный поток `register_event` → `append_unclaimed`.
+
 ---
 
 ### Phase 6 — Optional / deferred
