@@ -32,6 +32,7 @@ from gym import skill_training_check_done
 from inventory import inventory_menu
 from level import CharLevel
 from triumphs_menu import open_triumphs_menu
+from report import open_history_viewer
 from locations import (
     home_location,
     gym_location,
@@ -162,6 +163,8 @@ def play():
                 'u': lambda: CharLevel(state).menu_skill_point_allocation(),
                 # 4.62.0.3 — Triumphs menu
                 't': lambda: open_triumphs_menu(state),
+                # 4.6.2 — История событий
+                'h': lambda: open_history_viewer(state),
                 # Сохранение / загрузка
                 'l': load_from_cloud,
                 's': save_game_local_and_cloud,
@@ -170,7 +173,7 @@ def play():
 
             LAYOUT_RU_TO_EN = {
                 'ь': 'm', 'ш': 'i', 'у': 'e', 'с': 'c', 'г': 'u',
-                'д': 'l', 'ы': 's', 'й': 'q', 'е': 't',
+                'д': 'l', 'ы': 's', 'й': 'q', 'е': 't', 'р': 'h',
             }
             for cyr, lat in LAYOUT_RU_TO_EN.items():
                 if lat in COMMANDS:
@@ -208,7 +211,8 @@ def play():
                       f'e. 🎒 Экипировка // '
                       f'c. Характеристики // '
                       f'u. Level // '
-                      f't. 🏆 Triumphs'
+                      f't. 🏆 Triumphs // '
+                      f'h. 📜 История'
                       f'\n\tl. ☁ Load from Cloud'
                       f'\n\ts. 💾 Save Game'
                       f'\n\tq/e. 💾 + 🚪 Save & Exit')

@@ -1050,14 +1050,16 @@ Live-счётчики triumphs живут в `state.triumphs[id]['count']` (pers
 
 **Рекомендация при возврате:** C (архив) или B (compaction) — не ломают backfill. Вариант A — только в связке с E-clamp, иначе риск потери triumph-прогресса. Также рассмотреть прунинг Sheets-копии `history` (растёт в облаке, влияет на quota и стоимость `.since(0)`).
 
-#### 4.6.2. CLI команда отображения истории `[L / S / todo]`
+#### 4.6.2. CLI команда отображения истории `[L / S / done (26.05.2026, 0.2.6)]`
 
-Команда `h. История` в главном меню или подпункт в Меню (`m`). Показывает последние 20 событий из `history.jsonl` в человеко-читаемом виде:
-```
-[2026-05-08 14:30] 🏭 Watchman shift +40$ (4h)
-[2026-05-08 14:25] 🏋 Stamina prokachana 18→19
-[2026-05-08 14:20] 💳 Loan +500$ (rate 99%)
-```
+**Реализовано (26.05.2026, 0.2.6).** Команда `h` (RU `р`) в главном меню → `report.open_history_viewer(state)`. **Интерактивный просмотр с пагинацией:** события newest-first в рамке `[YYYY-MM-DD HH:MM] <emoji> <текст>` с per-category цветом; заголовок «страница X/Y · N событий · по K на стр.».
+- **Управление:** `m`/Enter — следующая страница (более старые); `1`-`9` — размер страницы ×10 (10..90, сброс на стр.1); `0` — выход. Все события грузятся один раз (`read_recent_history(None)`), пагинация в памяти. Хелпер `_print_history_page` (печать страницы, без input — тестируемо) + `_event_timestamp_label`.
+- **Источник (выбран C):** `read_recent_history(limit=None→все)` — Sheets `history` (`HistoryLogRepo.since(0)`, полная кросс-девайс картина) primary; при сетевой ошибке fallback на локальный `history.jsonl`. Оба silent-fail → «история пуста».
+- **Форматтер (выбран A):** единое ядро `report._event_emoji_text(event) -> (emoji, text)` покрывает все ~30 типов (вкл. `work_extend`); CLI (`_format_event_cli` + colorama) и web (`_format_event_web`) — тонкие обёртки над ним.
+- **Фикс `[? ?]`:** Sheets-`since` отдаёт `ts` + `datetime` (без отдельных `date`/`time`, в отличие от jsonl) → дата теперь форматируется из `ts` через `_event_timestamp_label`.
+- **Попутный фикс:** drop-события читаются из **плоского** payload (как реально пишет `log_event`), а не из nested `p.get('item')` — раньше away-report рендерил их как «🎁 Дроп: None ?». Заодно починен away-report.
+
+**Файлы:** `report.py` (ядро форматтера + reader + paginated viewer), `game.py` (команда `h` + RU-маппинг + help-строка). **Тесты:** 9 новых (reader Sheets/fallback/empty, viewer empty/render, пагинация next-page/page-size/last-page, extended formatter) + 2 обновлены (drop flat payload). 1315 passed, mypy 0 issues.
 
 #### 4.6.3. Re-sync missed events после восстановления Sheets `[L / M / todo]`
 

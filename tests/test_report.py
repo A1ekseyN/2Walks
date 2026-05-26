@@ -7,12 +7,15 @@ import pytest
 from report import (
     INTERESTING_EVENT_TYPES,
     _extract_field,
+    _event_emoji_text,
     _format_event_cli,
     _format_event_web,
     build_away_report,
     build_report_view,
     format_report_cli,
     format_timedelta_simple,
+    open_history_viewer,
+    read_recent_history,
 )
 
 
@@ -103,11 +106,12 @@ def test_format_cli_skill_upgraded():
     assert 'lvl 4 → 5' in out
 
 
-def test_format_cli_drop_with_list_wrappers():
-    """item-поля как list (legacy формат)."""
+def test_format_cli_drop_flat_payload():
+    """4.6.2 — drop payload плоский (как реально пишет log_event), не nested item."""
     event = {'type': 'drop',
-             'payload': {'item': {'grade': ['b-grade'], 'item_type': ['ring'],
-                                  'characteristic': ['speed'], 'bonus': [2]}}}
+             'payload': {'adventure': 'walk_easy', 'grade': 'b-grade',
+                         'item_type': 'ring', 'characteristic': 'speed',
+                         'bonus': 2, 'quality': 80.0, 'price': 30}}
     out = _format_event_cli(event)
     assert 'b-grade' in out
     assert 'Ring' in out
@@ -160,8 +164,8 @@ def test_format_web_skill_upgraded():
 
 def test_format_web_drop():
     event = {'type': 'drop',
-             'payload': {'item': {'grade': ['s'], 'item_type': ['necklace'],
-                                  'characteristic': ['luck'], 'bonus': [5]}}}
+             'payload': {'adventure': 'walk_20k', 'grade': 's', 'item_type': 'necklace',
+                         'characteristic': 'luck', 'bonus': 5, 'quality': 90.0, 'price': 200}}
     out = _format_event_web(event)
     assert out['emoji'] == '🎁'
     assert 'Necklace' in out['text']
@@ -253,3 +257,114 @@ def test_build_report_view_with_events():
     assert '2 ч' in view['elapsed_label']
     assert view['items'][0]['emoji'] == '🏭'
     assert view['items'][1]['emoji'] == '⭐'
+
+
+# --- 4.6.2 — read_recent_history + open_history_viewer + extended formatter ---
+
+def test_event_emoji_text_covers_new_types():
+    assert _event_emoji_text({'type': 'deposit',
+                              'payload': {'amount': 100, 'balance_after': 100}})[0] == '🏦'
+    assert _event_emoji_text({'type': 'item_bought',
+                              'payload': {'item_type': 'shoes', 'grade': 'c-grade', 'cost': 50}})[0] == '🛒'
+    e, t = _event_emoji_text({'type': 'sync_conflict',
+                              'payload': {'source': 'cli', 'choice': 'reload'}})
+    assert e == '⚠️' and 'reload' in t
+    # Fallback для незнакомого типа.
+    e, t = _event_emoji_text({'type': 'mystery', 'payload': {'x': 1}})
+    assert e == '•' and 'mystery' in t
+
+
+def test_read_recent_history_sheets_primary_newest_first(monkeypatch):
+    import google_sheets_db as gdb
+    events = [
+        {'ts': 1.0, 'type': 'work_done', 'payload': {}},
+        {'ts': 3.0, 'type': 'level_up', 'payload': {}},
+        {'ts': 2.0, 'type': 'new_day', 'payload': {}},
+    ]
+    monkeypatch.setattr(gdb.HistoryLogRepo, 'since', lambda self, ts: list(events))
+    out = read_recent_history(limit=2)
+    assert [e['ts'] for e in out] == [3.0, 2.0]  # newest-first, limited
+
+
+def test_read_recent_history_falls_back_to_jsonl(monkeypatch, tmp_path):
+    import json
+    import google_sheets_db as gdb
+    import config
+
+    def _boom(self, ts):
+        raise RuntimeError('net down')
+    monkeypatch.setattr(gdb.HistoryLogRepo, 'since', _boom)
+    f = tmp_path / 'history.jsonl'
+    f.write_text(json.dumps({'ts': 5.0, 'type': 'save', 'payload': {}}) + '\n', encoding='utf-8')
+    monkeypatch.setattr(config, 'HISTORY_FILE', str(f))
+    out = read_recent_history()
+    assert len(out) == 1 and out[0]['type'] == 'save'
+
+
+def test_read_recent_history_empty_when_all_unavailable(monkeypatch, tmp_path):
+    import google_sheets_db as gdb
+    import config
+    monkeypatch.setattr(gdb.HistoryLogRepo, 'since', lambda self, ts: [])
+    monkeypatch.setattr(config, 'HISTORY_FILE', str(tmp_path / 'nope.jsonl'))
+    assert read_recent_history() == []
+
+
+def test_open_history_viewer_prints_events(monkeypatch, capsys):
+    import datetime as _dt
+    ts = _dt.datetime(2026, 5, 26, 14, 30).timestamp()
+    monkeypatch.setattr('report.read_recent_history',
+                        lambda limit=None: [{'ts': ts, 'type': 'work_done',
+                                             'payload': {'vacancy': 'watchman', 'hours': 4, 'salary': 40.0}}])
+    monkeypatch.setattr('builtins.input', lambda *a: '0')  # сразу выход
+    open_history_viewer(None)
+    out = capsys.readouterr().out
+    assert 'История' in out
+    assert 'Watchman' in out
+    assert '2026-05-26 14:30' in out  # дата из ts (фикс [? ?])
+
+
+def test_open_history_viewer_empty(monkeypatch, capsys):
+    monkeypatch.setattr('report.read_recent_history', lambda limit=None: [])
+    monkeypatch.setattr('builtins.input', lambda *a: '0')
+    open_history_viewer(None)
+    out = capsys.readouterr().out
+    assert 'история пуста' in out
+
+
+def _fake_events(n):
+    """n событий с убывающим ts (newest-first как отдаёт read_recent_history)."""
+    return [{'ts': float(n - i), 'type': 'save', 'payload': {}} for i in range(n)]
+
+
+def test_history_viewer_pagination_next_page(monkeypatch, capsys):
+    """`m` → следующая страница; страница X/Y растёт."""
+    monkeypatch.setattr('report.read_recent_history', lambda limit=None: _fake_events(45))
+    # page_size default 20 → 3 страницы. m, m, затем выход.
+    inputs = iter(['m', 'm', '0'])
+    monkeypatch.setattr('builtins.input', lambda *a: next(inputs))
+    open_history_viewer(None)
+    out = capsys.readouterr().out
+    assert 'страница 1/3' in out
+    assert 'страница 2/3' in out
+    assert 'страница 3/3' in out
+
+
+def test_history_viewer_page_size_digit(monkeypatch, capsys):
+    """Цифра N → размер страницы N×10, сброс на стр.1."""
+    monkeypatch.setattr('report.read_recent_history', lambda limit=None: _fake_events(45))
+    inputs = iter(['5', '0'])  # 5 → 50 на страницу → всё на 1 странице
+    monkeypatch.setattr('builtins.input', lambda *a: next(inputs))
+    open_history_viewer(None)
+    out = capsys.readouterr().out
+    assert 'по 50 на стр.' in out
+    assert 'страница 1/1' in out
+
+
+def test_history_viewer_last_page_more_noop(monkeypatch, capsys):
+    """`m` на последней странице → сообщение, не падает."""
+    monkeypatch.setattr('report.read_recent_history', lambda limit=None: _fake_events(5))
+    inputs = iter(['m', '0'])  # 5 событий = 1 страница; m → последняя
+    monkeypatch.setattr('builtins.input', lambda *a: next(inputs))
+    open_history_viewer(None)
+    out = capsys.readouterr().out
+    assert 'последняя страница' in out
