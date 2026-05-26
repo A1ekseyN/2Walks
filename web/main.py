@@ -1686,10 +1686,12 @@ def _finalize_adventure_with_drop_capture(state) -> None:
     pending_drop / counters / money (forced sale) → save_characteristic → если
     STALE → rollback всех мутаций (claim отменён, fresh reload подтянет state).
 
-    **Known minor issue:** `Adventure.adventure_check_done` фаерит
-    `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save.
-    При STALE rollback'е эти entries остаются в history (phantom). Не критично —
-    history fail-resistant noise, deferred follow-up 4.48.5.1.1.
+    4.48.5.1.1 (26.05.2026): `adventure_check_done` больше НЕ логирует внутри
+    себя — события (`drop*` / `adventure_done`) копятся в `deferred` буфер и
+    логируются (через `log_event` → triumph `register_event`) ТОЛЬКО после OK
+    commit. При STALE rollback'е буфер выбрасывается → нет phantom-записей в
+    history и нет phantom triumph-инкремента (искажали бы backfill, 4.6.1 / 4.62).
+    Цена: triumph-инкремент персистится в следующий save (RAM-lag, как level-up).
 
     Если active=False с самого начала — no-op (не сбрасывает существующий
     notification — чтобы banner переживал F5 после finalize'а).
@@ -1712,9 +1714,11 @@ def _finalize_adventure_with_drop_capture(state) -> None:
     inv_len_before = len(state.inventory)
     pending_before = state.pending_drop
 
-    # Делегируем существующему helper'у (мутирует state + фаерит log_event).
+    # Делегируем существующему helper'у (мутирует state). 4.48.5.1.1 — события
+    # копятся в `deferred`, логируются ниже только после OK commit.
     from adventure import Adventure
-    Adventure.adventure_check_done(self=None, state=state)
+    deferred: list = []
+    Adventure.adventure_check_done(self=None, state=state, deferred_events=deferred)
 
     # Capture what dropped (tentative — для banner).
     if len(state.inventory) > inv_len_before:
@@ -1734,7 +1738,14 @@ def _finalize_adventure_with_drop_capture(state) -> None:
         state.money = snap_money
         state.last_adventure_drop = snap_drop
         state.finalize_stale = True
+        # deferred события НЕ логируем — claim откатан (нет phantom в history
+        # + нет triumph-инкремента).
         print('[adventure finalize] STALE — drop откатан, fresh reload подтянет state.')
+    else:
+        # OK commit — теперь безопасно логировать (history + triumph register_event).
+        from history import log_event
+        for event_type, payload in deferred:
+            log_event(event_type, **payload)
 
 
 def _validate_and_apply_adventure(state, adv_name: str) -> Optional[str]:

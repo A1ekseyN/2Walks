@@ -3602,7 +3602,7 @@ def test_finalize_captures_dropped_item_when_inventory_grows(monkeypatch):
         'characteristic': ['stamina'], 'bonus': [8],
         'quality': [80.0], 'price': [50],
     }
-    def fake_collect(self, hard, state):
+    def fake_collect(self, hard, state, deferred_events=None):
         state.inventory.append(test_item)
     monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
 
@@ -3628,7 +3628,7 @@ def test_finalize_captures_pending_drop_when_inventory_full(monkeypatch):
         'characteristic': ['luck'], 'bonus': [3],
         'quality': [50.0], 'price': [20],
     }
-    def fake_collect(self, hard, state):
+    def fake_collect(self, hard, state, deferred_events=None):
         state.pending_drop = pending_item
     monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
 
@@ -3675,7 +3675,7 @@ def test_finalize_adventure_stale_rollback(monkeypatch):
         'characteristic': ['stamina'], 'bonus': [8],
         'quality': [80.0], 'price': [50],
     }
-    def fake_collect(self, hard, state):
+    def fake_collect(self, hard, state, deferred_events=None):
         state.inventory.append(test_item)
     monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
     # Override conftest's mock to simulate STALE.
@@ -3712,7 +3712,7 @@ def test_finalize_adventure_ok_commits(monkeypatch):
         'characteristic': ['stamina'], 'bonus': [8],
         'quality': [80.0], 'price': [50],
     }
-    def fake_collect(self, hard, state):
+    def fake_collect(self, hard, state, deferred_events=None):
         state.inventory.append(test_item)
     monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
     monkeypatch.setattr(_pers, "save_characteristic", lambda: "OK")
@@ -3726,6 +3726,94 @@ def test_finalize_adventure_ok_commits(monkeypatch):
     assert state.adventure.counters.get('walk_easy') == 1
     assert state.last_adventure_drop is test_item
     assert state.finalize_stale is False
+
+
+# ----- 4.48.5.1.1: deferred log_event (no phantom history on STALE) -----
+
+def test_finalize_adventure_logs_deferred_events_on_ok(monkeypatch):
+    """4.48.5.1.1 — на OK commit отложенные события (drop + adventure_done)
+    логируются ПОСЛЕ save (через emit_or_defer буфер)."""
+    from web.main import _finalize_adventure_with_drop_capture
+    from drop import Drop_Item
+    import history as _hist
+    import persistence as _pers
+    logged: list = []
+    monkeypatch.setattr(_hist, "log_event", lambda t, **p: logged.append((t, p)))
+
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() - 1
+    state.inventory = []
+    state.adventure.counters = {}
+    _setup_state(state)
+
+    test_item = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8], 'quality': [80.0], 'price': [50],
+    }
+    def fake_collect(self, hard, state, deferred_events=None):
+        state.inventory.append(test_item)
+        from history import emit_or_defer
+        emit_or_defer(deferred_events, 'drop', adventure=hard)
+    monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
+    monkeypatch.setattr(_pers, "save_characteristic", lambda: "OK")
+
+    _finalize_adventure_with_drop_capture(state)
+
+    types = [t for t, _ in logged]
+    assert 'drop' in types
+    assert 'adventure_done' in types
+
+
+def test_finalize_adventure_no_phantom_log_on_stale(monkeypatch):
+    """4.48.5.1.1 — на STALE rollback'е отложенные события НЕ логируются
+    (нет phantom-записей в history → не искажают triumph-backfill)."""
+    from web.main import _finalize_adventure_with_drop_capture
+    from drop import Drop_Item
+    import history as _hist
+    import persistence as _pers
+    logged: list = []
+    monkeypatch.setattr(_hist, "log_event", lambda t, **p: logged.append((t, p)))
+
+    state = _state_for_adventure()
+    state.adventure.active = True
+    state.adventure.name = 'walk_easy'
+    state.adventure.end_ts = datetime.now().timestamp() - 1
+    state.inventory = []
+    state.adventure.counters = {'walk_easy': 5}
+    _setup_state(state)
+
+    test_item = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8], 'quality': [80.0], 'price': [50],
+    }
+    def fake_collect(self, hard, state, deferred_events=None):
+        state.inventory.append(test_item)
+        from history import emit_or_defer
+        emit_or_defer(deferred_events, 'drop', adventure=hard)
+    monkeypatch.setattr(Drop_Item, "item_collect", fake_collect)
+    monkeypatch.setattr(_pers, "save_characteristic", lambda: "STALE")
+
+    _finalize_adventure_with_drop_capture(state)
+
+    assert logged == []  # ни drop, ни adventure_done — claim откатан
+    assert state.finalize_stale is True
+
+
+def test_emit_or_defer_buffers_when_list_passed(monkeypatch):
+    """4.48.5.1.1 — emit_or_defer: список → буфер (без log_event); None → лог сразу."""
+    import history as _hist
+    logged: list = []
+    monkeypatch.setattr(_hist, "log_event", lambda t, **p: logged.append((t, p)))
+
+    buf: list = []
+    _hist.emit_or_defer(buf, 'drop', adventure='walk_easy')
+    assert buf == [('drop', {'adventure': 'walk_easy'})]
+    assert logged == []  # в буфер, не в лог
+
+    _hist.emit_or_defer(None, 'drop', adventure='walk_easy')
+    assert logged == [('drop', {'adventure': 'walk_easy'})]  # сразу в лог
 
 
 # ----- 4.48.5.1: web endpoint returns STALE response when finalize_stale=True -----

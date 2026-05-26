@@ -30,7 +30,7 @@ Re-sync after Sheets recovery — 4.6.3.
 import json
 import time
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from config import DEFAULT_USER_ID, HISTORY_FILE
 
@@ -82,6 +82,22 @@ def _write_sheets(event: dict[str, Any]) -> None:
     except Exception:
         # Silent — игра продолжает, лог есть локально.
         pass
+
+
+def emit_or_defer(deferred_events: Optional[list], event_type: str, **payload: Any) -> None:
+    """4.48.5.1.1 — либо логирует событие сразу, либо складывает в буфер для
+    отложенного лога ПОСЛЕ save commit (save-first pattern, 4.48.5.1).
+
+    Зачем: финализатор приключения (`Adventure.adventure_check_done`) при STALE
+    save-rollback'е НЕ должен оставлять phantom-записи в history (они искажают
+    triumph-backfill — задача 4.6.1 / 4.62). При `deferred_events is not None`
+    событие копится как `(event_type, payload)`; caller сам зовёт `log_event`
+    только после OK commit. `None` (CLI) → лог сразу, поведение не меняется.
+    """
+    if deferred_events is None:
+        log_event(event_type, **payload)
+    else:
+        deferred_events.append((event_type, payload))
 
 
 def log_event(event_type: str, **payload: Any) -> None:

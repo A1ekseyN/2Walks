@@ -6,7 +6,7 @@
 """
 
 from random import randint
-from typing import Any
+from typing import Any, Optional
 
 from bonus import inventory_full
 from equipment_bonus import equipment_luck_bonus
@@ -257,8 +257,14 @@ class Drop_Item:
         elif grade[0] == 's+grade':
             return round(quality[0] * 2.5)
 
-    def item_collect(self, hard, state: GameState):
-        """Собирает item из подразделов. Если все поля валидны — кладёт в state.inventory."""
+    def item_collect(self, hard, state: GameState, deferred_events: Optional[list] = None):
+        """Собирает item из подразделов. Если все поля валидны — кладёт в state.inventory.
+
+        4.48.5.1.1 — `deferred_events`: если передан список, drop-события
+        (`drop` / `drop_pending` / `drop_force_sold`) складываются в него вместо
+        немедленного `log_event` — caller логирует их ПОСЛЕ save commit
+        (save-first pattern). None (CLI) → лог сразу, поведение не меняется.
+        """
         item: dict[str, list] = {
             'item_name': [],
             'item_type': [],
@@ -284,23 +290,25 @@ class Drop_Item:
             print(f'\nВыпал предмет: '
                   f'\n- {item["grade"][0]}: {item["item_type"][0].title()} + {item["bonus"][0]} {item["characteristic"][0].title()} '
                   f'(Качество: {item["quality"][0]}) (Цена: {item["price"][0]} $). \n')
-            from history import log_event
+            from history import emit_or_defer
 
             # 4.50.1 — три ветки в зависимости от заполненности инвентаря и
             # наличия pending. Базовая логика appendа осталась только в (1).
             # Лог-события: 'drop' / 'drop_pending' / 'drop_force_sold' —
             # позволяют отличать на дашборде истории сценарий (4.6.2).
+            # 4.48.5.1.1 — через emit_or_defer: при STALE save-rollback'е в web
+            # эти события не должны попасть в history (deferred_events буфер).
             if not inventory_full(state):
                 # (1) Обычный drop — есть место, кладём в инвентарь.
                 state.inventory.append(item)
-                log_event('drop',
-                          adventure=hard,
-                          item_type=item['item_type'][0],
-                          grade=item['grade'][0],
-                          characteristic=item['characteristic'][0],
-                          bonus=item['bonus'][0],
-                          quality=item['quality'][0],
-                          price=item['price'][0])
+                emit_or_defer(deferred_events, 'drop',
+                              adventure=hard,
+                              item_type=item['item_type'][0],
+                              grade=item['grade'][0],
+                              characteristic=item['characteristic'][0],
+                              bonus=item['bonus'][0],
+                              quality=item['quality'][0],
+                              price=item['price'][0])
             elif state.pending_drop is None:
                 # (2) Рюкзак полон, pending свободен — копим находку в pending.
                 # Игрок resolve'ит при следующем заходе в Inventory (A3 flow):
@@ -308,14 +316,14 @@ class Drop_Item:
                 state.pending_drop = item
                 print('🎒 Инвентарь полон. Находка ждёт решения — '
                       'открой Инвентарь чтобы продать что-то старое или эту находку.')
-                log_event('drop_pending',
-                          adventure=hard,
-                          item_type=item['item_type'][0],
-                          grade=item['grade'][0],
-                          characteristic=item['characteristic'][0],
-                          bonus=item['bonus'][0],
-                          quality=item['quality'][0],
-                          price=item['price'][0])
+                emit_or_defer(deferred_events, 'drop_pending',
+                              adventure=hard,
+                              item_type=item['item_type'][0],
+                              grade=item['grade'][0],
+                              characteristic=item['characteristic'][0],
+                              bonus=item['bonus'][0],
+                              quality=item['quality'][0],
+                              price=item['price'][0])
             else:
                 # (3) Рюкзак полон + pending уже занят — forced sale (вариант D-iii):
                 # новая находка авто-продаётся, money += price (с учётом
@@ -325,14 +333,14 @@ class Drop_Item:
                 state.money += price
                 print(f'🎒 Инвентарь и слот находок заняты. '
                       f'Находка автоматически продана за {price} $.')
-                log_event('drop_force_sold',
-                          adventure=hard,
-                          item_type=item['item_type'][0],
-                          grade=item['grade'][0],
-                          characteristic=item['characteristic'][0],
-                          bonus=item['bonus'][0],
-                          quality=item['quality'][0],
-                          price=price)
+                emit_or_defer(deferred_events, 'drop_force_sold',
+                              adventure=hard,
+                              item_type=item['item_type'][0],
+                              grade=item['grade'][0],
+                              characteristic=item['characteristic'][0],
+                              bonus=item['bonus'][0],
+                              quality=item['quality'][0],
+                              price=price)
             return item
         print('--- Ничего не выпало ---\n')
         return None

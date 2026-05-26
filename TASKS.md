@@ -1024,9 +1024,31 @@ Append-only лог значимых игровых событий. Даёт:
 - CLI команда «История» для просмотра последних N событий (4.6.2).
 - Re-sync missed events на восстановление Sheets (4.6.3).
 
-#### 4.6.1. Pruning / rotation `history.jsonl` `[L / S / todo]`
+#### 4.6.1. Pruning / rotation `history.jsonl` `[L / S / todo (deferred — Low priority, 26.05.2026)]`
 
-Когда `history.jsonl` начнёт расти заметно (десятки тысяч строк, медленный grep / большое потребление места) — нужна стратегия очистки. Варианты: rolling window (последние 90 дней), архивный лист `history_archive` в Sheets, compaction (агрегаты по дням). Решается при первой реальной потребности — аналогично `4.14.1` для steps_log.
+**Статус (26.05.2026):** отложено, низкий приоритет. Реальной потребности нет — файл сейчас **368 строк / 75 КБ**. Вернуться, когда станет десятки тысяч строк (медленный full-scan, заметное место). Решается аналогично `4.14.1` (pruning steps_log) — по факту боли.
+
+**Суть.** `history.jsonl` — append-only лог, по записи на каждое значимое событие (24+ типов: work_done, drop, skill_upgraded, level_up, deposit, …). Растёт неограниченно. Нужна стратегия ограничения размера, **не теряя данных, от которых зависят другие системы**.
+
+**⚠️ КРИТИЧЕСКИЙ НЮАНС (появился ПОСЛЕ написания задачи — из-за Triumphs 4.62).** Полную историю реплеят несколько читателей, и часть из них опасна при наивном прунинге:
+
+| Читатель | Что делает | Риск прунинга |
+|---|---|---|
+| `triumphs._replay_events_into_counters` (через `backfill_from_history` / `backfill_from_sheets_history`) | **Сбрасывает event-based счётчики в 0** и считает заново по реплею | **Высокий** — under-count |
+| Web-кнопка «🌐 Backfill из Sheets» (`_validate_and_apply_backfill_sheets`) | user-triggerable → реплей Sheets-истории | **Критично** — клик после обрезки Sheets-истории СБРОСИТ triumph-прогресс |
+| Iron Worker max-scan (`characteristics._scan…longest_shift`) | `max(current, replayed)`, seed из state | ✅ защищён (не уходит вниз) |
+| `report.py` «Пока тебя не было» | только `HistoryLogRepo.since(recent)` | ✅ прунингу не мешает |
+
+Live-счётчики triumphs живут в `state.triumphs[id]['count']` (persisted, forward-increment) — сам прунинг их НЕ уменьшает; опасен только **повторный backfill после обрезки**. Поэтому любая стратегия прунинга ДОЛЖНА либо сохранять агрегаты для backfill, либо сделать реплей clamped, либо не трогать backfill-источник. Из-за этой связки реальный effort выше изначального `L/S`.
+
+**Варианты реализации:**
+- **A. Rolling window** (последние N дней / N строк) — перечитать, оставить хвост, переписать. Тривиально (~20 строк), но **ломает backfill** (under-count).
+- **B. Compaction с summary** — удаляемые события сворачиваются в агрегат-record (`{type:'__pruned_summary__', counts:{work_done:480,…}, max_shift_hours:14}`); backfill seed'ит из summary + реплеит хвост. Точный backfill + малый файл, но сложнее (~60-80 строк + тесты).
+- **C. Архив hot+cold** — `history.jsonl` обрезается до hot-окна, обрезанное → `history_archive.jsonl` (или Sheets `history_archive`). Zero data loss; частые readers/viewer быстрые; backfill читает оба (не ускоряется, но без потерь).
+- **D. Logrotate по размеру** (`history.1.jsonl` …) — классика, аналог C.
+- **E. Защита backfill (ортогонально к A-D)** — реплей сделать **clamped** (`max(existing_count, replayed)` вместо reset-to-0). Тогда прунинг перестаёт быть опасным для счётчиков. Можно как отдельное усиление перед/вместе с A.
+
+**Рекомендация при возврате:** C (архив) или B (compaction) — не ломают backfill. Вариант A — только в связке с E-clamp, иначе риск потери triumph-прогресса. Также рассмотреть прунинг Sheets-копии `history` (растёт в облаке, влияет на quota и стоимость `.since(0)`).
 
 #### 4.6.2. CLI команда отображения истории `[L / S / todo]`
 
@@ -2767,7 +2789,7 @@ sudo systemctl status 2walks    # verify
 
 **Closes race:** claim попадает в state ТОЛЬКО если save в Sheets прошёл успешно. Web restart до сохранения = в Sheets state.work остаётся active → reload web попробует финализировать снова, но это будет ПЕРВЫЙ commit (никакого double).
 
-**Known minor issue (deferred 4.48.5.1.1):** `Adventure.adventure_check_done` фаерит `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save. При STALE rollback'е эти entries остаются в history. Не критично (history fail-resistant noise), но не 100% чисто. Fix — refactor adventure_check_done чтобы log_event вызывался ПОСЛЕ save commit (через callback или return-value pattern).
+**Known minor issue → ✅ закрыто в 4.48.5.1.1 (26.05.2026):** `Adventure.adventure_check_done` фаерил `log_event` ВНУТРИ себя ДО save → phantom-записи при STALE rollback'е. Решено через `history.emit_or_defer` буфер — события логируются ПОСЛЕ OK commit, на STALE выбрасываются. См. 4.48.5.1.1.
 
 **Тесты:** 6 новых (3 STALE rollback + 1 OK happy-path для adventure + 2 endpoint tests для full-page и fragment STALE). 1 existing test обновлён (mock возвращает "OK" явно). 1051 passed total, mypy 0 issues (68 source files).
 
@@ -2836,18 +2858,26 @@ B1 blob last_modified: 1779300150.71383 ← правильно
 
 **Заменяет** client-side подход 4.48.5.2 (beforeunload-overlay оставлен как доп. feedback на краткий navigation-gap, который теперь почти мгновенный).
 
-##### 4.48.5.1.1. Deferred log_event в Adventure финализаторе `[L / XS / todo (опциональное продолжение 4.48.5.1)]`
+##### 4.48.5.1.1. Deferred log_event в Adventure финализаторе `[L / S / done (26.05.2026, 0.2.6)]`
 
-**Контекст:** `Adventure.adventure_check_done` (`adventure.py`) фаерит `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save. При STALE rollback'е в `_finalize_adventure_with_drop_capture` (4.48.5.1) эти entries остаются в `history.jsonl` / Sheets `history` лист — phantom события которые не отражают реального state.
+**Реализовано (26.05.2026, 0.2.6).** Введён буфер отложенных событий: helper `history.emit_or_defer(deferred_events, type, **payload)` — при `deferred_events is None` логирует сразу (CLI, поведение не меняется), при переданном списке копит `(type, payload)`. Проброшен через `Drop_Item.item_collect(..., deferred_events=None)` (3 drop-ветки) и `Adventure.adventure_check_done(..., deferred_events=None)` (adventure_done). Web-wrapper `_finalize_adventure_with_drop_capture` передаёт буфер → save → **OK**: `log_event` для каждого события (history + triumph `register_event`); **STALE**: буфер выбрасывается. Фиксит и phantom-историю, и phantom triumph-инкремент на STALE (раньше `state.triumphs` не откатывался). CLI не тронут (asymmetry как в 4.48.5.1). **Файлы:** `history.py`, `drop.py`, `adventure.py`, `web/main.py`. **Тесты:** 3 новых (OK→лог, STALE→no-log, emit_or_defer unit) + 5 моков обновлены под новую сигнатуру. 1306 passed, mypy 0 issues.
 
-**Минорно:** history — fail-resistant noise по дизайну (entries никогда не блокируют gameplay). Phantom drop/adventure_done entries — косметический мусор в логах, не gameplay impact. Возможно когда-то будут влиять на дешборды (4.10) или streak-counter logic — тогда придётся чистить.
+---
+
+**Контекст (исторический):** `Adventure.adventure_check_done` (`adventure.py`) фаерил `log_event('adventure_done')` и `log_event('drop')` ВНУТРИ себя, ДО save. При STALE rollback'е в `_finalize_adventure_with_drop_capture` (4.48.5.1) эти entries остаются в `history.jsonl` / Sheets `history` лист — phantom события которые не отражают реального state. Это нарушает паттерн 4.48.5.1 «log_event только ПОСЛЕ OK commit», который Work / Gym финализаторы соблюдают.
+
+**⚠️ Связь с Triumphs backfill (4.62 — добавлено 26.05.2026, повышает актуальность).** Раньше phantom-записи считались чисто косметическим шумом (макс — будущие дашборды 4.10). Но Triumphs реплеят историю для реконструкции event-based счётчиков: `triumphs.backfill_from_history` (local jsonl), `backfill_from_sheets_history` (Sheets), и **user-triggerable web-кнопка «🌐 Backfill из Sheets»**. Phantom `adventure_done` / `drop` entries → **завышенный счёт** при backfill: Adventurer / per-walk триумфы и Drops-триумфы (4.62.1.7) насчитают прохождения/дропы, которых не было. То есть задача больше НЕ чисто косметическая — это потенциальная порча triumph-прогресса при backfill. (Симметрично нюансу в 4.6.1 — оба про реплей истории.)
+
+**Минорно (почему всё ещё low-приоритет):** history fail-resistant by design; STALE-rollback при финализации приключения возможен только при конкуренции CLI↔web ровно в момент завершения прогулки — для одиночного игрока редкость. Backfill — разовая/ручная операция. Так что частота phantom-записей низкая, но эффект (искажение счётчиков) теперь не нулевой.
 
 **Решение:**
-1. Refactor `Adventure.adventure_check_done` — возвращать tuple `(adv_done_payload, drop_payload)` вместо internal log_event. Caller вызывает `log_event('adventure_done', **adv_done_payload)` + `log_event('drop', **drop_payload)` ПОСЛЕ save commit.
+1. Refactor `Adventure.adventure_check_done` — возвращать `(adv_done_payload, drop_payload)` вместо internal log_event. Caller вызывает `log_event('adventure_done', **adv_done_payload)` + `log_event('drop', **drop_payload)` ПОСЛЕ save commit.
 2. CLI caller (`functions.py:status_bar`) и web wrapper (`_finalize_adventure_with_drop_capture`) обновить под новый return shape.
-3. Тесты — добавить assertion «log_event не фаерится при STALE rollback».
+3. Тесты — assertion «log_event не фаерится при STALE rollback».
 
-**Effort:** XS (~20-30 строк refactor + 1 тест). **Trigger:** появятся реальные следствия phantom entries (например 4.10 dashboards считают неверный drop rate) — тогда стоит закрывать.
+**⚠️ Эффорт пересмотрен XS → S.** `log_event('drop')` фаерится не прямо в `adventure_check_done`, а глубже — внутри `Drop_Item.item_collect`, в **3+ ветках** (`drop` / `drop_pending` / `drop_force_sold`, + `drop_auto_collected`). Чтобы отложить drop-лог до commit, придётся либо `item_collect` тоже возвращать payload'ы, либо ввести «deferred log buffer». Затрагивает несколько вызывателей (`adventure_check_done` зовётся из CLI main loop, web-wrapper'а и legacy `self=None` сигнатуры). `adventure_done` отложить легко, `drop` — основная работа.
+
+**Trigger:** реальные следствия phantom entries — например игрок заметит расхождение Adventure/Drop триумфов после backfill, либо появятся дашборды 4.10 с неверным drop rate.
 
 #### 4.48.6. Web: Inventory + Equipment `[M / M / done (19.05.2026, 0.2.4u)]`
 
@@ -4261,9 +4291,11 @@ adjusted_steps = steps × neatness_factor
 
 ---
 
-#### 4.61.1. Tiered partial bonus для quality (post-MVP) `[L / S / todo (20.05.2026, follow-up к 4.61)]`
+#### 4.61.1. Tiered partial bonus для quality (post-MVP) `[L / S / cancelled (26.05.2026)]`
 
-**Контекст.** 4.61 MVP (0.2.4x) ввёл **binary cliff**: quality > 0 → полный bonus, quality == 0 → 0 bonus. Игрок зафиксировал что в будущем хочет более плавную градацию. Эта подзадача — собрать данные о feel binary cliff после bake-test'а 4.61, потом ввести tiered penalty.
+**Отменено (26.05.2026)** по решению пользователя. Binary cliff из 4.61 MVP (quality > 0 → полный bonus, quality == 0 → broken) остаётся как финальный дизайн — tiered градация (75/50%) не вводится. Тело ниже сохранено для traceability на случай, если решение пересмотрят.
+
+**Контекст (исторический).** 4.61 MVP (0.2.4x) ввёл **binary cliff**: quality > 0 → полный bonus, quality == 0 → 0 bonus. Изначально предполагалось собрать данные о feel binary cliff после bake-test'а 4.61, потом ввести tiered penalty.
 
 **Предлагаемая шкала (зафиксировано в дизайн-сессии 20.05.2026):**
 
@@ -5212,11 +5244,18 @@ UI-функции с `input()` / `print()`. 26 функций суммарно:
 
 ---
 
-### 5.3. Удалить мёртвый код `[L / S / todo]`
+### 5.3. Удалить мёртвый код `[L / S / done (26.05.2026)]`
 
-- `characteristics.py:483-508` — стек неиспользуемых переменных (`flat_walking`, `resistance_cold`, и т.д.)
-- `functions.py:221` — `steps_today_update_manual_nocodeapi_old()`
-- Закомментированные блоки в `game.py`, `shop.py`, `inventory.py`.
+**Закрыто (26.05.2026)** — все 3 названных пункта уже удалены ранее (в основном в рамках 1.3.1 / 0.2.3d), grep подтвердил отсутствие:
+- `characteristics.py` `flat_walking` / `resistance_cold` / *_walking стек — ✅ удалено (1.3.1; файл усох до ~241 строки).
+- `functions.py` `steps_today_update_manual_nocodeapi_old()` — ✅ удалено.
+- Закомментированные блоки в `game.py` / `shop.py` / `inventory.py` — ✅ не найдено.
+
+**Остаточное «мёртвое» — вне скоупа этой задачи (намеренно):**
+- `shop.py` заглушки (`_clothes_stub`, `shop_menu_equipment`/`shop_menu_sell_items` = `pass`) — **намеренные плейсхолдеры** под Shop-реформу **4.7.0**, не мёртвый код.
+- `persistence.py` legacy CSV reader (`CHARACTERISTIC_CSV_PATH`) — трекается отдельно в **1.4.3.1**.
+
+**Если в будущем понадобится системный аудит** — завести отдельную задачу с `vulture` (в `requirements-dev.txt`) + ручная выверка (динамика типа `getattr(state.gym, skill_name)` и legacy-алиасы дают ложные срабатывания).
 
 ---
 

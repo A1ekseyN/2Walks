@@ -63,11 +63,19 @@ class Adventure:
                 f'🕑: {time(speed_skill_equipment_and_level_bonus(adv["data"]["time"], self._state))}'
             )
 
-    def adventure_check_done(self, state: Optional[GameState] = None) -> None:
+    def adventure_check_done(self, state: Optional[GameState] = None,
+                             deferred_events: Optional[list] = None) -> None:
         """Финализатор приключения по таймеру: дроп + инкремент счётчика + clear.
 
         Поддерживает legacy-вызов `Adventure.adventure_check_done(self=None, state=state)` —
         в этом случае state приходит явно. Иначе берётся из self._state.
+
+        4.48.5.1.1 — `deferred_events`: если передан список, события `drop*` /
+        `adventure_done` складываются в него (через `emit_or_defer`) вместо
+        немедленного `log_event`. Caller (web `_finalize_adventure_with_drop_capture`)
+        логирует их ПОСЛЕ успешного save commit — при STALE rollback'е phantom-записи
+        не попадают в history (искажали бы triumph-backfill, 4.6.1 / 4.62). None
+        (CLI) → лог сразу, поведение не меняется.
         """
         if state is None and self is not None:
             state = self._state
@@ -78,14 +86,17 @@ class Adventure:
             print('\n🗺 Приключение пройдено. 🗺')
             adv_name = state.adventure.name
             if adv_name in _ADV_COUNTER_KEYS:
-                Drop_Item.item_collect(self=None, hard=adv_name, state=state)
+                Drop_Item.item_collect(self=None, hard=adv_name, state=state,
+                                       deferred_events=deferred_events)
                 counter_key = _ADV_COUNTER_KEYS[adv_name]
                 state.adventure.counters[counter_key] = state.adventure.counters.get(counter_key, 0) + 1
 
             # 4.6 — log_event завершения приключения. Drop фиксируется отдельно
             # внутри Drop_Item.item_collect (если был).
-            from history import log_event
-            log_event('adventure_done', name=adv_name)
+            # 4.48.5.1.1 — emit_or_defer: при STALE save-rollback'е не оставляем
+            # phantom 'adventure_done' в history.
+            from history import emit_or_defer
+            emit_or_defer(deferred_events, 'adventure_done', name=adv_name)
 
             state.adventure.active = False
             state.adventure.name = None
