@@ -327,7 +327,7 @@ Lazy imports + try/except чтобы избежать circular dependency.
 
 **Score system:** `POINTS_PER_TIER = 10`. Capstone = 10 × num_tiers points (50 для 5-tier triumph'а, 40 для 4-tier). Очки начисляются только за **собранные (claimed)** tier'ы (`total_score` = Σ `max(0, tier − unclaimed_count) × points_per`, 0.2.6 fix) — несобранные unlock'и сидят в queue и дают 0 очков.
 
-**Total: 40 triumph'ов в 5 категориях, 5 seals** (с 0.2.5w +1 Iron Worker в Work).
+**Total: 41 triumph в 6 категориях, 6 seals** (с 0.2.5w +1 Iron Worker в Work; с 0.2.6 +1 Veteran в Progression ⭐ + seal Veteran). NB: тиры Veteran 15-30 пока недостижимы — level-кэп = 12, расширение в TASKS 4.64 (отложено).
 
 ### 🏃 Steps (1) — 4.62.1.1 / 0.2.5m
 

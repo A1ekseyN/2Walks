@@ -4637,12 +4637,15 @@ CLI shell для будущих категорий. Empty state когда catal
 - **Lucky** — 10 / 50 S+ drops.
 - Hook: event_hooks=['drop'], filter `payload['item']['grade'][0]`.
 
-##### 4.62.1.8. Level / progression triumphs `[L / XS / todo (blocked by 4.62.0)]`
+##### 4.62.1.8. Level / progression triumphs `[L / XS / done (27.05.2026, 0.2.6)]`
 
 **Категория `progression`. Metric-based** (`state.char_level.level`).
 
-- **Veteran** — tiers `[5, 10, 25, 50, 100]`. Capstone: title.
-- Hook: metric-based.
+**Реализовано (27.05.2026):** триумф **Veteran** (`triumphs_data.TRIUMPHS['veteran']`), metric `state.char_level.level`, tiers `[5, 10, 15, 20, 25, 30]`. Seal **Veteran** ⭐ для категории `progression` (capstone L30) → title «Veteran».
+
+**⚠️ Тиры с заделом на будущее:** текущий level-кэп = 12 (`level.py:LEVEL_THRESHOLDS`), поэтому тиры 15-30 и seal пока недостижимы — расширение градации уровней вынесено в отложенную **4.64**. Тиры 5/10 для игрока на L10 анлокаются сразу (init_metric_check). Исходно задача предлагала `[5,10,25,50,100]` — пересмотрено на `[5,10,15,20,25,30]` по запросу (равный шаг 5, реалистичнее под будущий кэп 30).
+
+**Файлы:** `triumphs_data.py` (Veteran triumph + progression seal). **Тесты:** 7 (`TestVeteran` в test_triumphs_catalog.py). 1328 passed, mypy 0 issues.
 
 ##### 4.62.1.9. Streak / consistency triumphs `[L / M / todo (blocked by 4.62.0)]`
 
@@ -5377,6 +5380,18 @@ Mypy ругается: `Argument "value_input_option"... has incompatible type "
 **Решить при реализации.** Подкаст в отдельную подзадачу — изменение касается только gspread API.
 
 **Сделано (05.05.2026, 0.2.1u):** выбран вариант (A) — импорт enum: `from gspread.utils import ValueInputOption` + использование `value_input_option=ValueInputOption.user_entered`. Чище чем `# type: ignore`, mypy теперь проходит. Test mock'ам в test_sheets_repo.py не пострадали — мы мокаем worksheet, а не enum.
+
+---
+
+### 4.64. Расширение градации уровней (>12) `[M / M / todo (отложено, 27.05.2026)]`
+
+**Контекст:** сейчас `level.py:LEVEL_THRESHOLDS` имеет ключи 0..11 → **максимальный уровень 12** (хардкап, без экстраполяции). Veteran-триумф (4.62.1.8) добавлен с тирами 5/10/15/20/25/30 «на вырост» — тиры 15-30 и seal «Veteran» (capstone L30) недостижимы, пока кэп не расширен.
+
+**Задача:** расширить `LEVEL_THRESHOLDS` минимум до уровня 30 (новые пороги по `steps_total_used`). Требует **balance design** — подобрать кривую порогов для L13-L30 на основе реального темпа ходьбы (как калибровались L1-L12). Возможно вынести таблицу в data-модуль (аналогично `skill_training_data` / `adventure_data`).
+
+**Связанное:** при расширении — проверить `level.py:calculate_level_from_total_used_steps` (итерирует THRESHOLDS, экстраполяции нет), CharLevel skill-allocation на новых уровнях, status_bar / web рендер. Veteran-триумф и seal Progression закроются автоматически по достижении новых уровней (метрика читает `state.char_level.level` напрямую).
+
+**Приоритет:** отложено — нет немедленной потребности (игрок на L10-12), нужен вдумчивый balance.
 
 ---
 

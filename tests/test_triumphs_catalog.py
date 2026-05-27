@@ -696,3 +696,64 @@ class TestIronWorker:
         state.work.longest_shift_hours = 50
         register_event(state, 'work_done', hours=1)
         assert state.triumphs['iron_worker']['tier'] == 2  # remembered
+
+
+# ===========================================================================
+# 4.62.1.8 — Veteran (Progression / Level)
+# ===========================================================================
+
+class TestVeteran:
+    """⭐ Veteran — metric-based, state.char_level.level. Tiers 5/10/15/20/25/30.
+    NB: текущий level-кэп = 12 (level.py), тиры 15-30 — задел на будущее."""
+
+    def test_veteran_in_catalog(self):
+        assert 'veteran' in TRIUMPHS
+        spec = TRIUMPHS['veteran']
+        assert spec['name'] == 'Veteran'
+        assert spec['category'] == 'progression'
+        assert spec['tiers'] == [5, 10, 15, 20, 25, 30]
+        assert 'metric' in spec
+        assert 'event_hooks' not in spec
+
+    def test_veteran_metric_reads_char_level(self):
+        state = GameState.default_new_game()
+        state.char_level.level = 7
+        assert TRIUMPHS['veteran']['metric'](state) == 7
+
+    def test_veteran_no_unlock_below_first_tier(self):
+        """level 4 → no unlock (tier 1 = 5)."""
+        state = GameState.default_new_game()
+        state.char_level.level = 4
+        register_event(state, 'level_up', from_level=3, to_level=4)
+        assert state.triumphs.get('veteran', {}).get('tier', 0) == 0
+
+    def test_veteran_unlock_tier_1_at_level_5(self):
+        state = GameState.default_new_game()
+        state.char_level.level = 5
+        register_event(state, 'level_up', from_level=4, to_level=5)
+        assert state.triumphs['veteran']['tier'] == 1
+
+    def test_veteran_unlock_multiple_tiers_at_level_10(self):
+        """level 10 → tiers 5 и 10 (2 tier'а), capstone (30) ещё нет."""
+        state = GameState.default_new_game()
+        state.char_level.level = 10
+        unlocked = register_event(state, 'level_up', from_level=9, to_level=10)
+        vet = [u for u in unlocked if u['triumph_id'] == 'veteran']
+        assert len(vet) == 2
+        assert state.triumphs['veteran']['tier'] == 2
+        assert not any(u['is_capstone'] for u in vet)
+
+    def test_veteran_capstone_at_level_30(self):
+        """level 30 (будущий кэп) → все 6 tier'ов, последний — capstone."""
+        state = GameState.default_new_game()
+        state.char_level.level = 30
+        unlocked = register_event(state, 'level_up', from_level=29, to_level=30)
+        vet = [u for u in unlocked if u['triumph_id'] == 'veteran']
+        assert len(vet) == 6
+        assert state.triumphs['veteran']['tier'] == 6
+        assert vet[-1]['is_capstone'] is True
+
+    def test_progression_category_and_seal_exist(self):
+        from triumphs_data import CATEGORIES, SEALS
+        assert 'progression' in CATEGORIES
+        assert SEALS['progression']['name'] == 'Veteran'

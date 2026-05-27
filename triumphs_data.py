@@ -387,6 +387,20 @@ TRIUMPHS: dict[str, dict] = {
         'tiers': [24, 72, 168, 336, 720],
         'metric': lambda s: s.work.longest_shift_hours,
     },
+
+    # ----- ⭐ Progression (4.62.1.8, 27.05.2026) -----
+    # Veteran — metric-based на state.char_level.level. Tiers по уровням
+    # 5/10/15/20/25/30. ВАЖНО: текущий потолок уровня = 12 (level.py
+    # LEVEL_THRESHOLDS, ключи 0..11). Тиры 15-30 пока недостижимы — задел на
+    # будущее расширение градации уровней (TASKS 4.64, отложено). До
+    # расширения capstone (L30) не закрывается → seal 'Veteran' остаётся locked.
+    # init_metric_check / register_event(level_up) авто-анлокают достигнутые (≤12).
+    'veteran': {
+        'name': 'Veteran',
+        'category': 'progression',
+        'tiers': [5, 10, 15, 20, 25, 30],
+        'metric': lambda state: state.char_level.level,
+    },
 }
 
 
@@ -422,4 +436,7 @@ SEALS: dict[str, dict] = {
     'adventures': {'name': 'Globetrotter', 'icon': '🗺'},
     'gym': {'name': 'Polymath', 'icon': '🏋'},
     'work': {'name': 'Workaholic', 'icon': '🏭'},
+    # 4.62.1.8 — capstone Veteran (level 30). До расширения level-кэпа (>12)
+    # seal остаётся locked. Title «Veteran».
+    'progression': {'name': 'Veteran', 'icon': '⭐'},
 }
