@@ -1079,6 +1079,20 @@ def test_stats_block_whole_clickable_opens_steps_form():
     assert 'class="steps-clickable" data-toggle-steps' not in body
 
 
+def test_dashboard_js_no_dangling_dismiss_reference():
+    """Регрессия 27.05.2026: висячая ссылка на удалённую applyTriumphsBannerDismiss
+    (4.62.7.6 убрал client-side dismiss) → ReferenceError обрывал весь <script>,
+    ломая steps-toggle и navigation overlay. Guard: функция не упоминается, а
+    steps-toggle JS присутствует."""
+    _setup_state()
+    with TestClient(app) as client:
+        body = client.get("/").text
+    assert 'applyTriumphsBannerDismiss' not in body  # ни ссылки, ни определения
+    # Steps-toggle логика на месте (event delegation на #steps-section).
+    assert 'getElementById("steps-section")' in body
+    assert 'data-toggle-steps' in body
+
+
 # ----- Section ordering -----
 
 def test_equipment_section_appears_before_inventory():
