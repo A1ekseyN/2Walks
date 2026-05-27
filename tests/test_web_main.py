@@ -1066,6 +1066,19 @@ def test_dashboard_steps_form_hidden_by_default():
     assert 'class="form-visible"' not in body
 
 
+def test_stats_block_whole_clickable_opens_steps_form():
+    """4.48.2.2 — весь блок Stats кликабельный (data-toggle-steps + cursor на
+    <article>), а не только строка Steps. Inner steps-clickable больше не несёт
+    data-toggle-steps."""
+    _setup_state()
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'data-toggle-steps' in body
+    assert 'Кликни по блоку' in body  # title-подсказка на article Stats
+    # Inner .steps-clickable без собственного toggle-атрибута.
+    assert 'class="steps-clickable" data-toggle-steps' not in body
+
+
 # ----- Section ordering -----
 
 def test_equipment_section_appears_before_inventory():

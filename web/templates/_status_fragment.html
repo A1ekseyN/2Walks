@@ -153,7 +153,9 @@
 {% endif %}
 
 <section id="stats">
-    <article>
+    {# 4.48.2.2 — весь блок Stats кликабельный: клик открывает inline-форму ввода
+       шагов (клики внутри самой формы исключены в JS-обработчике). #}
+    <article data-toggle-steps style="cursor: pointer;" title="Кликни по блоку, чтобы ввести шаги">
         <header>
             <strong>📊 Stats</strong>
             {% if triumphs_view.title %}
@@ -163,9 +165,9 @@
             {% endif %}
         </header>
 
-        {# Кликабельный блок Steps — клик открывает inline форму ввода (4.48.2). #}
+        {# Steps row — форма ввода открывается кликом по всему блоку Stats (4.48.2.2). #}
         <div id="steps-section" class="{% if steps_form_open %}form-visible{% endif %}">
-            <div class="steps-clickable" data-toggle-steps style="cursor: pointer;" title="Кликни, чтобы ввести шаги">
+            <div class="steps-clickable">
                 <div class="stat-row">
                     <span class="stat-label">🏃 Steps</span>
                     <span>{{ "{:,}".format(state.steps.can_use) }} / {{ "{:,}".format(max_steps) }}</span>

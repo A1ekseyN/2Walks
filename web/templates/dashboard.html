@@ -478,17 +478,20 @@
     /* Steps form toggle (4.48.2). Используем event delegation на body, чтобы
        обработчики работали и после HTMX swap (фрагмент перерисовывается). */
     document.body.addEventListener("click", (e) => {
-        // Клик на блок Steps → открыть/закрыть форму.
-        const clickable = e.target.closest("[data-toggle-steps]");
-        if (clickable) {
-            const section = clickable.closest("#steps-section");
-            if (section) section.classList.toggle("form-visible");
+        // Кнопка «Отмена» → закрыть форму (проверяем ДО toggle, т.к. находится
+        // внутри блока Stats).
+        if (e.target.closest("[data-cancel-steps]")) {
+            const section = document.getElementById("steps-section");
+            if (section) section.classList.remove("form-visible");
             return;
         }
-        // Клик на кнопку Отмена → закрыть форму.
-        if (e.target.matches("[data-cancel-steps]") || e.target.closest("[data-cancel-steps]")) {
-            const section = e.target.closest("#steps-section");
-            if (section) section.classList.remove("form-visible");
+        // 4.48.2.2 — весь блок Stats тогглит форму, НО клики внутри самой формы
+        // не должны её закрывать (чтобы input / submit работали).
+        if (e.target.closest(".steps-form-container")) return;
+        const toggler = e.target.closest("[data-toggle-steps]");
+        if (toggler) {
+            const section = document.getElementById("steps-section");
+            if (section) section.classList.toggle("form-visible");
         }
     });
 </script>

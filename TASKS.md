@@ -2689,6 +2689,14 @@ sudo systemctl status 2walks    # verify
 
 **Версия:** `0.2.1w`.
 
+#### 4.48.2.2. UX: весь блок Stats кликабельный для ввода шагов `[L / XS / done (27.05.2026, 0.2.6)]`
+
+User feedback 27.05.2026: раньше форму ввода шагов открывал клик только по строке «🏃 Steps». Хочется кликать по всему блоку Stats (Steps / Energy / Money / Level).
+
+**Реализация (client-side):** `data-toggle-steps` + `cursor: pointer` + title-подсказка перенесены со строки `.steps-clickable` на весь `<article>` блока Stats. JS-обработчик (`dashboard.html`) переработан: «Отмена» обрабатывается первой; клики внутри `.steps-form-container` исключаются (чтобы input/submit работали и не закрывали форму); иначе клик по блоку тогглит `#steps-section.form-visible`. Серверная логика не менялась.
+
+**Файлы:** `_status_fragment.html` (toggle на article), `dashboard.html` (JS). **Тесты:** 1 (`test_stats_block_whole_clickable_opens_steps_form`). 1321 passed.
+
 **Изменения:**
 - `web/templates/_status_fragment.html` (1 строка): `placeholder="Введите число пройденных шагов. Сегодня пройдено: {{ '{:,}'.format(state.steps.today) }}"`.
 
