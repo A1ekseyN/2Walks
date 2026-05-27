@@ -50,7 +50,12 @@ class StepsState:
     # бонусами) — честная фитнес-метрика. Forward-only (история не трекалась).
     total_walked: int = 0
     can_use: int = 0
-    daily_bonus: int = 0    # was steps_daily_bonus
+    daily_bonus: int = 0    # was steps_daily_bonus — ТЕКУЩИЙ стрик подряд 10k+ дней
+    # 4.62.1.9 (Daily streak record) — максимальный стрик 10k+ за всё время.
+    # На rollover: max(record, daily_bonus). Метрика триумфа On Fire. Monotonic →
+    # tier не откатывается при обрыве стрика. Freeze-item (4.36) меняет только
+    # сброс daily_bonus → рекорд/триумф учтут продление автоматически.
+    daily_streak_record: int = 0
     xp_bonus: float = 0.0   # 4.27 — bonus accumulator от skill 'inspiration' (forward-only)
 
 
@@ -349,6 +354,7 @@ class GameState:
                 total_walked=int(d.get('steps_total_walked', 0)),
                 can_use=int(d.get('steps_can_use', 0)),
                 daily_bonus=int(d.get('steps_daily_bonus', 0)),
+                daily_streak_record=int(d.get('steps_daily_streak_record', 0) or 0),
                 xp_bonus=float(d.get('steps_xp_bonus') or 0.0),
             ),
 
@@ -528,6 +534,7 @@ class GameState:
             'steps_today_used': self.steps.used,
             'steps_yesterday': self.steps.yesterday,
             'steps_daily_bonus': self.steps.daily_bonus,
+            'steps_daily_streak_record': self.steps.daily_streak_record,
             'steps_total_used': self.steps.total_used,
             'steps_total_walked': self.steps.total_walked,
             'steps_xp_bonus': self.steps.xp_bonus,

@@ -492,6 +492,17 @@ TRIUMPHS: dict[str, dict] = {
         'tiers': [1, 7, 31, 184, 365],
         'metric': lambda state: state.days_played,
     },
+
+    # On Fire (4.62.1.9 part: Daily streak record, 27.05.2026) — metric-based на
+    # state.steps.daily_streak_record (макс стрик ПОДРЯД дней с 10k+ за всё время).
+    # daily_bonus = текущий стрик; record = его max (monotonic, не откатывается).
+    # Freeze-item (4.36) меняет только сброс daily_bonus → триумф учтёт сам.
+    'on_fire': {
+        'name': 'On Fire',
+        'category': 'streak',
+        'tiers': [3, 7, 14, 21, 31],
+        'metric': lambda state: state.steps.daily_streak_record,
+    },
 }
 
 

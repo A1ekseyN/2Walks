@@ -4663,11 +4663,11 @@ User insight 27.05.2026: Marathoner считает **потраченные** ш
 
 **Файлы:** `triumphs_data.py` (Veteran triumph + progression seal). **Тесты:** 7 (`TestVeteran` в test_triumphs_catalog.py). 1328 passed, mypy 0 issues.
 
-##### 4.62.1.9. Streak / consistency triumphs `[L / M / partial — Total days played done (27.05.2026, 0.2.6a); остался Daily streak record]`
+##### 4.62.1.9. Streak / consistency triumphs `[L / M / done (27.05.2026, 0.2.6a — обе метрики)]`
 
-**Категория `streak`. Mixed (counter + streak tracker).**
+**Категория `streak`. Mixed (counter + streak tracker).** Оба триумфа done.
 
-- ❌ **Daily streak record** (остаток) — longest consecutive дней с 10k+ шагов. Tiers `[7, 30, 100, 365]`. Requires daily_bonus chain tracking. New field `state.daily_streak_record: int` (max of all-time streak).
+- ✅ **Daily streak record → триумф «On Fire»** (done 27.05.2026). Metric-based на новом `state.steps.daily_streak_record` — **макс стрик ПОДРЯД дней с 10k+ шагов** за всё время. `daily_bonus` (существующий) = текущий стрик; на rollover `record = max(record, daily_bonus)` (monotonic → tier не откатывается при обрыве). Тиры `[3, 7, 14, 21, 31]` (выбраны 27.05). **Freeze-item ready (4.36):** триумф downstream от `daily_bonus`; freeze правит только сброс `else: daily_bonus = 0` → рекорд/триумф учтут продление автоматически. Seed: rollover-max подхватывает текущий daily_bonus (у игрока сейчас 0 — ходит <10k). Без seal. **Файлы:** `state.py` (`daily_streak_record` + round-trip), `functions.py` (rollover-max), `triumphs_data.py` (On Fire). **Тесты:** 5 (TestOnFire 4 + accumulation 1). Каталог 50→51. 1357 passed, mypy 0 issues.
 - ✅ **Total days played → триумф «Dedicated»** (done 27.05.2026). Metric-based на новом поле `state.days_played` (top-level GameState, round-trip). **Уникальные** дни с активностью (НЕ подряд). **Trigger:** `today_steps_to_yesterday_steps` (rollover) — `if yesterday >= 1: days_played += 1` (день имел ≥1 шаг; пустой день не считается; естественный дедуп раз-в-день). Тиры `[1, 7, 31, 184, 365]` (1 день / неделя / месяц / полгода / год — выбраны 27.05, вместо исходных `[7..3650]`). **Backfill с нуля** (история не трекалась). Без seal (streak-категория ещё получит consecutive-триумф). Capstone-бонус отложен в 4.62.2.1.
 
 **Файлы (Total days played):** `state.py` (`days_played` + round-trip), `functions.py` (accumulate на rollover), `triumphs_data.py` (Dedicated). **Тесты:** 5 (TestDedicated 4 + accumulation 1) + legacy-keys. Каталог 49→50. 1352 passed, mypy 0 issues.

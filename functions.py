@@ -317,6 +317,11 @@ def today_steps_to_yesterday_steps(state: GameState) -> tuple[int, int]:
         state.steps.daily_bonus += 1
     else:
         state.steps.daily_bonus = 0
+    # 4.62.1.9 (Daily streak record) — рекорд = max за всё время. Monotonic,
+    # триумф On Fire не откатится при обрыве стрика. Downstream от daily_bonus →
+    # freeze-item (4.36) учтётся автоматически.
+    state.steps.daily_streak_record = max(
+        state.steps.daily_streak_record, state.steps.daily_bonus)
     return state.steps.yesterday, state.steps.daily_bonus
 
 

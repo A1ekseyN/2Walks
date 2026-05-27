@@ -314,7 +314,7 @@ def test_default_state_to_dict_has_all_legacy_keys():
         # Steps
         'steps_today', 'steps_can_use', 'steps_today_used',
         'steps_yesterday', 'steps_daily_bonus', 'steps_total_used',
-        'steps_total_walked', 'steps_xp_bonus',
+        'steps_total_walked', 'steps_daily_streak_record', 'steps_xp_bonus',
         # Char level
         'char_level', 'char_level_up_skills',
         'lvl_up_skill_stamina', 'lvl_up_skill_energy_max',

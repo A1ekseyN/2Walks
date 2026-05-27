@@ -140,6 +140,23 @@ def test_today_steps_to_yesterday_increments_days_played():
     assert state.days_played == 7
 
 
+def test_today_steps_to_yesterday_tracks_streak_record():
+    """4.62.1.9 — daily_streak_record = max(стрик); не откатывается при обрыве."""
+    state = GameState.default_new_game()
+    # 3 дня подряд 10k+ → стрик растёт, рекорд = 3.
+    for _ in range(3):
+        state.steps.today = 12000
+        today_steps_to_yesterday_steps(state)
+    assert state.steps.daily_bonus == 3
+    assert state.steps.daily_streak_record == 3
+
+    # День <10k → текущий стрик сброшен, но рекорд держится.
+    state.steps.today = 5000
+    today_steps_to_yesterday_steps(state)
+    assert state.steps.daily_bonus == 0
+    assert state.steps.daily_streak_record == 3  # не откатился
+
+
 # ----- steps_today_set -----
 
 def test_steps_today_set_higher_replaces():

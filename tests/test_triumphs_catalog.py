@@ -935,3 +935,37 @@ class TestDedicated:
         d = [u for u in unlocked if u['triumph_id'] == 'dedicated']
         assert state.triumphs['dedicated']['tier'] == 5
         assert d[-1]['is_capstone'] is True
+
+
+# ===========================================================================
+# 4.62.1.9 (part) — On Fire (Daily streak record)
+# ===========================================================================
+
+class TestOnFire:
+    """🔥 On Fire — metric-based, state.steps.daily_streak_record (макс стрик 10k+)."""
+
+    def test_on_fire_in_catalog(self):
+        spec = TRIUMPHS['on_fire']
+        assert spec['name'] == 'On Fire'
+        assert spec['category'] == 'streak'
+        assert spec['tiers'] == [3, 7, 14, 21, 31]
+        assert 'metric' in spec
+
+    def test_on_fire_metric_reads_streak_record(self):
+        state = GameState.default_new_game()
+        state.steps.daily_streak_record = 10
+        assert TRIUMPHS['on_fire']['metric'](state) == 10
+
+    def test_on_fire_unlock_tier_1_at_3(self):
+        state = GameState.default_new_game()
+        state.steps.daily_streak_record = 3
+        register_event(state, 'new_day')
+        assert state.triumphs['on_fire']['tier'] == 1
+
+    def test_on_fire_capstone_at_31(self):
+        state = GameState.default_new_game()
+        state.steps.daily_streak_record = 31
+        unlocked = register_event(state, 'new_day')
+        f = [u for u in unlocked if u['triumph_id'] == 'on_fire']
+        assert state.triumphs['on_fire']['tier'] == 5
+        assert f[-1]['is_capstone'] is True
