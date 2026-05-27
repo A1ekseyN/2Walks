@@ -143,6 +143,17 @@
             opacity: 1;
             transition: none;
         }
+        /* 4.x — строки в session-модалках: label слева, значение справа. */
+        .session-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 1rem;
+            padding: 0.2rem 0;
+        }
+        .session-row > span { color: var(--pico-muted-color); }
+        #active-sessions p[data-open-session-modal] { transition: opacity 0.15s; }
+        #active-sessions p[data-open-session-modal]:hover { opacity: 0.85; }
         .save-overlay-card {
             background: var(--pico-card-background-color, #fff);
             color: var(--pico-color, #1c1c1c);
@@ -333,6 +344,21 @@
                 el.textContent = value;
             }
         });
+
+        // «Прошло» (live) для session-модалок — растёт от start_ts (4.x).
+        document.querySelectorAll("[data-elapsed-start-ts]").forEach(el => {
+            const start = parseFloat(el.dataset.elapsedStartTs);
+            if (Number.isNaN(start)) return;
+            el.textContent = formatRemaining(now - start);
+        });
+
+        // Абсолютное время (Начато / Завершится) для модалок — статично, но
+        // заполняем здесь же (дёшево). toLocaleString с ru-RU.
+        document.querySelectorAll("[data-abs-ts]").forEach(el => {
+            const ts = parseFloat(el.dataset.absTs);
+            if (Number.isNaN(ts)) return;
+            el.textContent = new Date(ts * 1000).toLocaleString("ru-RU");
+        });
     }
 
     // Запускаем каждую секунду; первый тик сразу.
@@ -396,6 +422,24 @@
             localStorage.setItem("triumphsUnclaimedDismissed", new Date().toDateString());
             const banner = document.getElementById("triumphs-unclaimed");
             if (banner) banner.style.display = "none";
+            return;
+        }
+        /* 4.x — session-модалки: клик по блоку активной сессии открывает <dialog>
+           с детальной инфо; кнопка/бэкдроп закрывает. */
+        const opener = e.target.closest("[data-open-session-modal]");
+        if (opener) {
+            const dlg = document.getElementById(opener.dataset.openSessionModal);
+            if (dlg && dlg.showModal) { tickTimers(); dlg.showModal(); }
+            return;
+        }
+        if (e.target.closest("[data-close-modal]")) {
+            const dlg = e.target.closest("dialog");
+            if (dlg) dlg.close();
+            return;
+        }
+        // Клик по backdrop (сам <dialog>, вне <article>) — закрыть.
+        if (e.target.tagName === "DIALOG") {
+            e.target.close();
         }
     });
     document.addEventListener("DOMContentLoaded", applyTriumphsBannerDismiss);

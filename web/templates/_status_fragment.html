@@ -270,16 +270,18 @@
 </section>
 {% endif %}
 
-{# Активные сессии — показываем только если активны. #}
+{# Активные сессии — показываем только если активны. Клик по блоку открывает
+   модалку с детальной информацией (4.x — прошло/осталось/длительность/прогресс
+   + специфика по типу сессии). #}
 {% if state.training.active or state.work.active or state.adventure.active %}
 <section id="active-sessions">
     <article>
-        <header><strong>⏱ Активные сессии</strong></header>
+        <header><strong>⏱ Активные сессии</strong> <small style="color: var(--pico-muted-color);">— нажми блок для деталей</small></header>
 
         {% if state.work.active %}
-        <p>
+        <p data-open-session-modal="modal-work-session" style="cursor: pointer;">
             🏭 Работа: <strong>{{ state.work.work_type.title() if state.work.work_type else "?" }}</strong>
-            (💰 +{{ format_money(work_effective_total) }} $ за смену)
+            (💰 +{{ format_money(work_effective_total) }} $ за смену) <span style="color: var(--pico-muted-color);">ⓘ</span>
             <br>
             🕑 До конца смены:
             {% if work_end_ts %}
@@ -294,9 +296,9 @@
         {% endif %}
 
         {% if state.training.active %}
-        <p>
+        <p data-open-session-modal="modal-training-session" style="cursor: pointer;">
             🏋 Тренировка: <strong>{{ state.training.skill_name.title() if state.training.skill_name else "?" }}</strong>
-            {% if training_skill_target is not none %} → уровень {{ training_skill_target }}{% endif %}
+            {% if training_skill_target is not none %} → уровень {{ training_skill_target }}{% endif %} <span style="color: var(--pico-muted-color);">ⓘ</span>
             <br>
             🕑 До завершения:
             {% if training_end_ts %}
@@ -311,8 +313,8 @@
         {% endif %}
 
         {% if state.adventure.active %}
-        <p>
-            🗺️ Приключение: <strong>{{ state.adventure.name.title() if state.adventure.name else "?" }}</strong>
+        <p data-open-session-modal="modal-adventure-session" style="cursor: pointer;">
+            🗺️ Приключение: <strong>{{ state.adventure.name.title() if state.adventure.name else "?" }}</strong> <span style="color: var(--pico-muted-color);">ⓘ</span>
             <br>
             🕑 До возвращения:
             {% if adventure_finished %}
@@ -329,6 +331,70 @@
         </p>
         {% endif %}
     </article>
+
+    {# ----- Модалки детальной информации о сессиях ----- #}
+    {% if state.work.active and work_start_ts and work_end_ts %}
+    <dialog id="modal-work-session">
+        <article>
+            <header><strong>🏭 Работа — {{ state.work.work_type.title() if state.work.work_type else "?" }}</strong></header>
+            <div class="session-row"><span>⏱ Прошло</span><strong data-elapsed-start-ts="{{ work_start_ts }}">…</strong></div>
+            <div class="session-row"><span>🕑 Осталось</span><strong data-end-ts="{{ work_end_ts }}" class="timer-active">…</strong></div>
+            <div class="session-row"><span>⏳ Длительность</span><strong>{{ format_minutes(((work_end_ts - work_start_ts) / 60) | int) }}</strong></div>
+            <div class="session-row"><span>📊 Прогресс</span><strong><span data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}">{{ '%.1f' % work_progress }}</span> %</strong></div>
+            <div class="session-row"><span>📅 Начато</span><strong data-abs-ts="{{ work_start_ts }}">…</strong></div>
+            <div class="session-row"><span>🏁 Завершится</span><strong data-abs-ts="{{ work_end_ts }}">…</strong></div>
+            <hr>
+            <div class="session-row"><span>💰 Ставка/час</span><strong>{{ format_money(work_effective_salary) }} $</strong></div>
+            <div class="session-row"><span>💰 Итог за смену</span><strong>{{ format_money(work_effective_total) }} $</strong></div>
+            <div class="session-row"><span>⏲ Часов в смене</span><strong>{{ state.work.hours }}</strong></div>
+            <footer><button data-close-modal class="outline" style="width: auto;">Закрыть</button></footer>
+        </article>
+    </dialog>
+    {% endif %}
+
+    {% if state.training.active and training_start_ts and training_end_ts %}
+    <dialog id="modal-training-session">
+        <article>
+            <header><strong>🏋 Тренировка — {{ state.training.skill_name.title() if state.training.skill_name else "?" }}</strong></header>
+            <div class="session-row"><span>⏱ Прошло</span><strong data-elapsed-start-ts="{{ training_start_ts }}">…</strong></div>
+            <div class="session-row"><span>🕑 Осталось</span><strong data-end-ts="{{ training_end_ts }}" class="timer-active">…</strong></div>
+            <div class="session-row"><span>⏳ Длительность</span><strong>{{ format_minutes(((training_end_ts - training_start_ts) / 60) | int) }}</strong></div>
+            <div class="session-row"><span>📊 Прогресс</span><strong><span data-progress-start-ts="{{ training_start_ts }}" data-progress-end-ts="{{ training_end_ts }}">{{ '%.1f' % training_progress }}</span> %</strong></div>
+            <div class="session-row"><span>📅 Начато</span><strong data-abs-ts="{{ training_start_ts }}">…</strong></div>
+            <div class="session-row"><span>🏁 Завершится</span><strong data-abs-ts="{{ training_end_ts }}">…</strong></div>
+            {% if training_skill_target is not none %}
+            <hr>
+            <div class="session-row"><span>🎯 Навык</span><strong>{{ state.training.skill_name.title() if state.training.skill_name else "?" }}: {{ training_skill_target - 1 }} → {{ training_skill_target }}</strong></div>
+            {% endif %}
+            <footer><button data-close-modal class="outline" style="width: auto;">Закрыть</button></footer>
+        </article>
+    </dialog>
+    {% endif %}
+
+    {% if state.adventure.active and adv_start_ts and adv_end_ts %}
+    <dialog id="modal-adventure-session">
+        <article>
+            <header><strong>🗺️ Приключение — {{ state.adventure.name.title() if state.adventure.name else "?" }}</strong></header>
+            <div class="session-row"><span>⏱ Прошло</span><strong data-elapsed-start-ts="{{ adv_start_ts }}">…</strong></div>
+            <div class="session-row"><span>🕑 Осталось</span>
+                {% if adventure_finished %}<strong class="timer-finished">Завершено</strong>
+                {% else %}<strong data-end-ts="{{ adv_end_ts }}" class="timer-active">…</strong>{% endif %}
+            </div>
+            <div class="session-row"><span>⏳ Длительность</span><strong>{{ format_minutes(((adv_end_ts - adv_start_ts) / 60) | int) }}</strong></div>
+            <div class="session-row"><span>📊 Прогресс</span><strong><span data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}">{{ '%.1f' % adv_progress }}</span> %</strong></div>
+            <div class="session-row"><span>📅 Начато</span><strong data-abs-ts="{{ adv_start_ts }}">…</strong></div>
+            <div class="session-row"><span>🏁 Вернётся</span><strong data-abs-ts="{{ adv_end_ts }}">…</strong></div>
+            <hr>
+            <div class="session-row"><span>🔁 Пройдено раз</span><strong>{{ state.adventure.counters.get(state.adventure.name, 0) }}</strong></div>
+            {% for adv in adventure_view.adventures %}{% if adv.name == state.adventure.name and adv.probabilities %}
+            <div style="margin-top: 0.4rem;"><small>🎁 Может выпасть:</small><br>
+                <small>{% for grade, pct in adv.probabilities %}{{ grade }} [{{ pct }}]{% if not loop.last %} · {% endif %}{% endfor %}</small>
+            </div>
+            {% endif %}{% endfor %}
+            <footer><button data-close-modal class="outline" style="width: auto;">Закрыть</button></footer>
+        </article>
+    </dialog>
+    {% endif %}
 </section>
 {% endif %}
 

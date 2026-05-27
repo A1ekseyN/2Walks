@@ -3015,6 +3015,16 @@ Phase 5 (auto-repay)   → 4.49.2.2
 Phase 6 (loan skill)   → 4.49.3
 ```
 
+#### 4.48.10. Web: модалка деталей активной сессии `[L / S / done (27.05.2026, 0.2.6)]`
+
+User feedback 27.05.2026: хочется кликнуть по блоку активной сессии (Work / Gym / Adventure) и увидеть детальную инфо — в т.ч. сколько времени прошло с момента запуска (мес/дни/ч/мин/сек).
+
+**Реализация (client-side, Pico `<dialog>`):** блоки в `#active-sessions` стали кликабельными (`data-open-session-modal`), под секцией рендерятся 3 `<dialog>` (по одному на активную сессию). JS (delegation): клик → `dialog.showModal()`; закрытие — кнопка `[data-close-modal]` / клик по backdrop. Live-таймеры: `[data-elapsed-start-ts]` («Прошло», растёт через `formatRemaining(now-start)`) + `[data-end-ts]` («Осталось», существующий tick) + `[data-abs-ts]` («Начато»/«Завершится» через `toLocaleString('ru-RU')`) — добавлены в `tickTimers`.
+
+**Поля (выбраны пользователем):** общие — Прошло (live) · Осталось (live) · Длительность (`format_minutes`) · Прогресс % (live) · Начато / Завершится. Work — ставка/час (effective с earnings_boost) · итог за смену · часов. Gym — навык current→target. Adventure — пройдено раз (counter) · вероятности дропа (из `adventure_view`, с учётом luck).
+
+**Файлы:** `_status_fragment.html` (триггеры + 3 dialog'а), `dashboard.html` (JS open/close + elapsed/abs-ts тики + `.session-row` CSS). Серверная логика не менялась (все данные уже в context). **Тесты:** 2 (модалка Work + JS-наличие). 1320 passed.
+
 #### 4.49.0. Депозиты (зонтичная) `[H / M / done (0.2.2, 06.05.2026 — все подзадачи 4.49.0.0/0.1/0.2 done)]`
 
 Базовая инфра + UI ввести/снять + live preview накопленных процентов. Без скиллов — все ставки = 0% (default).

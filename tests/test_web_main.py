@@ -436,6 +436,40 @@ def test_active_adventure_in_progress_shows_timer():
     assert "Adventure finished" not in body
 
 
+def test_work_session_detail_modal_rendered():
+    """4.x — у активной Work-сессии (start+end) рендерится session-модалка с
+    деталями: прошло (live), ставка/час, итог, часы + кликабельный триггер."""
+    state = GameState.default_new_game()
+    state.work.active = True
+    state.work.work_type = "watchman"
+    state.work.salary = 8
+    state.work.hours = 4
+    state.work.start = datetime.now() - timedelta(hours=1)
+    state.work.end = datetime.now() + timedelta(hours=3)
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    # Триггер на блоке сессии.
+    assert 'data-open-session-modal="modal-work-session"' in body
+    # Модалка с деталями.
+    assert 'id="modal-work-session"' in body
+    assert 'data-elapsed-start-ts=' in body  # «Прошло» live
+    assert 'data-abs-ts=' in body            # Начато / Завершится
+    assert 'Прошло' in body
+    assert 'Ставка/час' in body
+    assert 'Часов в смене' in body
+
+
+def test_session_modal_js_present():
+    """JS: open/close session-модалки + tick «прошло»/abs-ts в dashboard."""
+    _setup_state()
+    with TestClient(app) as client:
+        body = client.get("/").text
+    assert 'data-open-session-modal' in body
+    assert 'data-elapsed-start-ts' in body
+    assert 'data-abs-ts' in body
+
+
 def test_finished_adventure_auto_finalizes_on_render():
     """4.48.3 — end_ts < now → render авто-финализирует приключение (active=False).
     Старого «Adventure finished / claim drop in CLI» сообщения больше нет —
