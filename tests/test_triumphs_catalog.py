@@ -863,3 +863,40 @@ class TestWayfarer:
         wf = [u for u in unlocked if u['triumph_id'] == 'wayfarer']
         assert state.triumphs['wayfarer']['tier'] == 5
         assert wf[-1]['is_capstone'] is True
+
+
+# ===========================================================================
+# 4.62.1.12 — Investor (Money spent on Gym)
+# ===========================================================================
+
+class TestInvestor:
+    """💰 Investor — event-based accumulator: cost_money из skill_train_start."""
+
+    def test_investor_in_catalog(self):
+        spec = TRIUMPHS['investor']
+        assert spec['name'] == 'Investor'
+        assert spec['category'] == 'money'
+        assert spec['tiers'] == [1_000, 10_000, 50_000, 250_000, 1_000_000]
+        assert spec['event_hooks'] == ['skill_train_start']
+        assert 'metric' not in spec
+
+    def test_investor_count_delta_reads_cost_money(self):
+        assert TRIUMPHS['investor']['count_delta']({'cost_money': 150}) == 150
+        assert TRIUMPHS['investor']['count_delta']({}) == 0  # graceful
+
+    def test_investor_accumulates_across_trainings(self):
+        state = GameState.default_new_game()
+        register_event(state, 'skill_train_start', skill='stamina', cost_money=300)
+        register_event(state, 'skill_train_start', skill='luck_skill', cost_money=700)
+        assert state.triumphs['investor']['count'] == 1000
+
+    def test_investor_only_skill_train_start(self):
+        """Другие события (work_start с cost_money) не считаются."""
+        state = GameState.default_new_game()
+        register_event(state, 'work_start', cost_money=500)
+        assert state.triumphs.get('investor', {}).get('count', 0) == 0
+
+    def test_investor_tier_unlock_at_1000(self):
+        state = GameState.default_new_game()
+        register_event(state, 'skill_train_start', skill='stamina', cost_money=1000)
+        assert state.triumphs['investor']['tier'] == 1

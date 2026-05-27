@@ -4689,12 +4689,17 @@ User insight 27.05.2026: Marathoner считает **потраченные** ш
 - **First S+ item crafted** — one-shot milestone.
 - Hook: event_hooks=['item_repaired', 'item_crafted'].
 
-##### 4.62.1.12. Money spent on Gym `[L / XS / todo (blocked by 4.62.0)]`
+##### 4.62.1.12. Money spent on Gym `[L / XS / done (27.05.2026, 0.2.6a)]`
 
 **Категория `money`. Event-based accumulator.**
 
-- **Investor** — total $ потрачено на gym skill training. Tiers `[1_000, 10_000, 100_000, 1_000_000]`. Capstone: +5% к money_saving.
-- Hook: новый event `log_event('gym_payment', amount=cost)` в `gym.skill_training` ИЛИ hook в `actions.try_spend(money=N)` с context flag. Решить при implementation.
+**Реализовано (27.05.2026):**
+- **Investor** — total $ на gym skill training, tiers `[1_000, 10_000, 50_000, 250_000, 1_000_000]` (5 тиров; в задаче было 4 — добавлены 50k/250k для pacing'а).
+- **Hook:** новый event НЕ понадобился — `skill_train_start` (`gym.py`) **уже** пишет `cost_money` в payload. `event_hooks=['skill_train_start']`, `count_delta=lambda p: p.get('cost_money', 0)`. `cost_money` = реально уплаченная сумма (после money_saving скидки). Backfill из history автоматический.
+- **Один агрегатный триумф** (не per-skill — обсуждено 27.05.2026): per-skill дублировал бы 20 существующих gym-level триумфов + раздул бы seal. Игроку интересно «сколько всего вложил в прокачку».
+- **Без seal** для категории `money` (может расшириться позже). Capstone-бонус «+5% money_saving» из задачи — отложен в 4.62.2.1 (как все capstone-бонусы).
+
+**Файлы:** `triumphs_data.py` (Investor). **Тесты:** 5 (`TestInvestor`). Каталог 48→49 триумфов. 1347 passed, mypy 0 issues.
 
 ##### 4.62.1.13. Lifestyle triumphs (optional) `[L / S / todo (blocked by 4.62.0)]`
 

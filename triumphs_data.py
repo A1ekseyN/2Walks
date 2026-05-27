@@ -465,6 +465,21 @@ TRIUMPHS: dict[str, dict] = {
         'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
         'event_filter': lambda p: p.get('grade') == 's+grade',
     },
+
+    # ----- 💰 Money (4.62.1.12, 27.05.2026) -----
+    # Investor — event-based accumulator: суммирует cost_money из skill_train_start
+    # (gym.py уже пишет cost_money в payload — новый event не нужен). cost_money =
+    # реально уплаченная сумма (после money_saving скидки). Backfill из history
+    # автоматический. ОДИН агрегатный триумф (не per-skill — per-skill дублировал
+    # бы 20 существующих gym-level триумфов; см. обсуждение 27.05.2026).
+    # Capstone-бонус (+5% money_saving из 4.62.1.12) отложен в 4.62.2.1.
+    'investor': {
+        'name': 'Investor',
+        'category': 'money',
+        'tiers': [1_000, 10_000, 50_000, 250_000, 1_000_000],
+        'event_hooks': ['skill_train_start'],
+        'count_delta': lambda p: p.get('cost_money', 0),
+    },
 }
 
 
