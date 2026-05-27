@@ -900,3 +900,38 @@ class TestInvestor:
         state = GameState.default_new_game()
         register_event(state, 'skill_train_start', skill='stamina', cost_money=1000)
         assert state.triumphs['investor']['tier'] == 1
+
+
+# ===========================================================================
+# 4.62.1.9 (part) — Dedicated (Total days played)
+# ===========================================================================
+
+class TestDedicated:
+    """🔥 Dedicated — metric-based, state.days_played (уникальные активные дни)."""
+
+    def test_dedicated_in_catalog(self):
+        spec = TRIUMPHS['dedicated']
+        assert spec['name'] == 'Dedicated'
+        assert spec['category'] == 'streak'
+        assert spec['tiers'] == [1, 7, 31, 184, 365]
+        assert 'metric' in spec
+        assert 'event_hooks' not in spec
+
+    def test_dedicated_metric_reads_days_played(self):
+        state = GameState.default_new_game()
+        state.days_played = 42
+        assert TRIUMPHS['dedicated']['metric'](state) == 42
+
+    def test_dedicated_unlock_tier_1_at_one_day(self):
+        state = GameState.default_new_game()
+        state.days_played = 1
+        register_event(state, 'new_day')
+        assert state.triumphs['dedicated']['tier'] == 1
+
+    def test_dedicated_capstone_at_365(self):
+        state = GameState.default_new_game()
+        state.days_played = 365
+        unlocked = register_event(state, 'new_day')
+        d = [u for u in unlocked if u['triumph_id'] == 'dedicated']
+        assert state.triumphs['dedicated']['tier'] == 5
+        assert d[-1]['is_capstone'] is True

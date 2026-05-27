@@ -480,6 +480,18 @@ TRIUMPHS: dict[str, dict] = {
         'event_hooks': ['skill_train_start'],
         'count_delta': lambda p: p.get('cost_money', 0),
     },
+
+    # ----- 🔥 Streak (4.62.1.9 part: Total days played, 27.05.2026) -----
+    # Dedicated — metric-based на state.days_played: уникальные дни с активностью
+    # (НЕ подряд — это отдельный consecutive Daily streak record, остаток 4.62.1.9).
+    # days_played инкрементится на rollover'е если день имел ≥1 шаг (functions.py).
+    # Forward-only. Тиры: 1 день / неделя / месяц / полгода / год.
+    'dedicated': {
+        'name': 'Dedicated',
+        'category': 'streak',
+        'tiers': [1, 7, 31, 184, 365],
+        'metric': lambda state: state.days_played,
+    },
 }
 
 

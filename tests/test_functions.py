@@ -122,6 +122,24 @@ def test_today_steps_to_yesterday_accumulates_total_walked():
     assert state.steps.total_walked == 120_500
 
 
+def test_today_steps_to_yesterday_increments_days_played():
+    """4.62.1.9 — день с активностью (≥1 шаг) → days_played += 1; пустой день нет."""
+    state = GameState.default_new_game()
+    state.days_played = 5
+
+    state.steps.today = 8000  # активный день
+    today_steps_to_yesterday_steps(state)
+    assert state.days_played == 6
+
+    state.steps.today = 0     # день без ввода шагов
+    today_steps_to_yesterday_steps(state)
+    assert state.days_played == 6  # не инкрементился
+
+    state.steps.today = 1     # хоть 1 шаг → активный
+    today_steps_to_yesterday_steps(state)
+    assert state.days_played == 7
+
+
 # ----- steps_today_set -----
 
 def test_steps_today_set_higher_replaces():

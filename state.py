@@ -169,6 +169,10 @@ class GameState:
     # Time / day
     date_last_enter: str = ''
     timestamp_last_enter: float = 0.0
+    # 4.62.1.9 (Total days played) — счётчик уникальных дней с активностью
+    # (день имел ≥1 шаг). Инкремент на rollover'е, forward-only. НЕ consecutive
+    # (это отдельный Daily streak record). Метрика триумфа Dedicated.
+    days_played: int = 0
 
     # Resources
     energy: int = 50
@@ -330,6 +334,7 @@ class GameState:
         return cls(
             date_last_enter=d.get('date_last_enter', '') or '',
             timestamp_last_enter=float(d.get('timestamp_last_enter') or 0.0),
+            days_played=int(d.get('days_played', 0) or 0),
             energy=int(d.get('energy', 50)),
             energy_max=int(d.get('energy_max', 50)),
             money=float(d.get('money', 0) or 0),
@@ -474,6 +479,7 @@ class GameState:
         new = GameState.from_dict(d)
         self.date_last_enter = new.date_last_enter
         self.timestamp_last_enter = new.timestamp_last_enter
+        self.days_played = new.days_played
         self.energy = new.energy
         self.energy_max = new.energy_max
         self.money = new.money
@@ -514,6 +520,7 @@ class GameState:
             # Time / day
             'date_last_enter': self.date_last_enter,
             'timestamp_last_enter': self.timestamp_last_enter,
+            'days_played': self.days_played,
 
             # Steps
             'steps_today': self.steps.today,

@@ -4663,13 +4663,14 @@ User insight 27.05.2026: Marathoner считает **потраченные** ш
 
 **Файлы:** `triumphs_data.py` (Veteran triumph + progression seal). **Тесты:** 7 (`TestVeteran` в test_triumphs_catalog.py). 1328 passed, mypy 0 issues.
 
-##### 4.62.1.9. Streak / consistency triumphs `[L / M / todo (blocked by 4.62.0)]`
+##### 4.62.1.9. Streak / consistency triumphs `[L / M / partial — Total days played done (27.05.2026, 0.2.6a); остался Daily streak record]`
 
 **Категория `streak`. Mixed (counter + streak tracker).**
 
-- **Daily streak record** — longest consecutive дней с 10k+ шагов. Tiers `[7, 30, 100, 365]`. Requires daily_bonus chain tracking. New field `state.daily_streak_record: int` (max of all-time streak).
-- **Total days played** — counter уникальных дней с хотя бы 1 entry в `steps_log`. Tiers `[7, 30, 100, 365, 1000, 3650]`. New field `state.days_played_count: int`. **Trigger:** новый день detected (`save_game_date_last_enter`) → increment если в этот день был хотя бы один input/event.
-- Capstone (1000 days): title «Loyal» / «Veteran» + permanent +5% bonus.
+- ❌ **Daily streak record** (остаток) — longest consecutive дней с 10k+ шагов. Tiers `[7, 30, 100, 365]`. Requires daily_bonus chain tracking. New field `state.daily_streak_record: int` (max of all-time streak).
+- ✅ **Total days played → триумф «Dedicated»** (done 27.05.2026). Metric-based на новом поле `state.days_played` (top-level GameState, round-trip). **Уникальные** дни с активностью (НЕ подряд). **Trigger:** `today_steps_to_yesterday_steps` (rollover) — `if yesterday >= 1: days_played += 1` (день имел ≥1 шаг; пустой день не считается; естественный дедуп раз-в-день). Тиры `[1, 7, 31, 184, 365]` (1 день / неделя / месяц / полгода / год — выбраны 27.05, вместо исходных `[7..3650]`). **Backfill с нуля** (история не трекалась). Без seal (streak-категория ещё получит consecutive-триумф). Capstone-бонус отложен в 4.62.2.1.
+
+**Файлы (Total days played):** `state.py` (`days_played` + round-trip), `functions.py` (accumulate на rollover), `triumphs_data.py` (Dedicated). **Тесты:** 5 (TestDedicated 4 + accumulation 1) + legacy-keys. Каталог 49→50. 1352 passed, mypy 0 issues.
 
 ##### 4.62.1.10. Bank triumphs `[L / M / todo (blocked by 4.62.0)]`
 

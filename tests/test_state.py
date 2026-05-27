@@ -310,7 +310,7 @@ def test_default_state_to_dict_has_all_legacy_keys():
     d = s.to_dict()
     expected_keys = {
         # Time / day
-        'date_last_enter', 'timestamp_last_enter',
+        'date_last_enter', 'timestamp_last_enter', 'days_played',
         # Steps
         'steps_today', 'steps_can_use', 'steps_today_used',
         'steps_yesterday', 'steps_daily_bonus', 'steps_total_used',
