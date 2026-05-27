@@ -4822,6 +4822,14 @@ User feedback 26.05.2026: «`Score: 210 · 0/196 tiers` — score начисля
 
 **Тесты:** `test_total_score_counts_only_claimed_tiers` (бывший `test_total_score_with_unlocked_tiers`) — unlock → score 0 → claim_all → score 30; воспроизводит реальный поток `register_event` → `append_unclaimed`.
 
+##### 4.62.7.5. Web: крестик «скрыть на сегодня» для unclaimed-баннера `[L / XS / done (27.05.2026, 0.2.6)]`
+
+User feedback 27.05.2026: баннер «🎁 N закрытых не собрано» мешает на период тестирования триумфов; хочется убрать его на сегодня, но чтобы на новый день он вернулся.
+
+**Реализация (client-side, без серверных изменений):** в баннер `#triumphs-unclaimed` добавлен `×` (`data-dismiss-unclaimed`, absolute top-right). JS в `dashboard.html`: клик пишет `localStorage.triumphsUnclaimedDismissed = today.toDateString()` + прячет баннер; `applyTriumphsBannerDismiss()` на `DOMContentLoaded` + `htmx:afterSwap` (баннер re-рендерится в swap'е) скрывает его, если сохранённая дата == сегодня. Новый день → дата отличается → баннер снова виден. Scope — конкретный браузер (per-device), что для косметического dismiss приемлемо. Сервер по-прежнему рендерит баннер при `has_unclaimed` (никаких state/endpoint изменений).
+
+**Файлы:** `_status_fragment.html` (× кнопка), `dashboard.html` (JS dismiss). **Тесты:** 2 (× в баннере + JS-логика в dashboard). 1318 passed.
+
 ---
 
 ### Phase 6 — Optional / deferred

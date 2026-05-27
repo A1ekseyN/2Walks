@@ -97,8 +97,16 @@
    unclaimed entry. Player должен явно нажать [✓ Собрать все] чтобы acknowledge. #}
 {% if triumphs_view.has_unclaimed %}
 <section id="triumphs-unclaimed" style="margin-bottom: 1rem;">
-    <article style="border-left: 4px solid #10b981; padding: 0.5rem 0.75rem; margin: 0;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+    <article style="border-left: 4px solid #10b981; padding: 0.5rem 0.75rem; margin: 0; position: relative;">
+        {# 4.62.7.x — крестик «скрыть на сегодня» (client-side localStorage,
+           см. dashboard.html applyTriumphsBannerDismiss). Возвращается на новый день. #}
+        <button type="button" data-dismiss-unclaimed title="Скрыть на сегодня"
+                aria-label="Скрыть на сегодня"
+                style="position: absolute; top: 0.15rem; right: 0.35rem; width: auto;
+                       background: none; border: none; padding: 0 0.35rem; margin: 0;
+                       font-size: 1.2em; line-height: 1; cursor: pointer;
+                       color: var(--pico-muted-color);">×</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding-right: 1.4rem;">
             <div>
                 <strong>🎁 {{ triumphs_view.unclaimed.count }} закрытых не собрано</strong>
                 <small style="display: block; color: var(--pico-muted-color);">

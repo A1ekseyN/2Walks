@@ -5344,6 +5344,17 @@ def test_unclaimed_banner_visible_when_queue_nonempty():
     assert 'id="triumphs-unclaimed"' in body
     assert '2 закрытых' in body
     assert '/web/triumphs/claim_all' in body
+    # 4.62.7.x — крестик «скрыть на сегодня» присутствует в баннере.
+    assert 'data-dismiss-unclaimed' in body
+
+
+def test_unclaimed_banner_dismiss_js_present():
+    """JS dismiss-логика (localStorage + applyTriumphsBannerDismiss) в dashboard."""
+    _setup_state()
+    with TestClient(app) as client:
+        body = client.get("/").text
+    assert 'applyTriumphsBannerDismiss' in body
+    assert 'triumphsUnclaimedDismissed' in body
 
 
 def test_title_badge_visible_in_stats_header():
