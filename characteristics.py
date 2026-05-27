@@ -89,6 +89,33 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     # не увидит ввод через web, если game_state лист ещё не обновлён.
     apply_steps_log_max_merge(s)
 
+    # Day rollover на старте (один раз, с persist). Раньше rollover в CLI делался
+    # на первом тике main loop (functions.status_bar → save_game_date_last_enter)
+    # БЕЗ немедленного persist — Sheets оставался со вчерашней датой до user-save,
+    # и другой процесс (web/cli) при загрузке снова детектил «New Day» (double
+    # rollover). Теперь rollover + persist происходят в init для ОБЕИХ платформ
+    # симметрично web `try_reload_state` → дата фиксируется в Sheets сразу, повтор
+    # не возникает. status_bar / _dashboard_context продолжают звать
+    # save_game_date_last_enter как defense-in-depth (same-day no-op).
+    game.state = s  # set early — save_characteristic / log_event hooks читают контейнер
+    from functions import save_game_date_last_enter
+    _old_date = s.date_last_enter
+    save_game_date_last_enter(s)
+    # Persist только при РЕАЛЬНОЙ смене дня (был непустой прошлый день, отличный
+    # от сегодня) — это сценарий «вчера→сегодня», где другой процесс не должен
+    # повторно детектить rollover. Пустая дата (новая игра / fresh state) НЕ
+    # триггерит persist: нет предыдущего дня для синхронизации между процессами.
+    rolled_over = bool(_old_date) and s.date_last_enter != _old_date
+    if rolled_over:
+        # Persist немедленно — фиксируем date_last_enter=today в Sheets, иначе
+        # следующий процесс перечитает yesterday и re-fire'ит rollover. Отдельный
+        # блок (не в triumph try) — устойчив к ошибкам triumph-логики.
+        try:
+            from persistence import save_characteristic
+            save_characteristic()
+        except Exception:  # noqa: BLE001 — rollover не критичнее crash'а init
+            pass
+
     # 4.62.1.1 fix (22.05.2026) — auto-unlock metric-based triumphs на старте
     # (без необходимости ждать первого register_event через log_event).
     # Решает UX: открыл Triumphs menu → видишь unlock'и сразу, не «потыкай».

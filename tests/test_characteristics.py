@@ -313,6 +313,56 @@ def test_init_game_state_preserves_loaded_timestamp_last_enter(monkeypatch, tmp_
     assert game.state.startup_report_since_ts == loaded_timestamp
 
 
+def test_init_persists_rollover_on_real_day_change(monkeypatch, tmp_path):
+    """Реальная смена дня (вчера→сегодня) в init детектится + СРАЗУ персистится,
+    чтобы другой процесс (web/cli) не re-fire'ил «New Day» повторно."""
+    from datetime import date, timedelta
+    import persistence as persistence_mod
+
+    _reset_game_container()
+    monkeypatch.chdir(tmp_path)
+
+    sample = GameState.default_new_game().to_dict()
+    sample['date_last_enter'] = str(date.today() - timedelta(days=1))  # вчера
+    sample['timestamp_last_enter'] = 0.0  # prior_ts<=0 → away-report skip (без Sheets)
+    monkeypatch.setattr(persistence_mod, "load_data_from_google_sheet_or_csv", lambda: sample)
+    monkeypatch.setattr("persistence.load_data_from_google_sheet_or_csv", lambda: sample)
+
+    saves: list = []
+    monkeypatch.setattr(persistence_mod, "save_characteristic",
+                        lambda: (saves.append(1), "OK")[1])
+
+    from characteristics import init_game_state as init_fn
+    init_fn()
+
+    assert game.state.date_last_enter == str(date.today())  # rollover применён
+    assert len(saves) == 1  # rollover персистнут в init
+
+
+def test_init_no_persist_same_day(monkeypatch, tmp_path):
+    """Тот же день → rollover не срабатывает → init не делает persist."""
+    from datetime import date
+    import persistence as persistence_mod
+
+    _reset_game_container()
+    monkeypatch.chdir(tmp_path)
+
+    sample = GameState.default_new_game().to_dict()
+    sample['date_last_enter'] = str(date.today())  # сегодня
+    sample['timestamp_last_enter'] = 0.0
+    monkeypatch.setattr(persistence_mod, "load_data_from_google_sheet_or_csv", lambda: sample)
+    monkeypatch.setattr("persistence.load_data_from_google_sheet_or_csv", lambda: sample)
+
+    saves: list = []
+    monkeypatch.setattr(persistence_mod, "save_characteristic",
+                        lambda: (saves.append(1), "OK")[1])
+
+    from characteristics import init_game_state as init_fn
+    init_fn()
+
+    assert saves == []  # без смены дня — без persist в init
+
+
 def test_save_characteristic_returns_stale_no_state_mutation(monkeypatch, tmp_path):
     """STALE: state.last_modified не меняется, snapshot не меняется, CSV не пишется."""
     from persistence import save_characteristic
