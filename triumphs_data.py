@@ -73,6 +73,19 @@ TRIUMPHS: dict[str, dict] = {
         'metric': lambda state: state.steps.total_used,
     },
 
+    # Wayfarer (4.62.1.1.1, 27.05.2026) — metric-based на state.steps.total_walked
+    # (РЕАЛЬНО пройденные шаги, сумма дневных показаний браслета). В отличие от
+    # Marathoner (потрачено, раздуто бонусами) — честная фитнес-метрика. Те же
+    # тиры что Marathoner (по запросу). Forward-only: total_walked стартует с 0
+    # (история реально-пройденных не трекалась). Категория steps → seal
+    # «Marathoner» теперь требует capstone обоих (Marathoner + Wayfarer).
+    'wayfarer': {
+        'name': 'Wayfarer',
+        'category': 'steps',
+        'tiers': [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
+        'metric': lambda state: state.steps.total_walked,
+    },
+
     # ----- 🔋 Energy (4.62.1.4, 22.05.2026) -----
     # Approach B: event-based через cost_energy в payload existing log_event'ов.
     # Backfill из history.jsonl автоматически работает (cost_energy уже в

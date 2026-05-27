@@ -45,6 +45,10 @@ class StepsState:
     used: int = 0           # was steps_today_used
     yesterday: int = 0
     total_used: int = 0
+    # 4.62.1.1.1 — реально пройденные шаги (сумма дневных показаний браслета,
+    # накапливается на rollover'е). В отличие от total_used (потрачено, раздуто
+    # бонусами) — честная фитнес-метрика. Forward-only (история не трекалась).
+    total_walked: int = 0
     can_use: int = 0
     daily_bonus: int = 0    # was steps_daily_bonus
     xp_bonus: float = 0.0   # 4.27 — bonus accumulator от skill 'inspiration' (forward-only)
@@ -337,6 +341,7 @@ class GameState:
                 used=int(d.get('steps_today_used', 0)),
                 yesterday=int(d.get('steps_yesterday', 0)),
                 total_used=int(d.get('steps_total_used', 0)),
+                total_walked=int(d.get('steps_total_walked', 0)),
                 can_use=int(d.get('steps_can_use', 0)),
                 daily_bonus=int(d.get('steps_daily_bonus', 0)),
                 xp_bonus=float(d.get('steps_xp_bonus') or 0.0),
@@ -517,6 +522,7 @@ class GameState:
             'steps_yesterday': self.steps.yesterday,
             'steps_daily_bonus': self.steps.daily_bonus,
             'steps_total_used': self.steps.total_used,
+            'steps_total_walked': self.steps.total_walked,
             'steps_xp_bonus': self.steps.xp_bonus,
 
             # Char level

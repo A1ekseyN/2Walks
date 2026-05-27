@@ -107,6 +107,21 @@ def test_today_steps_to_yesterday_below_10k_resets_bonus():
     assert bonus == 0
 
 
+def test_today_steps_to_yesterday_accumulates_total_walked():
+    """4.62.1.1.1 — реально пройденные накапливаются в total_walked на rollover."""
+    state = GameState.default_new_game()
+    state.steps.total_walked = 100_000
+    state.steps.today = 8500
+
+    today_steps_to_yesterday_steps(state)
+    assert state.steps.total_walked == 108_500  # += завершившийся день
+
+    # Следующий день.
+    state.steps.today = 12000
+    today_steps_to_yesterday_steps(state)
+    assert state.steps.total_walked == 120_500
+
+
 # ----- steps_today_set -----
 
 def test_steps_today_set_higher_replaces():

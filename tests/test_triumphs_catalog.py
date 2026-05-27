@@ -824,3 +824,42 @@ class TestDropTriumphs:
         from triumphs_data import SEALS, CATEGORIES
         assert 'drops' in CATEGORIES
         assert SEALS['drops']['name'] == 'Treasure Hunter'
+
+
+# ===========================================================================
+# 4.62.1.1.1 — Wayfarer (Steps: реально пройденные)
+# ===========================================================================
+
+class TestWayfarer:
+    """🏃 Wayfarer — metric-based, state.steps.total_walked (реально пройденные,
+    forward-only). Те же тиры что Marathoner, но другая метрика."""
+
+    def test_wayfarer_in_catalog(self):
+        spec = TRIUMPHS['wayfarer']
+        assert spec['name'] == 'Wayfarer'
+        assert spec['category'] == 'steps'
+        assert spec['tiers'] == [100_000, 500_000, 1_000_000, 5_000_000, 10_000_000]
+        assert 'metric' in spec
+        assert 'event_hooks' not in spec
+
+    def test_wayfarer_metric_reads_total_walked(self):
+        state = GameState.default_new_game()
+        state.steps.total_walked = 123_456
+        assert TRIUMPHS['wayfarer']['metric'](state) == 123_456
+
+    def test_wayfarer_independent_from_marathoner(self):
+        """total_used (потрачено) и total_walked (пройдено) — разные метрики."""
+        state = GameState.default_new_game()
+        state.steps.total_used = 2_000_000   # потрачено много (бонусы)
+        state.steps.total_walked = 600_000   # реально нашагал меньше
+        register_event(state, 'new_day')
+        assert state.triumphs['marathoner']['tier'] == 3  # 100k/500k/1M
+        assert state.triumphs['wayfarer']['tier'] == 2     # 100k/500k
+
+    def test_wayfarer_capstone_at_10m(self):
+        state = GameState.default_new_game()
+        state.steps.total_walked = 10_000_000
+        unlocked = register_event(state, 'new_day')
+        wf = [u for u in unlocked if u['triumph_id'] == 'wayfarer']
+        assert state.triumphs['wayfarer']['tier'] == 5
+        assert wf[-1]['is_capstone'] is True

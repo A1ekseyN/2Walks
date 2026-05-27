@@ -4568,6 +4568,18 @@ CLI shell для будущих категорий. Empty state когда catal
 
 **Реализовано:** 9 тестов в новом `tests/test_triumphs_catalog.py` (структура / metric / no-unlock / single + multi-tier unlock / capstone / score / progress в текущем tier'е / idempotency). У игрока с `total_used=1.8M` — мгновенно unlock'аются tiers 1+2+3 при первом register_event (score +30). Backfill не нужен (metric-based). 1161 passed, mypy 0 issues.
 
+##### 4.62.1.1.1. Steps: Wayfarer (реально пройденные) `[L / S / done (27.05.2026, 0.2.6a)]`
+
+User insight 27.05.2026: Marathoner считает **потраченные** шаги (`total_used`), а они раздуты бонусами (stamina/equipment/daily/level/inspiration добавляют в `can_use` → тратишь больше, чем реально нашагал). Нужен параллельный триумф за **реально пройденные** шаги — честная фитнес-метрика.
+
+**Реализовано:**
+- Новое поле `StepsState.total_walked: int` (round-trip flat-key `steps_total_walked`). Forward-only accumulator: `today_steps_to_yesterday_steps` на rollover'е делает `total_walked += yesterday` (показание завершившегося дня) — единственная точка, без двойного счёта.
+- Триумф **Wayfarer** (`triumphs_data`), metric `state.steps.total_walked`, категория `steps`, тиры **как Marathoner** `[100k, 500k, 1M, 5M, 10M]` (по запросу).
+- **Backfill: с нуля** — реально-пройденные исторически не трекались, восстановить неоткуда (steps_log = max-merge, не суммарный накопитель + прунится). `total_walked` стартует 0, растёт вперёд. Текущий current-day попадёт в счётчик на следующем rollover'е.
+- **Категория steps → seal «Marathoner» теперь требует capstone обоих** (Marathoner + Wayfarer). Намеренно — «настоящий марафонец» = и потратил, и нашагал 10M.
+
+**Файлы:** `state.py` (поле + round-trip), `functions.py` (accumulate на rollover), `triumphs_data.py` (Wayfarer). **Тесты:** 5 (TestWayfarer 4 + accumulation 1) + обновлён legacy-keys set. Каталог 47→48 триумфов. 1342 passed, mypy 0 issues.
+
 ##### 4.62.1.2. Adventures triumphs (Adventurer general) `[L / XS / done (22.05.2026, 0.2.5q)]`
 
 **Категория `adventures`. Metric-based** через `state.adventure.counters` (Approach pivot 22.05.2026 — counters уже накапливаются с самого начала проекта в `Adventure.adventure_check_done`, event-based не нужен).

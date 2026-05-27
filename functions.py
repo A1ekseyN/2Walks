@@ -305,6 +305,10 @@ def today_steps_to_yesterday_steps(state: GameState) -> tuple[int, int]:
     Возвращает (yesterday, daily_bonus) — кортеж новых значений.
     """
     state.steps.yesterday = state.steps.today
+    # 4.62.1.1.1 — накапливаем реально пройденные шаги (показание завершившегося
+    # дня) в forward-only accumulator total_walked. Единственная точка — rollover,
+    # без двойного счёта; current-day шаги попадут на следующем rollover'е.
+    state.steps.total_walked += state.steps.yesterday
     if state.steps.yesterday >= 10000:
         state.steps.daily_bonus += 1
     else:
