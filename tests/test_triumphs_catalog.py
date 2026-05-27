@@ -757,3 +757,70 @@ class TestVeteran:
         from triumphs_data import CATEGORIES, SEALS
         assert 'progression' in CATEGORIES
         assert SEALS['progression']['name'] == 'Veteran'
+
+
+# ===========================================================================
+# 4.62.1.7 — Drops (Collector + per-grade)
+# ===========================================================================
+
+class TestDropTriumphs:
+    """💎 Drops — event-based. Считаем drop / drop_pending / drop_force_sold
+    (момент дропа). Collector — все грейды, 5 per-grade — фильтр по grade."""
+
+    _IDS = ['collector', 'drops_c', 'drops_b', 'drops_a', 'drops_s', 'drops_s_plus']
+
+    def test_all_6_in_catalog(self):
+        for tid in self._IDS:
+            assert tid in TRIUMPHS, tid
+            spec = TRIUMPHS[tid]
+            assert spec['category'] == 'drops'
+            assert spec['tiers'] == [10, 50, 100, 250, 500, 1000]
+            assert spec['event_hooks'] == ['drop', 'drop_pending', 'drop_force_sold']
+            assert 'metric' not in spec
+
+    def test_collector_counts_all_grades_and_all_events(self):
+        state = GameState.default_new_game()
+        register_event(state, 'drop', grade='c-grade')
+        register_event(state, 'drop_pending', grade='s-grade')
+        register_event(state, 'drop_force_sold', grade='a-grade')
+        assert state.triumphs['collector']['count'] == 3
+
+    def test_per_grade_filter(self):
+        state = GameState.default_new_game()
+        register_event(state, 'drop', grade='c-grade')
+        register_event(state, 'drop', grade='c-grade')
+        register_event(state, 'drop', grade='s+grade')
+        assert state.triumphs['drops_c']['count'] == 2
+        assert state.triumphs['drops_s_plus']['count'] == 1
+        # b-grade не трогали — счётчик не создан / 0.
+        assert state.triumphs.get('drops_b', {}).get('count', 0) == 0
+
+    def test_grade_counts_across_three_events(self):
+        """Один и тот же grade через pending / force_sold тоже считается."""
+        state = GameState.default_new_game()
+        for ev in ['drop', 'drop_pending', 'drop_force_sold']:
+            register_event(state, ev, grade='b-grade')
+        assert state.triumphs['drops_b']['count'] == 3
+        assert state.triumphs['collector']['count'] == 3
+
+    def test_resolved_events_not_counted(self):
+        """drop_auto_collected / drop_resolved_* — разрешение уже посчитанного
+        pending, НЕ должны инкрементить (иначе двойной счёт)."""
+        state = GameState.default_new_game()
+        register_event(state, 'drop_auto_collected', grade='c-grade')
+        register_event(state, 'drop_resolved_sell_new', grade='c-grade')
+        register_event(state, 'drop_resolved_sell_existing', grade='c-grade')
+        assert state.triumphs.get('collector', {}).get('count', 0) == 0
+        assert state.triumphs.get('drops_c', {}).get('count', 0) == 0
+
+    def test_collector_tier_unlock_at_10(self):
+        state = GameState.default_new_game()
+        for _ in range(10):
+            register_event(state, 'drop', grade='c-grade')
+        assert state.triumphs['collector']['tier'] == 1
+        assert state.triumphs['drops_c']['tier'] == 1
+
+    def test_drops_seal_exists(self):
+        from triumphs_data import SEALS, CATEGORIES
+        assert 'drops' in CATEGORIES
+        assert SEALS['drops']['name'] == 'Treasure Hunter'

@@ -4628,14 +4628,18 @@ CLI shell для будущих категорий. Empty state когда catal
 
 **Rejected** (на момент 4.62.1.6, потенциально вернутся): Skill Diversity (все ≥ N) — отклонено, aggregate sum уже косвенно поощряет diversity; Athlete (max single skill) — отклонено как излишнее. Helper `_GYM_SKILL_FIELDS: tuple[str, ...]` в `triumphs_data.py` — единый источник правды для aggregate metric + тестов. Legacy fields `mechanics` / `it_technologies` из `GymSkills` исключены (не trainable). 14 новых тестов в TestGymTriumphs.
 
-##### 4.62.1.7. Drops triumphs `[L / S / todo (blocked by 4.62.0)]`
+##### 4.62.1.7. Drops triumphs `[L / S / done (27.05.2026, 0.2.6)]`
 
 **Категория `drops`. Event-based с payload filter.**
 
-- **Treasure Hunter** — first B / A / S / S+ drop (4 milestone tiers, не cumulative count). Один-shot триумфы.
-- **Connoisseur** — 10 / 100 S-grade items dropped. Cumulative.
-- **Lucky** — 10 / 50 S+ drops.
-- Hook: event_hooks=['drop'], filter `payload['item']['grade'][0]`.
+**Реализовано (27.05.2026)** — переработано по запросу в **cumulative-счётчики** (общий + по грейдам), вместо исходных milestone/Connoisseur/Lucky:
+- **6 триумфов**, все tiers `[10, 50, 100, 250, 500, 1000]`: `collector` (Collector, общий) + `drops_c/_b/_a/_s/_s_plus` (per-grade).
+- **Хук:** `event_hooks=['drop', 'drop_pending', 'drop_force_sold']` (три взаимоисключающих generation-события — момент дропа в приключении; `drop_auto_collected` / `drop_resolved_*` НЕ считаются — разрешение уже посчитанного pending). Per-grade — тот же хук + `event_filter: lambda p: p.get('grade')=='<grade>'`. Один дроп → Collector +1 и matching grade +1.
+- **⚠️ Плоский payload:** фильтр читает `p.get('grade')` (НЕ nested `payload['item']['grade'][0]` из исходной формулировки — payload плоский, см. 4.6.2).
+- **Seal `drops` = Treasure Hunter** 💎 (capstone всех 6 на 1000 → title «Treasure Hunter», endgame).
+- Backfill из history (drop-события в payload) реконструирует счётчики автоматически; phantom-дропов на STALE нет (4.48.5.1.1).
+
+**Файлы:** `triumphs_data.py` (6 triumphs + drops seal). **Тесты:** 7 (`TestDropTriumphs`). 1335 passed, mypy 0 issues.
 
 ##### 4.62.1.8. Level / progression triumphs `[L / XS / done (27.05.2026, 0.2.6)]`
 

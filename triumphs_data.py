@@ -401,6 +401,57 @@ TRIUMPHS: dict[str, dict] = {
         'tiers': [5, 10, 15, 20, 25, 30],
         'metric': lambda state: state.char_level.level,
     },
+
+    # ----- 💎 Drops (4.62.1.7, 27.05.2026) -----
+    # Event-based. Считаем каждый ФАКТ дропа в приключении — три взаимоисключающих
+    # generation-события: 'drop' (в инвентарь), 'drop_pending' (рюкзак полон →
+    # pending), 'drop_force_sold' (инвентарь+pending заняты → авто-продан). Все три
+    # несут плоский payload с 'grade'. drop_auto_collected / drop_resolved_* НЕ
+    # считаем — это разрешение уже посчитанного pending-дропа (двойной счёт).
+    # Collector — общий счётчик (любой grade); 5 per-grade — тот же хук + фильтр
+    # по grade. Один дроп → Collector +1 и matching grade +1. Тиры одинаковы для
+    # всех (по запросу 27.05.2026): [10, 50, 100, 250, 500, 1000].
+    'collector': {
+        'name': 'Collector',
+        'category': 'drops',
+        'tiers': [10, 50, 100, 250, 500, 1000],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+    },
+    'drops_c': {
+        'name': 'C-Grade Collector',
+        'category': 'drops',
+        'tiers': [10, 50, 100, 250, 500, 1000],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('grade') == 'c-grade',
+    },
+    'drops_b': {
+        'name': 'B-Grade Collector',
+        'category': 'drops',
+        'tiers': [10, 50, 100, 250, 500, 1000],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('grade') == 'b-grade',
+    },
+    'drops_a': {
+        'name': 'A-Grade Collector',
+        'category': 'drops',
+        'tiers': [10, 50, 100, 250, 500, 1000],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('grade') == 'a-grade',
+    },
+    'drops_s': {
+        'name': 'S-Grade Collector',
+        'category': 'drops',
+        'tiers': [10, 50, 100, 250, 500, 1000],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('grade') == 's-grade',
+    },
+    'drops_s_plus': {
+        'name': 'S+ Grade Collector',
+        'category': 'drops',
+        'tiers': [10, 50, 100, 250, 500, 1000],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('grade') == 's+grade',
+    },
 }
 
 
@@ -439,4 +490,7 @@ SEALS: dict[str, dict] = {
     # 4.62.1.8 — capstone Veteran (level 30). До расширения level-кэпа (>12)
     # seal остаётся locked. Title «Veteran».
     'progression': {'name': 'Veteran', 'icon': '⭐'},
+    # 4.62.1.7 — capstone всех 6 drop-триумфов (Collector + 5 per-grade на 1000).
+    # Endgame seal. Title «Treasure Hunter».
+    'drops': {'name': 'Treasure Hunter', 'icon': '💎'},
 }
