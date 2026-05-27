@@ -130,10 +130,10 @@ def format_timedelta(td) -> str:
     Примеры:
         timedelta(seconds=45)            -> "0:00:45"
         timedelta(hours=17, minutes=25)  -> "17:25:00"
-        timedelta(days=1, hours=5)       -> "1д 5:00:00"
-        timedelta(days=8)                -> "1нед 1д 0:00:00"
-        timedelta(days=35)               -> "1мес 5д 0:00:00"
-        timedelta(days=400)              -> "1г 1мес 5д 0:00:00"
+        timedelta(days=1, hours=5)       -> "1 д 5:00:00"
+        timedelta(days=8)                -> "1 нед 1 д 0:00:00"
+        timedelta(days=35)               -> "1 мес 5 д 0:00:00"
+        timedelta(days=400)              -> "1 г 1 мес 5 д 0:00:00"
     """
     if isinstance(td, timedelta):
         total = int(td.total_seconds())
@@ -146,16 +146,16 @@ def format_timedelta(td) -> str:
     parts = []
     y, total = divmod(total, _YEAR_S)
     if y > 0:
-        parts.append(f"{y}г")
+        parts.append(f"{y} г")
     mo, total = divmod(total, _MONTH_S)
     if mo > 0:
-        parts.append(f"{mo}мес")
+        parts.append(f"{mo} мес")
     w, total = divmod(total, _WEEK_S)
     if w > 0:
-        parts.append(f"{w}нед")
+        parts.append(f"{w} нед")
     d, total = divmod(total, _DAY_S)
     if d > 0:
-        parts.append(f"{d}д")
+        parts.append(f"{d} д")
     h, total = divmod(total, _HOUR_S)
     m, s = divmod(total, _MINUTE_S)
     parts.append(f"{h}:{m:02d}:{s:02d}")

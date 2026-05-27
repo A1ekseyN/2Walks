@@ -283,7 +283,7 @@
         {% if state.work.active %}
         <p data-open-session-modal="modal-work-session" style="cursor: pointer;">
             🏭 Работа: <strong>{{ state.work.work_type.title() if state.work.work_type else "?" }}</strong>
-            (💰 +{{ format_money(work_effective_total) }} $ за смену) <span style="color: var(--pico-muted-color);">ⓘ</span>
+            (💰 +{{ format_money(work_effective_total) }} $ за смену)
             <br>
             🕑 До конца смены:
             {% if work_end_ts %}
@@ -300,7 +300,7 @@
         {% if state.training.active %}
         <p data-open-session-modal="modal-training-session" style="cursor: pointer;">
             🏋 Тренировка: <strong>{{ state.training.skill_name.title() if state.training.skill_name else "?" }}</strong>
-            {% if training_skill_target is not none %} → уровень {{ training_skill_target }}{% endif %} <span style="color: var(--pico-muted-color);">ⓘ</span>
+            {% if training_skill_target is not none %} → уровень {{ training_skill_target }}{% endif %}
             <br>
             🕑 До завершения:
             {% if training_end_ts %}
@@ -316,7 +316,7 @@
 
         {% if state.adventure.active %}
         <p data-open-session-modal="modal-adventure-session" style="cursor: pointer;">
-            🗺️ Приключение: <strong>{{ state.adventure.name.title() if state.adventure.name else "?" }}</strong> <span style="color: var(--pico-muted-color);">ⓘ</span>
+            🗺️ Приключение: <strong>{{ state.adventure.name.title() if state.adventure.name else "?" }}</strong>
             <br>
             🕑 До возвращения:
             {% if adventure_finished %}
@@ -343,6 +343,7 @@
             <div class="session-row"><span>🕑 Осталось</span><strong data-end-ts="{{ work_end_ts }}" class="timer-active">…</strong></div>
             <div class="session-row"><span>⏳ Длительность</span><strong>{{ format_minutes(((work_end_ts - work_start_ts) / 60) | int) }}</strong></div>
             <div class="session-row"><span>📊 Прогресс</span><strong><span data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}">{{ '%.1f' % work_progress }}</span> %</strong></div>
+            <progress data-progress-start-ts="{{ work_start_ts }}" data-progress-end-ts="{{ work_end_ts }}" value="{{ '%.2f' % work_progress }}" max="100"></progress>
             <div class="session-row"><span>📅 Начато</span><strong data-abs-ts="{{ work_start_ts }}">…</strong></div>
             <div class="session-row"><span>🏁 Завершится</span><strong data-abs-ts="{{ work_end_ts }}">…</strong></div>
             <hr>
@@ -362,6 +363,7 @@
             <div class="session-row"><span>🕑 Осталось</span><strong data-end-ts="{{ training_end_ts }}" class="timer-active">…</strong></div>
             <div class="session-row"><span>⏳ Длительность</span><strong>{{ format_minutes(((training_end_ts - training_start_ts) / 60) | int) }}</strong></div>
             <div class="session-row"><span>📊 Прогресс</span><strong><span data-progress-start-ts="{{ training_start_ts }}" data-progress-end-ts="{{ training_end_ts }}">{{ '%.1f' % training_progress }}</span> %</strong></div>
+            <progress data-progress-start-ts="{{ training_start_ts }}" data-progress-end-ts="{{ training_end_ts }}" value="{{ '%.2f' % training_progress }}" max="100"></progress>
             <div class="session-row"><span>📅 Начато</span><strong data-abs-ts="{{ training_start_ts }}">…</strong></div>
             <div class="session-row"><span>🏁 Завершится</span><strong data-abs-ts="{{ training_end_ts }}">…</strong></div>
             {% if training_skill_target is not none %}
@@ -384,6 +386,7 @@
             </div>
             <div class="session-row"><span>⏳ Длительность</span><strong>{{ format_minutes(((adv_end_ts - adv_start_ts) / 60) | int) }}</strong></div>
             <div class="session-row"><span>📊 Прогресс</span><strong><span data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}">{{ '%.1f' % adv_progress }}</span> %</strong></div>
+            <progress data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}" value="{{ '%.2f' % adv_progress }}" max="100"></progress>
             <div class="session-row"><span>📅 Начато</span><strong data-abs-ts="{{ adv_start_ts }}">…</strong></div>
             <div class="session-row"><span>🏁 Вернётся</span><strong data-abs-ts="{{ adv_end_ts }}">…</strong></div>
             <hr>

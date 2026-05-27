@@ -57,61 +57,61 @@ def test_format_timedelta_just_under_day():
 # ----- Дни -----
 
 def test_format_timedelta_one_day_exact():
-    assert format_timedelta(timedelta(days=1)) == "1д 0:00:00"
+    assert format_timedelta(timedelta(days=1)) == "1 д 0:00:00"
 
 
 def test_format_timedelta_days_with_time():
-    assert format_timedelta(timedelta(days=1, hours=5)) == "1д 5:00:00"
+    assert format_timedelta(timedelta(days=1, hours=5)) == "1 д 5:00:00"
 
 
 def test_format_timedelta_multiple_days_under_week():
-    assert format_timedelta(timedelta(days=3, hours=12, minutes=30)) == "3д 12:30:00"
+    assert format_timedelta(timedelta(days=3, hours=12, minutes=30)) == "3 д 12:30:00"
 
 
 # ----- Недели -----
 
 def test_format_timedelta_one_week():
-    assert format_timedelta(timedelta(days=7)) == "1нед 0:00:00"
+    assert format_timedelta(timedelta(days=7)) == "1 нед 0:00:00"
 
 
 def test_format_timedelta_week_plus_days():
-    assert format_timedelta(timedelta(days=8)) == "1нед 1д 0:00:00"
+    assert format_timedelta(timedelta(days=8)) == "1 нед 1 д 0:00:00"
 
 
 def test_format_timedelta_multiple_weeks():
-    assert format_timedelta(timedelta(days=21)) == "3нед 0:00:00"
+    assert format_timedelta(timedelta(days=21)) == "3 нед 0:00:00"
 
 
 # ----- Месяцы (30 дней) -----
 
 def test_format_timedelta_one_month():
-    assert format_timedelta(timedelta(days=30)) == "1мес 0:00:00"
+    assert format_timedelta(timedelta(days=30)) == "1 мес 0:00:00"
 
 
 def test_format_timedelta_month_plus_days():
-    # 35 дней = 1мес (30) + 5д
-    assert format_timedelta(timedelta(days=35)) == "1мес 5д 0:00:00"
+    # 35 дней = 1 мес (30) + 5 д
+    assert format_timedelta(timedelta(days=35)) == "1 мес 5 д 0:00:00"
 
 
 def test_format_timedelta_month_plus_week_plus_days():
-    # 39 дней = 1мес (30) + 1нед (7) + 2д
-    assert format_timedelta(timedelta(days=39)) == "1мес 1нед 2д 0:00:00"
+    # 39 дней = 1 мес (30) + 1 нед (7) + 2 д
+    assert format_timedelta(timedelta(days=39)) == "1 мес 1 нед 2 д 0:00:00"
 
 
 # ----- Годы (365 дней) -----
 
 def test_format_timedelta_one_year():
-    assert format_timedelta(timedelta(days=365)) == "1г 0:00:00"
+    assert format_timedelta(timedelta(days=365)) == "1 г 0:00:00"
 
 
 def test_format_timedelta_year_plus_month_plus_week_plus_day():
-    # 400 дней = 1г (365) + 1мес (30) + 5д
-    assert format_timedelta(timedelta(days=400)) == "1г 1мес 5д 0:00:00"
+    # 400 дней = 1 г (365) + 1 мес (30) + 5 д
+    assert format_timedelta(timedelta(days=400)) == "1 г 1 мес 5 д 0:00:00"
 
 
 def test_format_timedelta_year_plus_full_time():
     # 1 год + 5 часов 30 минут.
-    assert format_timedelta(timedelta(days=365, hours=5, minutes=30)) == "1г 5:30:00"
+    assert format_timedelta(timedelta(days=365, hours=5, minutes=30)) == "1 г 5:30:00"
 
 
 # ----- Realistic game timer values -----
@@ -123,12 +123,12 @@ def test_format_timedelta_typical_work_shift():
 
 def test_format_timedelta_long_training():
     """Skill level 30 без speed-бонуса = 9999 минут × 60 ≈ 6.94 дня."""
-    assert format_timedelta(timedelta(minutes=9999)) == "6д 22:39:00"
+    assert format_timedelta(timedelta(minutes=9999)) == "6 д 22:39:00"
 
 
 def test_format_timedelta_extreme_extension():
     """Гипотетический extension смены до 100 часов → 4д 4:00:00."""
-    assert format_timedelta(timedelta(hours=100)) == "4д 4:00:00"
+    assert format_timedelta(timedelta(hours=100)) == "4 д 4:00:00"
 
 
 # ---------------------------------------------------------------------------

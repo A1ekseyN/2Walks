@@ -327,11 +327,11 @@ def test_dashboard_format_remaining_js_constants_match_python():
     assert "_SEC_MONTH = 30 * 24 * 3600" in body
     assert "_SEC_WEEK = 7 * 24 * 3600" in body
     assert "_SEC_DAY = 24 * 3600" in body
-    # Суффиксы (внутри template-литералов).
-    assert "${y}г" in body
-    assert "${mo}мес" in body
-    assert "${w}нед" in body
-    assert "${d}д" in body
+    # Суффиксы (внутри template-литералов). С 0.2.6 — с пробелом «N ед».
+    assert "${y} г" in body
+    assert "${mo} мес" in body
+    assert "${w} нед" in body
+    assert "${d} д" in body
 
 
 def test_dashboard_shows_location_icon_and_name():

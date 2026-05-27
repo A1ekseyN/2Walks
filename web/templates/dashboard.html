@@ -270,13 +270,13 @@
         let total = Math.floor(seconds);
         const parts = [];
         const y = Math.floor(total / _SEC_YEAR); total %= _SEC_YEAR;
-        if (y > 0) parts.push(`${y}г`);
+        if (y > 0) parts.push(`${y} г`);
         const mo = Math.floor(total / _SEC_MONTH); total %= _SEC_MONTH;
-        if (mo > 0) parts.push(`${mo}мес`);
+        if (mo > 0) parts.push(`${mo} мес`);
         const w = Math.floor(total / _SEC_WEEK); total %= _SEC_WEEK;
-        if (w > 0) parts.push(`${w}нед`);
+        if (w > 0) parts.push(`${w} нед`);
         const d = Math.floor(total / _SEC_DAY); total %= _SEC_DAY;
-        if (d > 0) parts.push(`${d}д`);
+        if (d > 0) parts.push(`${d} д`);
         const h = Math.floor(total / _SEC_HOUR); total %= _SEC_HOUR;
         const m = Math.floor(total / _SEC_MINUTE);
         const s = total % _SEC_MINUTE;
