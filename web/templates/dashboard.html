@@ -152,6 +152,11 @@
             padding: 0.2rem 0;
         }
         .session-row > span { color: var(--pico-muted-color); }
+        /* Тень под карточкой session-модалки — визуально отделяет от фона. */
+        #active-sessions dialog article {
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+            border-radius: 0.5rem;
+        }
         #active-sessions p[data-open-session-modal] { transition: opacity 0.15s; }
         #active-sessions p[data-open-session-modal]:hover { opacity: 0.85; }
         .save-overlay-card {
