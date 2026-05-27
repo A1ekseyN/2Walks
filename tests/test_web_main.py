@@ -5391,17 +5391,52 @@ def test_unclaimed_banner_visible_when_queue_nonempty():
     assert 'id="triumphs-unclaimed"' in body
     assert '2 закрытых' in body
     assert '/web/triumphs/claim_all' in body
-    # 4.62.7.x — крестик «скрыть на сегодня» присутствует в баннере.
-    assert 'data-dismiss-unclaimed' in body
+    # 4.62.7.6 — крестик = серверный dismiss (HTMX POST), а не localStorage.
+    assert '/web/triumphs/dismiss_unclaimed' in body
 
 
-def test_unclaimed_banner_dismiss_js_present():
-    """JS dismiss-логика (localStorage + applyTriumphsBannerDismiss) в dashboard."""
-    _setup_state()
+def test_unclaimed_banner_hidden_after_server_dismiss():
+    """4.62.7.6 — POST /web/triumphs/dismiss_unclaimed ставит dismissed_date =
+    date_last_enter → баннер не рендерится (server-side, переживает refresh)."""
+    from datetime import date
+    state = GameState.default_new_game()
+    state.date_last_enter = str(date.today())
+    state.unclaimed_unlocks = [
+        {'triumph_id': 'marathoner', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+    ]
+    _setup_state(state)
     with TestClient(app) as client:
-        body = client.get("/").text
-    assert 'applyTriumphsBannerDismiss' in body
-    assert 'triumphsUnclaimedDismissed' in body
+        # До dismiss — баннер виден.
+        assert 'id="triumphs-unclaimed"' in client.get("/status").text
+        # Dismiss.
+        resp = client.post("/web/triumphs/dismiss_unclaimed")
+        assert resp.status_code == 200
+        assert 'id="triumphs-unclaimed"' not in resp.text
+        # Поле выставлено + переживает повторный рендер (refresh).
+        assert game.state.unclaimed_banner_dismissed_date == str(date.today())
+        assert 'id="triumphs-unclaimed"' not in client.get("/status").text
+
+
+def test_unclaimed_banner_reappears_on_new_day():
+    """4.62.7.6 — на rollover (date_last_enter != dismissed_date) баннер виден снова."""
+    state = GameState.default_new_game()
+    state.date_last_enter = '2026-05-27'
+    state.unclaimed_banner_dismissed_date = '2026-05-26'  # скрыт вчера
+    state.unclaimed_unlocks = [
+        {'triumph_id': 'marathoner', 'tier': 1, 'unlocked_ts': 1.0, 'kind': 'triumph'},
+    ]
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'id="triumphs-unclaimed"' in body  # новый день → баннер вернулся
+
+
+def test_unclaimed_banner_dismissed_round_trip():
+    """Новое поле unclaimed_banner_dismissed_date переживает to_dict/from_dict."""
+    state = GameState.default_new_game()
+    state.unclaimed_banner_dismissed_date = '2026-05-27'
+    restored = GameState.from_dict(state.to_dict())
+    assert restored.unclaimed_banner_dismissed_date == '2026-05-27'
 
 
 def test_title_badge_visible_in_stats_header():

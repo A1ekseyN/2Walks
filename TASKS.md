@@ -4847,13 +4847,22 @@ User feedback 26.05.2026: «`Score: 210 · 0/196 tiers` — score начисля
 
 **Тесты:** `test_total_score_counts_only_claimed_tiers` (бывший `test_total_score_with_unlocked_tiers`) — unlock → score 0 → claim_all → score 30; воспроизводит реальный поток `register_event` → `append_unclaimed`.
 
-##### 4.62.7.5. Web: крестик «скрыть на сегодня» для unclaimed-баннера `[L / XS / done (27.05.2026, 0.2.6)]`
+##### 4.62.7.5. Web: крестик «скрыть на сегодня» (client-side) `[L / XS / superseded by 4.62.7.6 (27.05.2026)]`
 
-User feedback 27.05.2026: баннер «🎁 N закрытых не собрано» мешает на период тестирования триумфов; хочется убрать его на сегодня, но чтобы на новый день он вернулся.
+⚠️ **Заменено серверным dismiss'ом (4.62.7.6).** Изначальная реализация была client-side (`localStorage.triumphsUnclaimedDismissed` + JS `applyTriumphsBannerDismiss`). На практике оказалась ненадёжной на **iPhone Safari**: ITP вычищает localStorage у сайтов без «достаточного» взаимодействия + приватный режим его не хранит → dismiss терялся при refresh (incident 27.05.2026). Per-device, без синка. localStorage-логика удалена в 4.62.7.6.
 
-**Реализация (client-side, без серверных изменений):** в баннер `#triumphs-unclaimed` добавлен `×` (`data-dismiss-unclaimed`, absolute top-right). JS в `dashboard.html`: клик пишет `localStorage.triumphsUnclaimedDismissed = today.toDateString()` + прячет баннер; `applyTriumphsBannerDismiss()` на `DOMContentLoaded` + `htmx:afterSwap` (баннер re-рендерится в swap'е) скрывает его, если сохранённая дата == сегодня. Новый день → дата отличается → баннер снова виден. Scope — конкретный браузер (per-device), что для косметического dismiss приемлемо. Сервер по-прежнему рендерит баннер при `has_unclaimed` (никаких state/endpoint изменений).
+##### 4.62.7.6. Web: серверный dismiss unclaimed-баннера (Sheets) `[L / S / done (27.05.2026, 0.2.6a)]`
 
-**Файлы:** `_status_fragment.html` (× кнопка), `dashboard.html` (JS dismiss). **Тесты:** 2 (× в баннере + JS-логика в dashboard). 1318 passed.
+User feedback 27.05.2026: client-side dismiss (4.62.7.5) не переживал refresh на iPhone. Нужно сохранять статус «скрыт на сегодня» серверно.
+
+**Реализация (server-side):**
+- Новое поле `state.unclaimed_banner_dismissed_date: str` (round-trip в to_dict/from_dict/update_from_dict) — игровой день, на который баннер скрыт.
+- `_build_triumphs_view`: `has_unclaimed = есть unclaimed AND dismissed_date != state.date_last_enter`. Скрыто → баннер **не рендерится** серверно (без мелькания).
+- Endpoint `POST /web/triumphs/dismiss_unclaimed` (`_validate_and_apply_dismiss_unclaimed`): ставит `dismissed_date = date_last_enter` → `persist_state_to_cloud()` (с STALE handling) → fragment. × в баннере — HTMX-форма на этот endpoint.
+- **Reset на новый день автоматический:** rollover меняет `date_last_enter` → `dismissed_date` (вчера) != сегодня → баннер возвращается. День привязан к игровому `date_last_enter` (server-authoritative), не к календарю браузера.
+- localStorage-JS (4.62.7.5) удалён.
+
+**Цена:** +1 Sheets-запись на dismiss (раз в день). **Файлы:** `state.py` (поле + round-trip), `web/main.py` (gating + endpoint + helper), `_status_fragment.html` (× → HTMX form), `dashboard.html` (удалён JS). **Тесты:** 4 (dismiss скрывает + persist, reappear на новый день, round-trip, банер-маркер) + обновлён 1. 1337 passed, mypy 0 issues.
 
 ---
 

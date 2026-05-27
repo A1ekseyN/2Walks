@@ -408,27 +408,13 @@
        снимаем reloading/navigating → overlay плавно скрывается. */
     document.body.addEventListener("htmx:afterSwap", () => {
         document.body.classList.remove("reloading", "navigating");
-        applyTriumphsBannerDismiss();  // баннер re-рендерится в swap'е — re-применяем dismiss
     });
 
-    /* 4.62.7.x — «Скрыть на сегодня» для баннера unclaimed-триумфов.
-       Client-side: localStorage хранит дату последнего dismiss'а; если == сегодня,
-       прячем #triumphs-unclaimed. На новый день дата отличается → баннер снова виден.
-       (Tip: триумфы пока в тестировании — окно мешает, крестик убирает его на день.) */
-    function applyTriumphsBannerDismiss() {
-        const banner = document.getElementById("triumphs-unclaimed");
-        if (!banner) return;
-        if (localStorage.getItem("triumphsUnclaimedDismissed") === new Date().toDateString()) {
-            banner.style.display = "none";
-        }
-    }
+    /* 4.62.7.6 — dismiss unclaimed-баннера теперь СЕРВЕРНЫЙ (крестик = HTMX POST
+       /web/triumphs/dismiss_unclaimed → persist в Sheets, баннер не рендерится
+       до нового дня). Client-side localStorage убран — был ненадёжен на iPhone
+       Safari ITP (терялся при refresh). */
     document.body.addEventListener("click", (e) => {
-        if (e.target.closest("[data-dismiss-unclaimed]")) {
-            localStorage.setItem("triumphsUnclaimedDismissed", new Date().toDateString());
-            const banner = document.getElementById("triumphs-unclaimed");
-            if (banner) banner.style.display = "none";
-            return;
-        }
         /* 4.x — session-модалки: клик по блоку активной сессии открывает <dialog>
            с детальной инфо; кнопка/бэкдроп закрывает. */
         const opener = e.target.closest("[data-open-session-modal]");

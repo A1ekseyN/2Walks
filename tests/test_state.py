@@ -361,6 +361,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'triumphs', 'pinned_triumphs', 'title',
         # 4.62.0.2 — Triumphs engine backfill dismiss flag
         'triumphs_backfill_dismissed',
+        # 4.62.7.6 — день dismiss'а unclaimed-баннера (web)
+        'unclaimed_banner_dismissed_date',
         # 4.62.4 — Unclaimed triumph unlocks (Destiny-2 claim queue)
         'unclaimed_unlocks',
         # 4.62.1.5.1 — Iron Worker longest single shift

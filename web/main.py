@@ -3369,7 +3369,11 @@ def _build_triumphs_view(state) -> dict:
         'total_tier_unlocks': total_tier_unlocks,
         'total_tier_slots': total_tier_slots,
         'has_pinned': len(pinned_rows) > 0,
-        'has_unclaimed': len(unclaimed) > 0,
+        # 4.62.7.6 — баннер скрыт, если игрок dismiss'нул его на текущий игровой
+        # день (state.unclaimed_banner_dismissed_date == date_last_enter). На
+        # rollover date_last_enter меняется → баннер сам возвращается.
+        'has_unclaimed': len(unclaimed) > 0 and
+            state.unclaimed_banner_dismissed_date != state.date_last_enter,
     }
 
 
@@ -3446,6 +3450,18 @@ def _validate_and_apply_claim_all(state) -> Optional[str]:
     return None
 
 
+def _validate_and_apply_dismiss_unclaimed(state) -> Optional[str]:
+    """4.62.7.6 — скрыть unclaimed-баннер на текущий игровой день (серверный
+    dismiss, переживает refresh + синкается). Ставим dismissed_date =
+    date_last_enter; на rollover дата изменится → баннер сам вернётся.
+    Persist в Sheets (раз в день)."""
+    state.unclaimed_banner_dismissed_date = state.date_last_enter
+    stale = _persist_and_handle_stale(endpoint='triumph_dismiss_unclaimed')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
 def _validate_and_apply_seal_toggle(state, cat_key: str) -> Optional[str]:
     """Toggle title: wear / take off."""
     from triumphs import is_seal_unlocked, set_title
@@ -3512,6 +3528,19 @@ async def web_triumphs_claim_all(request: Request):
     if state is None:
         raise HTTPException(status_code=503, detail="state not initialized")
     err = _validate_and_apply_claim_all(state)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, triumphs_error=err)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/web/triumphs/dismiss_unclaimed", response_class=HTMLResponse)
+async def web_triumphs_dismiss_unclaimed(request: Request):
+    """4.62.7.6 — крестик «скрыть на сегодня» для unclaimed-баннера (серверно)."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_dismiss_unclaimed(state)
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, triumphs_error=err)

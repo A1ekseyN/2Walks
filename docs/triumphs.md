@@ -283,7 +283,7 @@ Lazy imports + try/except чтобы избежать circular dependency.
 Параллельная вёрстка к CLI menu. 3 слоя UI в `web/templates/_status_fragment.html`:
 
 **1. Top banners над Stats** (conditional render, всегда visible если active):
-- **Unclaimed banner** `🎁 N закрытых не собрано` + sample names + `[✓ Собрать все]` button → POST `/web/triumphs/claim_all` (batch quick-clear).
+- **Unclaimed banner** `🎁 N закрытых не собрано` + sample names + `[✓ Собрать все]` button → POST `/web/triumphs/claim_all` (batch quick-clear) + `×` «скрыть на сегодня» → POST `/web/triumphs/dismiss_unclaimed` (4.62.7.6 — серверный dismiss: `state.unclaimed_banner_dismissed_date = date_last_enter`, баннер скрыт до rollover/нового дня; заменил ненадёжный client-side localStorage 4.62.7.5).
 - **Pinned banner** `📌 Pinned N/3` + 3 строки с progress bars (HTML5 `<progress>`) + ✨ marker если pinned имеет unclaimed.
 
 **2. Title badge** в Stats header (`📊 Stats   👑 <title>` float-right) — visible если `state.title` non-None. Match с CLI placement над локацией.

@@ -233,6 +233,13 @@ class GameState:
     # Default False для legacy сейвов (prompt появится один раз).
     triumphs_backfill_dismissed: bool = False
 
+    # 4.62.7.6 — Игровой день, на который web-баннер «N закрытых не собрано»
+    # скрыт пользователем (крестик). Если == текущему date_last_enter → баннер
+    # не показывается; на rollover (date_last_enter меняется) баннер возвращается.
+    # Серверная замена client-side localStorage (4.62.7.5 был ненадёжен на iPhone
+    # Safari ITP). Default '' для legacy — баннер показывается.
+    unclaimed_banner_dismissed_date: str = ''
+
     # 4.62.4 — Unclaimed triumph unlocks (Destiny-2 style claim mechanic).
     # Список dict'ов `{triumph_id: str, tier: int, unlocked_ts: float}` —
     # tier'ы которые unlock'нулись но игрок ещё не зашёл в detail view и
@@ -444,6 +451,8 @@ class GameState:
             title=d.get('title') if d.get('title') else None,
             # 4.62.0.2 — backfill dismiss flag, default False для legacy.
             triumphs_backfill_dismissed=bool(d.get('triumphs_backfill_dismissed') or False),
+            # 4.62.7.6 — день dismiss'а unclaimed-баннера (default '' для legacy).
+            unclaimed_banner_dismissed_date=str(d.get('unclaimed_banner_dismissed_date', '') or ''),
             unclaimed_unlocks=list(d.get('unclaimed_unlocks') or []),
             # 4.54.1 — Optimistic concurrency timestamp. Default 0.0 для legacy
             # сейвов до 4.54 — первый save_safe запишет реальный time.time().
@@ -482,6 +491,7 @@ class GameState:
         self.title = new.title
         # 4.62.0.2 — backfill dismiss flag.
         self.triumphs_backfill_dismissed = new.triumphs_backfill_dismissed
+        self.unclaimed_banner_dismissed_date = new.unclaimed_banner_dismissed_date
         self.unclaimed_unlocks = new.unclaimed_unlocks
         # 4.54.1 — last_modified подхватывается из свежего load'а Sheets.
         # last_loaded_snapshot обновлять здесь нельзя — caller (try_reload_state
@@ -612,6 +622,7 @@ class GameState:
             'title': self.title,
             # 4.62.0.2 — backfill prompt dismiss flag.
             'triumphs_backfill_dismissed': self.triumphs_backfill_dismissed,
+            'unclaimed_banner_dismissed_date': self.unclaimed_banner_dismissed_date,
             'unclaimed_unlocks': self.unclaimed_unlocks,
 
             # 4.54.1 — Optimistic concurrency timestamp (round-trip с Sheets).
