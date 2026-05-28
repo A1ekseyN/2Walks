@@ -532,6 +532,19 @@ TRIUMPHS: dict[str, dict] = {
         'event_hooks': ['item_crafted'],
         'count_delta': lambda p: 1,
     },
+
+    # ----- 🏦 Bank (4.62.1.10 part: Capitalist, 28.05.2026) -----
+    # Capitalist — metric-based на forward-only аккумуляторе всего заработанного
+    # процента по вкладу (`bank.total_interest_earned`, += в bank.accrue_deposit).
+    # Непрерывный (растёт по мере капитализации), не сбрасывается на снятии.
+    # int() для tier-сравнения — копится дробно. Backfill нет (forward-only с 0).
+    # Без seal у категории bank (решено 28.05.2026). Остаток 4.62.1.10 — Saver.
+    'capitalist': {
+        'name': 'Capitalist',
+        'category': 'bank',
+        'tiers': [100, 500, 1000, 5000, 10000],
+        'metric': lambda state: int(state.bank.total_interest_earned),
+    },
 }
 
 

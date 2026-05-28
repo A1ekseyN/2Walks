@@ -190,6 +190,10 @@ class BankState:
     deposit_last_interest_ts: Optional[float] = None
     loan_amount: float = 0.0
     loan_last_interest_ts: Optional[float] = None
+    # 4.62.1.10 — Capitalist triumph: всего заработано процентов по вкладу за всё
+    # время (forward-only accumulator, += в bank.accrue_deposit). Не сбрасывается
+    # при снятии. Round-trip flat-key 'bank_total_interest_earned' (0.0 legacy).
+    total_interest_earned: float = 0.0
 
 
 @dataclass
@@ -493,6 +497,7 @@ class GameState:
                 deposit_last_interest_ts=d.get('bank_deposit_last_interest_ts'),
                 loan_amount=float(d.get('bank_loan_amount') or 0.0),
                 loan_last_interest_ts=d.get('bank_loan_last_interest_ts'),
+                total_interest_earned=float(d.get('bank_total_interest_earned') or 0.0),
             ),
 
             inventory=list(d.get('inventory') or []),
@@ -689,6 +694,7 @@ class GameState:
             'bank_deposit_last_interest_ts': self.bank.deposit_last_interest_ts,
             'bank_loan_amount': self.bank.loan_amount,
             'bank_loan_last_interest_ts': self.bank.loan_last_interest_ts,
+            'bank_total_interest_earned': self.bank.total_interest_earned,
 
             # 4.62.0.1 — Triumphs system (Phase 1 foundation для зонтичной 4.62).
             'triumphs': self.triumphs,

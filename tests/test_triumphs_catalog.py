@@ -1058,3 +1058,73 @@ class TestCrafter:
         """Решение 28.05.2026 — у категории forge нет seal."""
         from triumphs_data import SEALS
         assert 'forge' not in SEALS
+
+
+class TestCapitalist:
+    """🏦 Capitalist — metric-based: всего заработано процентов по вкладу
+    (bank.total_interest_earned, += в accrue_deposit). Forward-only, не
+    сбрасывается на снятии. Tiers [100, 500, 1000, 5000, 10000]. Без seal."""
+
+    def test_capitalist_in_catalog(self):
+        spec = TRIUMPHS['capitalist']
+        assert spec['name'] == 'Capitalist'
+        assert spec['category'] == 'bank'
+        assert spec['tiers'] == [100, 500, 1000, 5000, 10000]
+        assert 'metric' in spec
+        assert 'event_hooks' not in spec
+
+    def test_capitalist_metric_reads_total_interest_earned(self):
+        state = GameState.default_new_game()
+        state.bank.total_interest_earned = 1234.56
+        assert TRIUMPHS['capitalist']['metric'](state) == 1234  # int-cast
+
+    def test_capitalist_accrue_deposit_accumulates(self):
+        """accrue_deposit копит проценты в total_interest_earned (10000 @ 30% ≈ 3000/год)."""
+        import time
+        from bank import accrue_deposit, _SECONDS_PER_YEAR
+        state = GameState.default_new_game()
+        state.gym.banking_interest_rate = 30          # 30 % годовых
+        state.bank.deposit_amount = 10000.0
+        state.bank.deposit_last_interest_ts = time.time() - _SECONDS_PER_YEAR  # год назад
+        accrue_deposit(state)
+        assert state.bank.total_interest_earned == pytest.approx(3000.0, rel=1e-3)
+
+    def test_capitalist_not_reset_on_withdraw(self):
+        """Снятие всего депозита НЕ обнуляет total_interest_earned (forward-only)."""
+        from bank import _withdraw_all
+        state = GameState.default_new_game()
+        state.gym.banking_interest_rate = 30
+        state.bank.deposit_amount = 5000.0
+        state.bank.total_interest_earned = 3000.0
+        _withdraw_all(state)
+        assert state.bank.deposit_amount == 0.0
+        assert state.bank.total_interest_earned == 3000.0  # не тронут
+
+    def test_capitalist_unlock_tier_1_at_100(self):
+        state = GameState.default_new_game()
+        state.bank.total_interest_earned = 100.0
+        register_event(state, 'deposit', amount=1)  # любой event → recheck metric
+        assert state.triumphs['capitalist']['tier'] == 1
+
+    def test_capitalist_no_unlock_below_100(self):
+        state = GameState.default_new_game()
+        state.bank.total_interest_earned = 99.0
+        register_event(state, 'deposit', amount=1)
+        assert state.triumphs.get('capitalist', {}).get('tier', 0) == 0
+
+    def test_capitalist_capstone_at_10000(self):
+        state = GameState.default_new_game()
+        state.bank.total_interest_earned = 10000.0
+        register_event(state, 'deposit', amount=1)
+        assert state.triumphs['capitalist']['tier'] == 5
+
+    def test_bank_category_exists_no_seal(self):
+        from triumphs_data import CATEGORIES, SEALS
+        assert 'bank' in CATEGORIES
+        assert 'bank' not in SEALS
+
+    def test_capitalist_round_trip(self):
+        state = GameState.default_new_game()
+        state.bank.total_interest_earned = 4242.5
+        restored = GameState.from_dict(state.to_dict())
+        assert restored.bank.total_interest_earned == 4242.5

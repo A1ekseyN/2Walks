@@ -79,6 +79,9 @@ def accrue_deposit(state: GameState) -> None:
     rate_per_second = current_deposit_rate_pct(state) / 100.0 / _SECONDS_PER_YEAR
     interest = bank.deposit_amount * rate_per_second * elapsed_s
     bank.deposit_amount += interest
+    # 4.62.1.10 — Capitalist triumph: forward-only накопитель всего заработанного
+    # (не сбрасывается при снятии). metric int(total_interest_earned).
+    bank.total_interest_earned += interest
     bank.deposit_last_interest_ts = now
 
 

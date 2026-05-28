@@ -4764,14 +4764,33 @@ User insight 27.05.2026: Marathoner считает **потраченные** ш
 
 **Файлы (Total days played):** `state.py` (`days_played` + round-trip), `functions.py` (accumulate на rollover), `triumphs_data.py` (Dedicated). **Тесты:** 5 (TestDedicated 4 + accumulation 1) + legacy-keys. Каталог 49→50. 1352 passed, mypy 0 issues.
 
-##### 4.62.1.10. Bank triumphs `[L / M / todo (blocked by 4.62.0)]`
+##### 4.62.1.10. Bank triumphs `[L / M / partial — Capitalist done (28.05.2026, 0.2.6g); остался Saver]`
 
-**Категория `bank`. Event-based + accumulators.**
+**Категория `bank`. Оба metric-based на новых аккумуляторах в `BankState`. Без seal. Только депозиты (кредиты — отдельно потом). Каталог 53→55 (54 после Capitalist).**
 
-- **Total deposit interest earned** — sum capitalized процентов. Counter в state. Tiers `[100, 1_000, 10_000, 100_000]`. Capstone: +N% к banking_interest_rate.
-- **Total loans repaid** — count closed loans. Tiers `[1, 5, 25, 100]`. Trophy.
-- **Max single deposit** — biggest deposit amount в один момент. Tiers `[1_000, 10_000, 100_000, 1_000_000]`. Trophy.
-- Hook: event_hooks=['deposit_*', 'repay_*'].
+**Статус:** ✅ **Capitalist** done (0.2.6g) — поле `BankState.total_interest_earned` + `+=` в accrue_deposit + metric-триумф [100/500/1000/5000/10000] + 9 тестов. ⏳ **Saver** — остался.
+
+**Финализированный дизайн (28.05.2026, обсуждение):**
+
+| Триумф | Метрика | Tiers | Реализация |
+|---|---|---|---|
+| **Capitalist** | заработанные проценты по вкладу (всего за всё время) | [100, 500, 1000, 5000, 10000] | новое поле `BankState.total_interest_earned: float = 0.0` (round-trip flat-key `bank_total_interest_earned`); `+= interest` в `bank.accrue_deposit` (там же где капитализация). Forward-only, **непрерывный** (растёт по мере капитализации, НЕ сбрасывается на снятии). metric = `int(state.bank.total_interest_earned)`. |
+| **Saver** | дней подряд/всего с депозитом ≥ 1000 | [7, 30, 90, 180, 365] | новое поле `BankState.days_with_deposit: int = 0` (round-trip flat-key `bank_days_with_deposit`); `+= 1` на rollover в `functions.today_steps_to_yesterday_steps` (рядом с `days_played`/`daily_streak_record`) если `deposit_amount >= 1000`. metric = `state.bank.days_with_deposit`. |
+
+**Решения:**
+- **«В процессе, не при снятии»** — Capitalist копит в accrue (непрерывно). Достижение = «всего заработано», снятие не уменьшает.
+- **Порог Saver = 1000** (константа). Намеренно простой: проверка в момент rollover → игрок может снять днём и вернуть до начала дня, засчитается (ок by design).
+- **Ставка депозита = `banking_interest_rate`%/год** (1%/lvl). 30% = навык 30. 10000 @ 30% ≈ 3000/год.
+- **Без seal** (как Money/Streak/Forge).
+- **Backfill нет** — оба поля forward-only с 0 (исторические проценты/дни не трекались; как Wayfarer/Dedicated). Existing player начинает копить с этого момента.
+- **Multi-day gap:** rollover засчитывает +1 за пропуск из N дней (consistency с Dedicated) — известное упрощение.
+- Оба metric-based → unlock через `init_metric_check` + на следующем `register_event` (хуков/событий не нужно).
+
+**Имена:** `Investor` занят (Money/gym-траты) → bank-проценты = **Capitalist**, длительность = **Saver**.
+
+**Кредиты (отложено):** «всего погашено по кредитам» (accumulator на repay_loan/repay_all) — отдельный третий триумф, обсудим позже.
+
+**Тесты:** TestBankTriumphs (catalog / accumulator в accrue / rollover-инкремент / tier-unlock / capstone). Категория bank перестаёт быть пустой.
 
 ##### 4.62.1.11. Forge triumphs `[L / S / done (28.05.2026 — Restorer 0.2.6a + Crafter 0.2.6f; First S+ отменён)]`
 
