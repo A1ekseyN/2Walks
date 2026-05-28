@@ -545,6 +545,16 @@ TRIUMPHS: dict[str, dict] = {
         'tiers': [100, 500, 1000, 5000, 10000],
         'metric': lambda state: int(state.bank.total_interest_earned),
     },
+    # Saver (4.62.1.10 part, 28.05.2026) — metric-based: дней с депозитом >= 1000.
+    # +1 на rollover в functions.today_steps_to_yesterday_steps (DEPOSIT_DURATION_
+    # THRESHOLD). Backfill нет (forward-only с 0). Без seal. Multi-day gap → +1
+    # за пропуск (как Dedicated). Закрывает 4.62.1.10.
+    'saver': {
+        'name': 'Saver',
+        'category': 'bank',
+        'tiers': [7, 30, 90, 180, 365],
+        'metric': lambda state: state.bank.days_with_deposit,
+    },
 }
 
 

@@ -4764,11 +4764,11 @@ User insight 27.05.2026: Marathoner считает **потраченные** ш
 
 **Файлы (Total days played):** `state.py` (`days_played` + round-trip), `functions.py` (accumulate на rollover), `triumphs_data.py` (Dedicated). **Тесты:** 5 (TestDedicated 4 + accumulation 1) + legacy-keys. Каталог 49→50. 1352 passed, mypy 0 issues.
 
-##### 4.62.1.10. Bank triumphs `[L / M / partial — Capitalist done (28.05.2026, 0.2.6g); остался Saver]`
+##### 4.62.1.10. Bank triumphs `[L / M / done (28.05.2026 — Capitalist 0.2.6g + Saver 0.2.6h)]`
 
-**Категория `bank`. Оба metric-based на новых аккумуляторах в `BankState`. Без seal. Только депозиты (кредиты — отдельно потом). Каталог 53→55 (54 после Capitalist).**
+**Категория `bank`. Оба metric-based на новых аккумуляторах в `BankState`. Без seal. Только депозиты (кредиты — отдельно потом). Каталог 53→55.**
 
-**Статус:** ✅ **Capitalist** done (0.2.6g) — поле `BankState.total_interest_earned` + `+=` в accrue_deposit + metric-триумф [100/500/1000/5000/10000] + 9 тестов. ⏳ **Saver** — остался.
+**Статус:** ✅ **Capitalist** (0.2.6g) — `BankState.total_interest_earned` + `+=` в accrue_deposit + metric [100/500/1000/5000/10000]. ✅ **Saver** (0.2.6h) — `BankState.days_with_deposit` + `+1` на rollover (порог `DEPOSIT_DURATION_THRESHOLD=1000`) + metric [7/30/90/180/365]. Тесты: 18 (TestCapitalist 9 + TestSaver 9). Кредитный триумф («всего погашено») — отложенный потенциальный третий.
 
 **Финализированный дизайн (28.05.2026, обсуждение):**
 

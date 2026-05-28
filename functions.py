@@ -298,6 +298,10 @@ def energy_timestamp(state: GameState) -> float:
     return state.energy_time_stamp
 
 
+# 4.62.1.10 (Saver) — минимальная сумма на вкладе, чтобы день засчитался.
+DEPOSIT_DURATION_THRESHOLD = 1000
+
+
 def today_steps_to_yesterday_steps(state: GameState) -> tuple[int, int]:
     """На новый день переносит steps_today → steps_yesterday и обновляет daily_bonus.
 
@@ -322,6 +326,11 @@ def today_steps_to_yesterday_steps(state: GameState) -> tuple[int, int]:
     # freeze-item (4.36) учтётся автоматически.
     state.steps.daily_streak_record = max(
         state.steps.daily_streak_record, state.steps.daily_bonus)
+    # 4.62.1.10 (Saver) — +1 за каждый завершившийся день, в котором на вкладе
+    # лежало >= DEPOSIT_DURATION_THRESHOLD. Проверка в момент rollover (игрок
+    # может снять днём и вернуть до начала дня — засчитается, by design).
+    if state.bank.deposit_amount >= DEPOSIT_DURATION_THRESHOLD:
+        state.bank.days_with_deposit += 1
     return state.steps.yesterday, state.steps.daily_bonus
 
 

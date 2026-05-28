@@ -194,6 +194,9 @@ class BankState:
     # время (forward-only accumulator, += в bank.accrue_deposit). Не сбрасывается
     # при снятии. Round-trip flat-key 'bank_total_interest_earned' (0.0 legacy).
     total_interest_earned: float = 0.0
+    # 4.62.1.10 — Saver triumph: дней с депозитом >= порога (+1 на rollover в
+    # functions.today_steps_to_yesterday_steps). Round-trip 'bank_days_with_deposit'.
+    days_with_deposit: int = 0
 
 
 @dataclass
@@ -498,6 +501,7 @@ class GameState:
                 loan_amount=float(d.get('bank_loan_amount') or 0.0),
                 loan_last_interest_ts=d.get('bank_loan_last_interest_ts'),
                 total_interest_earned=float(d.get('bank_total_interest_earned') or 0.0),
+                days_with_deposit=int(d.get('bank_days_with_deposit') or 0),
             ),
 
             inventory=list(d.get('inventory') or []),
@@ -695,6 +699,7 @@ class GameState:
             'bank_loan_amount': self.bank.loan_amount,
             'bank_loan_last_interest_ts': self.bank.loan_last_interest_ts,
             'bank_total_interest_earned': self.bank.total_interest_earned,
+            'bank_days_with_deposit': self.bank.days_with_deposit,
 
             # 4.62.0.1 — Triumphs system (Phase 1 foundation для зонтичной 4.62).
             'triumphs': self.triumphs,

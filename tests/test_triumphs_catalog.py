@@ -1128,3 +1128,70 @@ class TestCapitalist:
         state.bank.total_interest_earned = 4242.5
         restored = GameState.from_dict(state.to_dict())
         assert restored.bank.total_interest_earned == 4242.5
+
+
+class TestSaver:
+    """🏦 Saver — metric-based: дней с депозитом >= 1000 (bank.days_with_deposit,
+    +1 на rollover). Tiers [7, 30, 90, 180, 365]. Без seal. Backfill нет."""
+
+    def test_saver_in_catalog(self):
+        spec = TRIUMPHS['saver']
+        assert spec['name'] == 'Saver'
+        assert spec['category'] == 'bank'
+        assert spec['tiers'] == [7, 30, 90, 180, 365]
+        assert 'metric' in spec
+        assert 'event_hooks' not in spec
+
+    def test_saver_metric_reads_days_with_deposit(self):
+        state = GameState.default_new_game()
+        state.bank.days_with_deposit = 42
+        assert TRIUMPHS['saver']['metric'](state) == 42
+
+    def test_saver_rollover_increments_when_deposit_above_threshold(self):
+        """rollover (today_steps_to_yesterday_steps) +1 при deposit >= 1000."""
+        from functions import today_steps_to_yesterday_steps, DEPOSIT_DURATION_THRESHOLD
+        state = GameState.default_new_game()
+        state.bank.deposit_amount = float(DEPOSIT_DURATION_THRESHOLD)  # ровно порог
+        state.steps.today = 5000
+        today_steps_to_yesterday_steps(state)
+        assert state.bank.days_with_deposit == 1
+
+    def test_saver_rollover_no_increment_below_threshold(self):
+        from functions import today_steps_to_yesterday_steps
+        state = GameState.default_new_game()
+        state.bank.deposit_amount = 999.0  # ниже порога 1000
+        state.steps.today = 5000
+        today_steps_to_yesterday_steps(state)
+        assert state.bank.days_with_deposit == 0
+
+    def test_saver_rollover_accumulates_over_days(self):
+        from functions import today_steps_to_yesterday_steps
+        state = GameState.default_new_game()
+        state.bank.deposit_amount = 2000.0
+        for _ in range(7):
+            today_steps_to_yesterday_steps(state)
+        assert state.bank.days_with_deposit == 7
+
+    def test_saver_unlock_tier_1_at_7(self):
+        state = GameState.default_new_game()
+        state.bank.days_with_deposit = 7
+        register_event(state, 'deposit', amount=1)  # любой event → recheck metric
+        assert state.triumphs['saver']['tier'] == 1
+
+    def test_saver_no_unlock_below_7(self):
+        state = GameState.default_new_game()
+        state.bank.days_with_deposit = 6
+        register_event(state, 'deposit', amount=1)
+        assert state.triumphs.get('saver', {}).get('tier', 0) == 0
+
+    def test_saver_capstone_at_365(self):
+        state = GameState.default_new_game()
+        state.bank.days_with_deposit = 365
+        register_event(state, 'deposit', amount=1)
+        assert state.triumphs['saver']['tier'] == 5
+
+    def test_saver_round_trip(self):
+        state = GameState.default_new_game()
+        state.bank.days_with_deposit = 123
+        restored = GameState.from_dict(state.to_dict())
+        assert restored.bank.days_with_deposit == 123

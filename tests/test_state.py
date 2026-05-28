@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 73 ключа legacy save format (72 + last_modified)."""
+    """to_dict() возвращает все 74 ключа legacy save format (73 + last_modified)."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -361,8 +361,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         # Bank (4.49.0.0 / 4.49.2.1)
         'bank_deposit_amount', 'bank_deposit_last_interest_ts',
         'bank_loan_amount', 'bank_loan_last_interest_ts',
-        # 4.62.1.10 — Capitalist triumph accumulator
-        'bank_total_interest_earned',
+        # 4.62.1.10 — Capitalist + Saver triumph accumulators
+        'bank_total_interest_earned', 'bank_days_with_deposit',
         # 4.62.0.1 — Triumphs system (Phase 1 foundation для зонтичной 4.62)
         'triumphs', 'pinned_triumphs', 'title',
         # 4.62.0.2 — Triumphs engine backfill dismiss flag

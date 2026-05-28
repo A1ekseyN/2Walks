@@ -96,6 +96,7 @@ StepsState.daily_streak_record: int     # 4.62.1.9   — On Fire (max стрик
 GameState.days_played: int              # 4.62.1.9   — Dedicated (уникальные активные дни)
 WorkSession.longest_shift_hours: int    # 4.62.1.5.1 — Iron Worker (max-tracker, обновляется в work_check_done)
 BankState.total_interest_earned: float  # 4.62.1.10  — Capitalist (forward-only, += в accrue_deposit)
+BankState.days_with_deposit: int        # 4.62.1.10  — Saver (+1 на rollover при депозите >= 1000)
 ```
 
 **Дополнительные pseudo-entries** в `state.triumphs`:
@@ -344,11 +345,11 @@ Lazy imports + try/except чтобы избежать circular dependency.
 
 ---
 
-## 11. Каталог triumph'ов (0.2.6g, 28.05.2026)
+## 11. Каталог triumph'ов (0.2.6h, 28.05.2026)
 
 **Score system:** `POINTS_PER_TIER = 10`. Capstone = 10 × num_tiers points (50 для 5-tier triumph'а, 40 для 4-tier). Очки начисляются только за **собранные (claimed)** tier'ы (`total_score` = Σ `max(0, tier − unclaimed_count) × points_per`, 0.2.6 fix) — несобранные unlock'и сидят в queue и дают 0 очков.
 
-**Total: 54 triumph в 10 категориях, 7 seals** (с 0.2.6a +1 Wayfarer в Steps — реально пройденные `total_walked`, рядом с Marathoner, seal steps требует обоих capstone'ов; +1 Investor в Money 💰 — `cost_money` из `skill_train_start`, без seal; +2 Streak 🔥 — Dedicated `days_played` (уникальные дни 1/7/31/184/365) + On Fire `daily_streak_record` (подряд 10k+ 3/7/14/21/31), без seal) (с 0.2.5w +1 Iron Worker в Work; с 0.2.6 +1 Veteran в Progression ⭐ + seal Veteran; +6 Drops 💎 — Collector + 5 per-grade, seal Treasure Hunter) (с 0.2.6f +1 Crafter в Forge 🔨 — счётчик `item_crafted` 5/10/25/50/100, без seal) (с 0.2.6g +1 Capitalist в Bank 🏦 — metric `bank.total_interest_earned` 100/500/1000/5000/10000, без seal; категория bank была пустой). NB: тиры Veteran 15-30 пока недостижимы — level-кэп = 12, расширение в TASKS 4.64 (отложено). Drops: event-based на `[drop, drop_pending, drop_force_sold]` с grade-фильтром, tiers 10/50/100/250/500/1000.
+**Total: 55 triumph в 10 категориях, 7 seals** (с 0.2.6a +1 Wayfarer в Steps — реально пройденные `total_walked`, рядом с Marathoner, seal steps требует обоих capstone'ов; +1 Investor в Money 💰 — `cost_money` из `skill_train_start`, без seal; +2 Streak 🔥 — Dedicated `days_played` (уникальные дни 1/7/31/184/365) + On Fire `daily_streak_record` (подряд 10k+ 3/7/14/21/31), без seal) (с 0.2.5w +1 Iron Worker в Work; с 0.2.6 +1 Veteran в Progression ⭐ + seal Veteran; +6 Drops 💎 — Collector + 5 per-grade, seal Treasure Hunter) (с 0.2.6f +1 Crafter в Forge 🔨 — счётчик `item_crafted` 5/10/25/50/100, без seal) (с 0.2.6g-h +2 Bank 🏦 — Capitalist `bank.total_interest_earned` 100/500/1000/5000/10000 + Saver `bank.days_with_deposit` 7/30/90/180/365, без seal; категория bank была пустой). NB: тиры Veteran 15-30 пока недостижимы — level-кэп = 12, расширение в TASKS 4.64 (отложено). Drops: event-based на `[drop, drop_pending, drop_force_sold]` с grade-фильтром, tiers 10/50/100/250/500/1000.
 
 ### 🏃 Steps (2) — 4.62.1.1 / 0.2.5m + 4.62.1.1.1 / 0.2.6a
 
@@ -504,15 +505,16 @@ Event-based accumulator. Суммирует `cost_money` из `skill_train_start
 
 **Forge-навык `forge_repair_quality` (4.60)** даёт множитель ×(1+lvl/100) к восстановленному quality → `to_quality` поднимается дробно. Restorer считает буст **точно** (count хранится float; движок не int-кастит — см. раздел 12 «Float vs int в count_delta»). **Seal:** нет (решение 28.05.2026 — как Money/Streak). **4.62.1.11 закрыта** (триумф «First S+ crafted» отменён — мало ценности + нахлёст с будущим Collection «first S+ owned»).
 
-### 🏦 Bank (1 из 2) — 4.62.1.10 part / 0.2.6g
+### 🏦 Bank (2) — 4.62.1.10 / 0.2.6g + 0.2.6h
 
-Metric-based. **Capitalist** — всего заработано процентов по вкладу за всё время. Новое поле-аккумулятор `BankState.total_interest_earned` (`+= interest` в `bank.accrue_deposit`, там же где капитализация). **Forward-only**: растёт по мере капитализации (на каждом render / банк-операции), **не сбрасывается при снятии** («всего заработано»). Ставка депозита = `banking_interest_rate`%/год (1%/lvl) → 10000 @ 30% ≈ 3000/год.
+Оба metric-based, forward-only с 0. **Capitalist** — всего заработано процентов по вкладу за всё время; поле `BankState.total_interest_earned` (`+= interest` в `bank.accrue_deposit`, там же где капитализация), растёт по мере капитализации (на каждом render / банк-операции), **не сбрасывается при снятии**. Ставка депозита = `banking_interest_rate`%/год (1%/lvl) → 10000 @ 30% ≈ 3000/год. **Saver** — дней с депозитом ≥ 1000; поле `BankState.days_with_deposit` (`+1` на rollover в `functions.today_steps_to_yesterday_steps` при `deposit_amount >= DEPOSIT_DURATION_THRESHOLD`).
 
 | ID | Name | Tiers | Metric |
 |---|---|---|---|
 | `capitalist` | Capitalist | `[100, 500, 1000, 5000, 10000]` | `int(state.bank.total_interest_earned)` |
+| `saver` | Saver | `[7, 30, 90, 180, 365]` | `state.bank.days_with_deposit` |
 
-**Seal:** нет (решение 28.05.2026). **Backfill:** нет — forward-only с 0 (исторические проценты не трекались; как Wayfarer/Dedicated). **Остаток 4.62.1.10** — Saver (длительность вклада ≥1000, metric `bank.days_with_deposit`, +1 на rollover, tiers 7/30/90/180/365).
+**Seal:** нет (решение 28.05.2026). **Backfill:** нет — оба forward-only с 0 (исторические проценты/дни не трекались; как Wayfarer/Dedicated). **Saver by design:** проверка в момент rollover → можно снять днём и вернуть до начала дня (засчитается); multi-day gap → +1 за пропуск (consistency с Dedicated). **4.62.1.10 закрыта.** Кредитный триумф («всего погашено») — отложен.
 
 ---
 
