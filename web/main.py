@@ -813,6 +813,7 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
                        inventory_sort: str = 'default',
                        loadout_error: Optional[str] = None,
                        bank_error: Optional[str] = None,
+                       forge_error: Optional[str] = None,
                        triumphs_error: Optional[str] = None,
                        defer_sync: bool = False) -> dict:
     """Собирает все данные, нужные dashboard и status-fragment шаблонам.
@@ -1069,6 +1070,12 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # 4.48.9 — Bank: депозиты + кредиты UI.
         "bank_view": _build_bank_view(state),
         "bank_error": bank_error,
+        # 4.48.11 — Кузница: Repair + Crafting UI. forge_craft_preview = None
+        # по дефолту; craft-preview endpoint перезатирает его перед рендером
+        # (two-step preview pattern, как loadout_preview).
+        "forge_view": _build_forge_view(state),
+        "forge_error": forge_error,
+        "forge_craft_preview": None,
         # 4.61 — Low quality warning для Stats area. Pre-computed dict с
         # broken (quality=0) и low (0 < quality < 20) listами equipped items.
         "low_quality_warning": _build_low_quality_warning(state),
@@ -3048,6 +3055,338 @@ async def api_bank_repay_all():
     if err is not None:
         return _bank_json_response(state, False, err, status_code=422)
     return _bank_json_response(state, True)
+
+
+# ===== 4.48.11 — Кузница (Repair + Crafting) web =====
+#
+# Forge-операции instant (таймеры — отдельная задача 4.59.4). Все pure-хелперы
+# из forge.py переиспользуются как есть. Предметы идентифицируются стабильными
+# ключами `slot:<attr>` (экипировка) / `inv:<orig_index>` (инвентарь) — резолв
+# в живой item на apply (как 4.48.6 inventory). Repair UX = поле % + «Макс»;
+# Crafting UX = two-step preview (как loadout/drop).
+
+
+def _resolve_forge_item(state, key: str) -> Optional[dict]:
+    """`slot:<attr>` → equipment slot item; `inv:<index>` → inventory item.
+
+    None если ключ невалиден / слот пуст / индекс вне диапазона (stale-защита:
+    список мог измениться между render и submit).
+    """
+    if not isinstance(key, str):
+        return None
+    if key.startswith('slot:'):
+        attr = key[5:]
+        if attr in _VALID_SLOT_ATTRS:
+            item = getattr(state.equipment, attr)
+            return item if isinstance(item, dict) else None
+        return None
+    if key.startswith('inv:'):
+        try:
+            idx = int(key[4:])
+        except ValueError:
+            return None
+        if 0 <= idx < len(state.inventory):
+            item = state.inventory[idx]
+            return item if isinstance(item, dict) else None
+        return None
+    return None
+
+
+def _forge_item_key(state, item: dict, slot_attr: Optional[str]) -> Optional[str]:
+    """Стабильный ключ для craft-кандидата. Equipped → `slot:<attr>`,
+    inventory → `inv:<index>` (identity-поиск по state.inventory)."""
+    if slot_attr is not None:
+        return f'slot:{slot_attr}'
+    for i, inv_item in enumerate(state.inventory):
+        if inv_item is item:
+            return f'inv:{i}'
+    return None
+
+
+def _build_forge_view(state) -> dict:
+    """Pre-compute UI данные для секции Кузницы.
+
+    locked=True (+ пустые списки) если ни один forge-навык не ≥1 —
+    зеркало `locations.forge_location` gate. Иначе:
+    - `repair_items`: [{key, item_type, grade, quality, headroom, max_pct, can_repair}]
+      sorted by quality asc; `repair_cost_per_pct` = effective цена за 1%.
+    - `craft_groups`: [{item_type, characteristic, grade, next_grade, target_bonus,
+      cost_*, can_afford, count, candidates:[{key, quality, sell_price,
+      location_label, is_equipped}], is_capped}].
+    """
+    g = state.gym
+    locked = (g.forge_steps_saving < 1 and g.forge_money_saving < 1
+              and g.forge_repair_quality < 1)
+    if locked:
+        return {'locked': True, 'repair_items': [], 'craft_groups': [],
+                'has_repair': False, 'has_craft': False,
+                'repair_cost_per_pct': None}
+
+    from forge import (
+        _EQUIPMENT_SLOTS, max_repair_percent, repair_cost_effective,
+        find_craftable_groups, GRADE_BONUS_VALUE,
+    )
+    from bonus import apply_trader
+
+    eff_steps, eff_money, eff_energy = repair_cost_effective(1, state)
+
+    repair_items: list[dict] = []
+
+    def _add_repair(key: str, item: dict) -> None:
+        q = (item.get('quality') or [None])[0]
+        if q is None or q >= 100:
+            return
+        max_pct = max_repair_percent(state, item)
+        repair_items.append({
+            'key': key,
+            'item_type': (item.get('item_type') or ['?'])[0],
+            'grade': (item.get('grade') or ['?'])[0],
+            'characteristic': (item.get('characteristic') or ['?'])[0],
+            'quality': round(float(q), 2),
+            'quality_raw': float(q),
+            'headroom': max(0, int(100 - q)),
+            'max_pct': max_pct,
+            'can_repair': max_pct >= 1,
+        })
+
+    for attr, _label in _EQUIPMENT_SLOTS:
+        item = getattr(state.equipment, attr)
+        if item is not None:
+            _add_repair(f'slot:{attr}', item)
+    for idx, item in enumerate(state.inventory):
+        _add_repair(f'inv:{idx}', item)
+    repair_items.sort(key=lambda e: e['quality_raw'])
+
+    craft_groups: list[dict] = []
+    for grp in find_craftable_groups(state):
+        grade = grp['grade']
+        next_grade = grp['next_grade']
+        steps, money, energy = grp['cost']
+        candidates: list[dict] = []
+        for item, _location, slot_attr in grp['candidates']:
+            ckey = _forge_item_key(state, item, slot_attr)
+            if ckey is None:
+                continue
+            q = (item.get('quality') or [0])[0]
+            candidates.append({
+                'key': ckey,
+                'quality': round(float(q), 2),
+                'sell_price': apply_trader(float((item.get('price') or [0])[0]), state),
+                'location_label': _EQUIPMENT_SLOT_LABELS.get(slot_attr, 'Инвентарь') if slot_attr else 'Инвентарь',
+                'is_equipped': slot_attr is not None,
+            })
+        craft_groups.append({
+            'item_type': grp['item_type'],
+            'characteristic': grp['characteristic'],
+            'grade': grade,
+            'next_grade': next_grade,
+            'target_bonus': GRADE_BONUS_VALUE.get(next_grade) if next_grade else None,
+            'cost_steps': steps,
+            'cost_money': money,
+            'cost_energy': energy,
+            'can_afford': (state.steps.can_use >= steps and state.money >= money
+                           and state.energy >= energy) if next_grade else False,
+            'count': len(candidates),
+            'candidates': candidates,
+            'is_capped': next_grade is None,
+        })
+
+    return {
+        'locked': False,
+        'repair_items': repair_items,
+        'has_repair': bool(repair_items),
+        'repair_cost_per_pct': {'steps': eff_steps, 'money': eff_money, 'energy': eff_energy},
+        'craft_groups': craft_groups,
+        'has_craft': bool(craft_groups),
+    }
+
+
+def _build_craft_preview(state, key_a: str, key_b: str) -> dict:
+    """Compute craft preview БЕЗ мутации. Returns dict с данными результата
+    или `{'error': msg}`. Apply re-валидирует через `craft_item` (idempotent)."""
+    from forge import (
+        GRADE_NEXT, GRADE_BONUS_VALUE, GRADE_PRICE_MULTIPLIER,
+        crafting_cost_effective, _item_key,
+    )
+
+    item_a = _resolve_forge_item(state, key_a)
+    item_b = _resolve_forge_item(state, key_b)
+    if item_a is None or item_b is None:
+        return {'error': 'Предметы не найдены (список обновился) — обнови страницу.'}
+    if item_a is item_b:
+        return {'error': 'Нужно выбрать два РАЗНЫХ предмета.'}
+    ka = _item_key(item_a)
+    kb = _item_key(item_b)
+    if ka is None or kb is None or ka != kb:
+        return {'error': 'Предметы должны быть одного типа, характеристики и грейда.'}
+
+    item_type, characteristic, grade = ka
+    next_grade = GRADE_NEXT.get(grade)
+    if next_grade is None:
+        return {'error': f'{grade} — максимальный грейд, улучшать нельзя.'}
+
+    qa = float((item_a.get('quality') or [0])[0])
+    qb = float((item_b.get('quality') or [0])[0])
+    new_quality = round((qa + qb) / 2, 2)
+    steps, money, energy = crafting_cost_effective(grade, state)
+
+    was_equipped = 0
+    for it in (item_a, item_b):
+        for attr in _VALID_SLOT_ATTRS:
+            if getattr(state.equipment, attr) is it:
+                was_equipped += 1
+                break
+
+    return {
+        'key_a': key_a, 'key_b': key_b,
+        'item_type': item_type, 'characteristic': characteristic,
+        'from_grade': grade, 'to_grade': next_grade,
+        'qual_a': round(qa, 2), 'qual_b': round(qb, 2),
+        'new_quality': new_quality,
+        'new_bonus': GRADE_BONUS_VALUE[next_grade],
+        'new_price': int(new_quality * GRADE_PRICE_MULTIPLIER[next_grade]),
+        'cost_steps': steps, 'cost_money': money, 'cost_energy': energy,
+        'can_afford': (state.steps.can_use >= steps and state.money >= money
+                       and state.energy >= energy),
+        'was_equipped': was_equipped,
+    }
+
+
+def _validate_and_apply_repair(state, item_key: str, percent) -> Optional[str]:
+    """Resolve key → item → repair на `percent`% (clamp к max_affordable).
+    None при успехе, текст ошибки иначе, STALE_MARKER при concurrent save."""
+    from forge import max_repair_percent, repair_item
+
+    item = _resolve_forge_item(state, item_key)
+    if item is None:
+        return 'Предмет не найден (список обновился) — обнови страницу.'
+    if (item.get('quality') or [None])[0] is None:
+        return 'Этот предмет нельзя ремонтировать.'
+    try:
+        pct = int(percent)
+    except (ValueError, TypeError):
+        return 'Процент должен быть целым числом.'
+    if pct < 1:
+        return 'Процент должен быть ≥ 1.'
+    max_pct = max_repair_percent(state, item)
+    if max_pct < 1:
+        return 'Недостаточно ресурсов даже на 1% ремонта.'
+    if pct > max_pct:
+        pct = max_pct  # «Макс»-friendly: чиним на сколько хватает
+    if not repair_item(state, item, pct):
+        return 'Не удалось отремонтировать (ресурсы?).'
+    stale = _persist_and_handle_stale(endpoint='forge_repair')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+def _validate_and_apply_craft(state, key_a: str, key_b: str) -> Optional[str]:
+    """Resolve 2 ключа → craft_item (heavy-валидация внутри). None при успехе."""
+    from forge import craft_item
+
+    item_a = _resolve_forge_item(state, key_a)
+    item_b = _resolve_forge_item(state, key_b)
+    if item_a is None or item_b is None:
+        return 'Предметы не найдены (список обновился) — обнови страницу.'
+    if item_a is item_b:
+        return 'Нужно выбрать два РАЗНЫХ предмета.'
+    new_item = craft_item(state, item_a, item_b)
+    if new_item is None:
+        return 'Крафт не удался — проверь грейд / ресурсы / место в рюкзаке.'
+    stale = _persist_and_handle_stale(endpoint='forge_craft')
+    if stale:
+        return STALE_MARKER
+    return None
+
+
+class ForgeRepairRequest(BaseModel):
+    """Body для POST /api/forge/repair."""
+    item_key: str = Field(..., description="`slot:<attr>` или `inv:<index>`")
+    percent: int = Field(..., gt=0, description="Сколько % восстановить (clamp к max)")
+
+
+class ForgeCraftRequest(BaseModel):
+    """Body для POST /api/forge/craft — 2 ключа предметов одной группы."""
+    item_a: str
+    item_b: str
+
+
+# ----- Web endpoints (Form, HTMX swap) -----
+
+@app.post("/web/forge/repair", response_class=HTMLResponse)
+async def web_forge_repair(request: Request, item_key: str = Form(...),
+                           percent: str = Form(...)):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_repair(state, item_key, percent)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, forge_error=err)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/web/forge/craft/preview", response_class=HTMLResponse)
+async def web_forge_craft_preview(request: Request, item_a: str = Form(...),
+                                  item_b: str = Form(...)):
+    """Compute craft preview БЕЗ мутации → fragment с preview banner."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    preview = _build_craft_preview(state, item_a, item_b)
+    if 'error' in preview:
+        context = _dashboard_context(request, forge_error=preview['error'])
+        return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+    context = _dashboard_context(request)
+    context['forge_craft_preview'] = preview
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/web/forge/craft", response_class=HTMLResponse)
+async def web_forge_craft(request: Request, item_a: str = Form(...),
+                          item_b: str = Form(...)):
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    err = _validate_and_apply_craft(state, item_a, item_b)
+    if err == STALE_MARKER:
+        return _stale_response()
+    context = _dashboard_context(request, forge_error=err)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+# ----- JSON API endpoints -----
+
+@app.post("/api/forge/repair")
+async def api_forge_repair(payload: ForgeRepairRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_repair(state, payload.item_key, payload.percent)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({
+        "ok": True,
+        "steps": state.steps.can_use,
+        "money": state.money,
+        "energy": state.energy,
+    })
+
+
+@app.post("/api/forge/craft")
+async def api_forge_craft(payload: ForgeCraftRequest):
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    err = _validate_and_apply_craft(state, payload.item_a, payload.item_b)
+    if err == STALE_MARKER:
+        return _stale_json_response()
+    if err is not None:
+        return JSONResponse({"ok": False, "error": err}, status_code=422)
+    return JSONResponse({"ok": True})
 
 
 # ===== 4.50.2 — Pending drop resolve (web) =====

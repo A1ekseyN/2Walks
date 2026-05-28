@@ -1064,6 +1064,143 @@
     </details>
 </section>
 
+{# 4.48.11 — Кузница (Repair + Crafting). Repair = поле % + «Макс»;
+   Crafting = two-step preview (как loadout). Locked если нет forge-навыка. #}
+<section id="forge">
+    <details>
+        <summary>🔨 <strong>Кузница</strong>{% if forge_view.locked %} 🔒{% endif %}</summary>
+
+        {% if forge_error %}
+        <p style="color: #dc2626; margin: 0.3rem 0;"><small>⚠ {{ forge_error }}</small></p>
+        {% endif %}
+
+        {% if forge_view.locked %}
+            <small class="equipment-empty">🔒 Заблокирована. Прокачай любой навык
+            Кузницы (экономия шагов / золота / качество ремонта) в Спортзале до 1 уровня.</small>
+        {% else %}
+
+        {# ---- Repair ---- #}
+        <details>
+            <summary>🔧 Ремонт{% if forge_view.has_repair %} ({{ forge_view.repair_items|length }}){% endif %}</summary>
+            {% if forge_view.repair_cost_per_pct %}
+            <p style="margin: 0.3rem 0;"><small>Цена за 1%:
+                🏃 {{ "{:,}".format(forge_view.repair_cost_per_pct.steps) }} ·
+                💰 {{ format_money(forge_view.repair_cost_per_pct.money) }} ·
+                🔋 {{ forge_view.repair_cost_per_pct.energy }}</small></p>
+            {% endif %}
+            {% if forge_view.repair_items %}
+                {% for it in forge_view.repair_items %}
+                <div class="item-row">
+                    <span>
+                        {{ it.item_type|title }} <em>{{ grade_short(it.grade) }}</em>
+                        — Q: {{ "%.1f"|format(it.quality) }} / 100 (макс +{{ it.max_pct }}%)
+                    </span>
+                    <div class="inv-buttons">
+                    {% if it.can_repair %}
+                        <form hx-post="/web/forge/repair" hx-target="#status-bar" hx-swap="innerHTML"
+                              style="display: flex; gap: 0.3rem; align-items: center; margin: 0;">
+                            <input type="hidden" name="item_key" value="{{ it.key }}">
+                            <input type="number" name="percent" min="1" max="{{ it.max_pct }}" value="{{ it.max_pct }}"
+                                   style="width: 4.5rem; padding: 0.2rem 0.3rem; margin: 0;">
+                            <button type="button" class="secondary outline"
+                                    style="margin: 0; padding: 0.25rem 0.5rem; font-size: 0.85em;"
+                                    onclick="this.previousElementSibling.value={{ it.max_pct }}">Макс</button>
+                            <button type="submit" class="secondary outline"
+                                    style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">🔧 Отремонтировать</button>
+                        </form>
+                    {% else %}
+                        <small>не хватает ресурсов</small>
+                    {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <small class="equipment-empty">— всё в порядке, нечего ремонтировать —</small>
+            {% endif %}
+        </details>
+
+        {# ---- Crafting (two-step preview) ---- #}
+        <details {% if forge_craft_preview %}open{% endif %}>
+            <summary>🔨 Улучшение грейда{% if forge_view.has_craft %} ({{ forge_view.craft_groups|length }}){% endif %}</summary>
+
+            {% if forge_craft_preview %}
+            {# Preview banner (4.48.11). Появляется когда forge_craft_preview != None. #}
+            <div style="border-left: 4px solid #3b82f6; padding: 0.5rem 0.75rem; margin: 0.5rem 0; background: rgba(59,130,246,0.06);">
+                <p style="margin: 0 0 0.3rem 0;"><strong>🔨 Результат крафта</strong></p>
+                <p style="margin: 0.2rem 0;"><small>
+                    2× {{ forge_craft_preview.item_type|title }} {{ grade_short(forge_craft_preview.from_grade) }}
+                    (Q {{ "%.1f"|format(forge_craft_preview.qual_a) }}, Q {{ "%.1f"|format(forge_craft_preview.qual_b) }})
+                    → 1× {{ forge_craft_preview.item_type|title }} <strong>{{ grade_short(forge_craft_preview.to_grade) }}</strong>
+                    · Q {{ "%.1f"|format(forge_craft_preview.new_quality) }}
+                    · +{{ forge_craft_preview.new_bonus }} {{ forge_craft_preview.characteristic|title }}
+                    · {{ format_money(forge_craft_preview.new_price) }} $
+                </small></p>
+                <p style="margin: 0.2rem 0;"><small>Стоимость:
+                    🏃 {{ "{:,}".format(forge_craft_preview.cost_steps) }} ·
+                    💰 {{ format_money(forge_craft_preview.cost_money) }} ·
+                    🔋 {{ forge_craft_preview.cost_energy }}{% if not forge_craft_preview.can_afford %}
+                    <strong style="color: #dc2626;">(не хватает)</strong>{% endif %}</small></p>
+                {% if forge_craft_preview.was_equipped %}
+                <p style="margin: 0.2rem 0;"><small>⚠ Надетых предметов: {{ forge_craft_preview.was_equipped }} — будут сняты.</small></p>
+                {% endif %}
+                <div style="display: flex; gap: 0.4rem; margin-top: 0.4rem;">
+                    <form hx-post="/web/forge/craft" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                        <input type="hidden" name="item_a" value="{{ forge_craft_preview.key_a }}">
+                        <input type="hidden" name="item_b" value="{{ forge_craft_preview.key_b }}">
+                        <button type="submit" {% if not forge_craft_preview.can_afford %}disabled{% endif %}
+                                style="margin: 0; padding: 0.3rem 0.8rem;">🔨 Скрафтить</button>
+                    </form>
+                    <button type="button" class="secondary outline" style="margin: 0; padding: 0.3rem 0.8rem;"
+                            hx-get="/status" hx-target="#status-bar" hx-swap="innerHTML">Отмена</button>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if forge_view.craft_groups %}
+                {% for grp in forge_view.craft_groups %}
+                <div class="item-row" style="flex-direction: column; align-items: stretch;">
+                    {% if grp.is_capped %}
+                    <span><small>{{ grp.item_type|title }} {{ grade_short(grp.grade) }}
+                        {{ grp.characteristic|title }} ({{ grp.count }} шт.) — макс. грейд, улучшать нельзя</small></span>
+                    {% else %}
+                    <span>
+                        {{ grp.item_type|title }} {{ grade_short(grp.grade) }} {{ grp.characteristic|title }} ({{ grp.count }} шт.)
+                        → <strong>{{ grade_short(grp.next_grade) }}</strong> (+{{ grp.target_bonus }})
+                    </span>
+                    <span><small>Стоимость:
+                        🏃 {{ "{:,}".format(grp.cost_steps) }} ·
+                        💰 {{ format_money(grp.cost_money) }} ·
+                        🔋 {{ grp.cost_energy }}{% if not grp.can_afford %} (не хватает){% endif %}</small></span>
+                    <form hx-post="/web/forge/craft/preview" hx-target="#status-bar" hx-swap="innerHTML" style="margin-top: 0.3rem;">
+                        <label style="font-size: 0.85em; display: block; margin: 0.15rem 0;">Предмет 1:
+                            <select name="item_a" style="width: auto; display: inline-block; padding: 0.2rem 0.4rem;">
+                                {% for c in grp.candidates %}
+                                <option value="{{ c.key }}">Q {{ "%.1f"|format(c.quality) }} · {{ c.location_label }}{% if c.is_equipped %} (надет){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label style="font-size: 0.85em; display: block; margin: 0.15rem 0;">Предмет 2:
+                            <select name="item_b" style="width: auto; display: inline-block; padding: 0.2rem 0.4rem;">
+                                {% for c in grp.candidates %}
+                                <option value="{{ c.key }}"{% if loop.index == 2 %} selected{% endif %}>Q {{ "%.1f"|format(c.quality) }} · {{ c.location_label }}{% if c.is_equipped %} (надет){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <button type="submit" class="secondary outline"
+                                style="margin: 0.2rem 0 0 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">Подготовить крафт →</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <small class="equipment-empty">— нет групп для крафта (нужно ≥2 идентичных предмета) —</small>
+            {% endif %}
+        </details>
+
+        {% endif %}
+    </details>
+</section>
+
 {# 4.62.7 / 4.62.7.1 (25.05.2026) — Triumphs main section в самом конце
    dashboard'а (после Inventory) — gameplay-блоки (Работа/Приключение/...)
    приоритетнее visible. Pinned + Unclaimed banners остаются над Stats. #}

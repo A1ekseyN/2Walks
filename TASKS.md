@@ -2350,7 +2350,7 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
 
 ---
 
-### 4.48. Web Interface + FastAPI backend (зонтичная) `[H / L+ / partial — 11/12 substasks done (20.05.2026, 0.2.5a); остался Shop (4.48.7, blocked by 4.7)]`
+### 4.48. Web Interface + FastAPI backend (зонтичная) `[H / L+ / partial — 13/14 substasks done (28.05.2026, 0.2.6c); остался Shop (4.48.7, blocked by 4.7)]`
 
 **Цель:** добавить веб-интерфейс игры как параллельный путь играть. Открываешь на iPhone после прогулки — управляешь через браузер. CLI остаётся **primary** (содержит больше функциональности), web нарастает incrementally.
 
@@ -3032,6 +3032,30 @@ User feedback 27.05.2026: хочется кликнуть по блоку акт
 **Поля (выбраны пользователем):** общие — Прошло (live) · Осталось (live) · Длительность (`format_minutes`) · Прогресс % (live) · Начато / Завершится. Work — ставка/час (effective с earnings_boost) · итог за смену · часов. Gym — навык current→target. Adventure — пройдено раз (counter) · вероятности дропа (из `adventure_view`, с учётом luck).
 
 **Файлы:** `_status_fragment.html` (триггеры + 3 dialog'а), `dashboard.html` (JS open/close + elapsed/abs-ts тики + `.session-row` CSS). Серверная логика не менялась (все данные уже в context). **Тесты:** 2 (модалка Work + JS-наличие). 1320 passed.
+
+#### 4.48.11. Web: Кузница (Repair + Crafting) `[M / M / done (28.05.2026, 0.2.6c)]`
+
+**✅ Реализовано (28.05.2026, 0.2.6c).** Repair = поле % + «Макс»; Crafting = two-step preview; locked-state если нет forge-навыка. Все pure-хелперы из `forge.py` переиспользованы как есть; операции instant (таймеры — 4.59.4). Идентификация предметов по HTTP — ключи `slot:<attr>` / `inv:<index>`. Файлы: `web/main.py` (`_build_forge_view` / `_resolve_forge_item` / `_forge_item_key` / `_build_craft_preview` / `_validate_and_apply_repair` / `_validate_and_apply_craft` + 5 endpoints + 2 Pydantic), `_status_fragment.html` (`<section id="forge">` после Инвентаря), `_dashboard_context` (forge_view / forge_error / forge_craft_preview). **Тесты:** +11. 1394 passed, mypy 0 issues.
+
+
+
+**Последний непокрытый игровой блок в web** (Shop 4.48.7 не в счёт — blocked by 4.7). Forge MVP (4.59.1 Repair + 4.59.2 Crafting) — пока CLI-only. Все pure-хелперы из `forge.py` переиспользуются как есть (`repair_candidates` / `max_repair_percent` / `repair_item`, `find_craftable_groups` / `craft_item`, `repair_cost_effective` / `crafting_cost_effective` с forge-скидками 4.60). Операции **instant** (таймеры — отдельная задача 4.59.4).
+
+**Дизайн (зафиксировано 28.05.2026, AskUserQuestion):**
+
+| Решение | Выбор |
+|---|---|
+| Repair UX | **Поле % + кнопка «Макс»** на каждой строке предмета (number-input предзаполнен max-affordable) + «Отремонтировать». Показываем цену за 1% и max%. Один сабмит. |
+| Crafting UX | **Two-step preview** (как loadout/drop): выбор группы → баннер с результатом (грейд/quality/бонус/цена + ⚠ если предмет надет) → «Скрафтить». При 3+ предметах в группе — явный выбор двух. |
+| Locked-state | Если ни один forge-навык не ≥1 → summary со ссылкой на Спортзал (зеркало `locations.forge_location` gate). |
+| Идентификация предметов | Стабильные ключи `slot:<attr>` / `inv:<orig_index>` (как 4.48.6 inventory), резолв в живой item на apply. |
+| Размещение секции | `<section id="forge">` после Инвентаря, перед Triumphs. |
+
+**Реализация:** `_build_forge_view(state)` (locked / repair_items / craft_groups), `_resolve_forge_item(state, key)`, `_validate_and_apply_repair` / `_build_craft_preview` (без мутации) / `_validate_and_apply_craft`. Endpoints (Form HTMX + JSON Pydantic): `/web|api/forge/repair`, `/web/forge/craft/preview` (preview banner), `/web|api/forge/craft`. STALE через `_persist_and_handle_stale`. Шаблон — новая секция в `_status_fragment.html`.
+
+**Тесты:** view builder (locked / repair list / craft groups), repair apply (ok / insufficient / bad key / over-max), craft preview + apply (ok / equipped auto-unequip / overflow / s+ cap), endpoints (Form+JSON, STALE).
+
+**Зависимость:** разблокирует 4.59.4 (таймеры надстраиваются на готовый web-UI).
 
 #### 4.49.0. Депозиты (зонтичная) `[H / M / done (0.2.2, 06.05.2026 — все подзадачи 4.49.0.0/0.1/0.2 done)]`
 
@@ -4204,6 +4228,34 @@ Steps 🏃: N, Energy 🔋: M, Money 💰: K $
 5. ~~**Skills как они work**.~~ **Решено 14.05.2026:** в V1 **без skill'ов** — MVP базовой механики Forge без экономии. Skill'ы экономии (3 раздельных по pattern energy_optimization_*) — вынесены в **отдельную задачу 4.60** с low priority. Реализуем по мере необходимости после оценки баланса.
 
 6. **Gem rarity tuning** ⚠ **TODO на момент реализации 4.59.3.** Drop rate gems из Adventure — нужно подобрать через Monte-Carlo проходы (аналогично 4.29-replacement / `compute_grade_probabilities`). Целевая «редкость»: ~3-5 small gems за неделю, ~1 large за месяц. Учитывать luck multiplier + weekend / multi-day expedition boost. **Критическое balance decision** — при правильной редкости gems становятся «event», при неправильной — мусор или недостижимы.
+
+##### 4.59.4. Forge: таймеры на Repair + Crafting + навык ускорения `[H / M / todo (обсуждено 28.05.2026)]`
+
+**Контекст.** Сейчас (4.59.1 / 4.59.2 / 4.48.11) Repair и Crafting — **мгновенные** операции (try_spend → результат сразу). Это нарушает основную game-loop'овую механику 2Walks, где значимые действия занимают время (Work / Gym / Adventure — таймерные сессии, финализируются на тике). Forge должен стать таймерным по тому же паттерну.
+
+**Дизайн (зафиксировано 28.05.2026):**
+
+| Решение | Выбор |
+|---|---|
+| Таймер на Repair | **1 час на каждый 1% quality.** Ремонт +35% → 35 часов. |
+| Таймер на Crafting | **По grade источника** (чем выше grade — тем дольше): C-grade 1 ч · B-grade 4 ч · A-grade 8 ч · s-grade 12 ч · S+grade 24 ч. *(уточнить ключ при реализации: tier источника vs результата — S+ как источник невозможен (cap), вероятно это время для крафта **в** S+, т.е. source = s-grade; согласовать таблицу с GRADE_TIER в forge.py).* |
+| Навык ускорения | **Один** новый Gym-навык (например `forge_speed`) — ускоряет И Repair, И Crafting. Достаточно одного (не плодим по операции). Формула по аналогии со Speed / `speed_skill_equipment_and_level_bonus` — `-1%/lvl` к длительности (или процент, согласовать). |
+| Session model | Новая активная сессия (как `state.training` / `state.work` / `state.adventure`) — поле `state.forge_session` (round-trip) + финализатор `forge_check_done(state)` на тике CLI main loop + в `_dashboard_context` (web). |
+
+**Реализация (эскиз):**
+1. `state.py` — `ForgeSession` dataclass (active / op_type 'repair'|'craft' / target item ref / params / time_end / timestamp) + round-trip; новый Gym-навык `forge_speed` (round-trip).
+2. `forge.py` — `repair_item` / `craft_item` больше не применяют результат сразу: стартуют сессию (try_spend ресурсов СРАЗУ, как Work списывает на старте; результат применяется в финализаторе). Helper'ы длительности `repair_duration(percent, state)` / `craft_duration(grade, state)` с учётом `forge_speed`.
+3. `forge_check_done(state)` — финализатор: по таймеру применяет результат (quality boost / новый item), log_event, освобождает сессию. Толерантен к STALE (как другие финализаторы).
+4. Gym (`gym.py` skill_options + `_SKILL_DESCRIPTIONS`, web `_GYM_SKILL_DISPLAY`) — +1 навык `forge_speed` (gym count 23→24).
+5. CLI + web UI — Forge показывает активную сессию + таймер (как Gym/Work), блокирует новую операцию пока идёт текущая (одна forge-сессия за раз, как Work locked to vacancy).
+6. Web: forge-сессия в «⏱ Активные сессии» + session-modal (4.48.10).
+
+**Зависимость:** реализуется **после** 4.48.11 (Forge web instant) — так базовый web-UI уже будет, таймеры надстраиваются. Триумф **Restorer** (4.62.1.11) учитывает восстановленный quality — финализатор должен звать тот же `register_event`/`log_event('item_repaired')` что и сейчас (на момент применения результата, не старта).
+
+**Open questions для реализации:**
+- Точный ключ craft-таблицы времени (tier источника, согласовать с «S+grade 24 ч»).
+- Формула `forge_speed` — линейный `-1%/lvl` (как move_optimization) или через общий `speed_skill_equipment_and_level_bonus`? Скорее отдельный линейный (Speed уже занят длительностью Work/Gym/Adventure).
+- Можно ли отменить активную forge-операцию (refund ресурсов)? По аналогии с Work — нет (списано на старте).
 
 ---
 

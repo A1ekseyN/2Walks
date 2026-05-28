@@ -5603,3 +5603,182 @@ def test_web_seal_toggle_sets_title_when_unlocked(monkeypatch):
         assert r2.status_code == 200
         assert state.title is None
 
+
+
+# ===== 4.48.11 — Кузница (Repair + Crafting) web =====
+
+def _forge_item(item_type='shoes', grade='a-grade', quality=50.0,
+                characteristic='stamina', bonus=3):
+    """Item-dict в legacy list-обёртках (для forge web тестов)."""
+    return {
+        'item_type': [item_type],
+        'item_name': [item_type],
+        'grade': [grade],
+        'characteristic': [characteristic],
+        'bonus': [bonus],
+        'quality': [quality],
+        'price': [int(quality * 1.5)],
+    }
+
+
+def _forge_unlocked_state(**gym_overrides):
+    """Состояние с разблокированной Кузницей (forge_steps_saving=1 по умолчанию —
+    не влияет на quality-расчёты в repair-тестах) + ресурсы."""
+    state = GameState.default_new_game()
+    state.date_last_enter = str(datetime.now().date())
+    state.gym.forge_steps_saving = 1
+    for k, v in gym_overrides.items():
+        setattr(state.gym, k, v)
+    # today + can_use оба (как _state_for_gym): _dashboard_context
+    # пересчитывает can_use из today, иначе ресурсы обнулятся на рендере.
+    state.steps.today = 1_000_000
+    state.steps.can_use = 1_000_000
+    state.money = 1_000_000.0
+    state.energy = 100_000
+    state.energy_time_stamp = datetime.now().timestamp()
+    return state
+
+
+def test_forge_view_locked_without_skill():
+    """Без forge-навыка секция Кузницы показывает locked-сообщение."""
+    _setup_state()  # default — все forge-навыки 0
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'id="forge"' in body
+    assert 'Заблокирована' in body
+
+
+def test_forge_view_unlocked_shows_repair_item():
+    """С forge-навыком + повреждённым предметом — он в списке ремонта."""
+    state = _forge_unlocked_state()
+    state.inventory.append(_forge_item(quality=42.0))
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'id="forge"' in body
+    assert 'Заблокирована' not in body
+    assert '/web/forge/repair' in body  # форма ремонта отрисована
+
+
+def test_web_forge_repair_success():
+    """POST /web/forge/repair поднимает quality и списывает ресурсы."""
+    state = _forge_unlocked_state()
+    state.inventory.append(_forge_item(quality=50.0))
+    _setup_state(state)
+    st = game.state
+    pre_steps = st.steps.can_use
+    with TestClient(app) as client:
+        r = client.post("/web/forge/repair",
+                        data={"item_key": "inv:0", "percent": "10"})
+    assert r.status_code == 200
+    # forge_steps_saving=1 не трогает quality multiplier → ровно +10
+    assert st.inventory[0]['quality'][0] == 60.0
+    assert st.steps.can_use < pre_steps
+
+
+def test_web_forge_repair_clamps_over_max():
+    """percent больше доступного → clamp к max (не падает, чинит на максимум)."""
+    state = _forge_unlocked_state()
+    # today лимитирует can_use (recompute из today): ~5% (5000 / 990 eff steps)
+    state.steps.today = 5_000
+    state.steps.can_use = 5_000
+    state.inventory.append(_forge_item(quality=10.0))
+    _setup_state(state)
+    st = game.state
+    with TestClient(app) as client:
+        r = client.post("/web/forge/repair",
+                        data={"item_key": "inv:0", "percent": "99"})
+    assert r.status_code == 200
+    # quality выросла, но не до 100 (ресурсов на 99% не хватило)
+    assert 10.0 < st.inventory[0]['quality'][0] < 100.0
+
+
+def test_web_forge_repair_bad_key_shows_error():
+    """Невалидный ключ → fragment с ошибкой, без падения."""
+    state = _forge_unlocked_state()
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/web/forge/repair",
+                        data={"item_key": "inv:999", "percent": "5"})
+    assert r.status_code == 200
+    assert 'не найден' in r.text.lower()
+
+
+def test_api_forge_repair_success():
+    """JSON API: успешный ремонт возвращает ok + обновлённые ресурсы."""
+    state = _forge_unlocked_state()
+    state.inventory.append(_forge_item(quality=50.0))
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/api/forge/repair",
+                        json={"item_key": "inv:0", "percent": 10})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert game.state.inventory[0]['quality'][0] == 60.0
+
+
+def test_api_forge_repair_bad_key_returns_422():
+    state = _forge_unlocked_state()
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/api/forge/repair",
+                        json={"item_key": "inv:5", "percent": 5})
+    assert r.status_code == 422
+    assert r.json()["ok"] is False
+
+
+def test_web_forge_craft_preview_shows_result():
+    """2 идентичных предмета → preview banner с результатом next grade."""
+    state = _forge_unlocked_state()
+    state.inventory.append(_forge_item(grade='a-grade', quality=60.0, characteristic='luck'))
+    state.inventory.append(_forge_item(grade='a-grade', quality=80.0, characteristic='luck'))
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/web/forge/craft/preview",
+                        data={"item_a": "inv:0", "item_b": "inv:1"})
+    assert r.status_code == 200
+    assert 'Результат крафта' in r.text
+    assert '/web/forge/craft' in r.text  # кнопка Скрафтить
+
+
+def test_web_forge_craft_preview_same_item_error():
+    """Один и тот же предмет дважды → ошибка."""
+    state = _forge_unlocked_state()
+    state.inventory.append(_forge_item(grade='a-grade', quality=60.0))
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/web/forge/craft/preview",
+                        data={"item_a": "inv:0", "item_b": "inv:0"})
+    assert r.status_code == 200
+    assert 'РАЗНЫХ' in r.text
+
+
+def test_web_forge_craft_success():
+    """POST /web/forge/craft: 2 источника → 1 предмет next grade в инвентаре."""
+    state = _forge_unlocked_state()
+    state.inventory.append(_forge_item(grade='a-grade', quality=60.0, characteristic='luck'))
+    state.inventory.append(_forge_item(grade='a-grade', quality=80.0, characteristic='luck'))
+    _setup_state(state)
+    st = game.state
+    with TestClient(app) as client:
+        r = client.post("/web/forge/craft",
+                        data={"item_a": "inv:0", "item_b": "inv:1"})
+    assert r.status_code == 200
+    # 2 источника удалены, 1 новый s-grade добавлен
+    assert len(st.inventory) == 1
+    assert st.inventory[0]['grade'][0] == 's-grade'
+    assert st.inventory[0]['quality'][0] == 70.0  # avg(60,80)
+
+
+def test_api_forge_craft_splus_cap_returns_422():
+    """s+grade нельзя крафтить → 422."""
+    state = _forge_unlocked_state()
+    state.inventory.append(_forge_item(grade='s+grade', quality=90.0, characteristic='luck'))
+    state.inventory.append(_forge_item(grade='s+grade', quality=90.0, characteristic='luck'))
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/api/forge/craft",
+                        json={"item_a": "inv:0", "item_b": "inv:1"})
+    assert r.status_code == 422
+    assert r.json()["ok"] is False
