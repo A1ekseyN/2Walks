@@ -5663,7 +5663,8 @@ def test_forge_view_unlocked_shows_repair_item():
 
 
 def test_web_forge_repair_success():
-    """POST /web/forge/repair поднимает quality и списывает ресурсы."""
+    """4.59.4.2 — POST /web/forge/repair СТАРТУЕТ таймерный ремонт: списывает
+    ресурсы + предмет уходит в кузницу (результат по таймеру, не сразу)."""
     state = _forge_unlocked_state()
     state.inventory.append(_forge_item(quality=50.0))
     _setup_state(state)
@@ -5673,13 +5674,16 @@ def test_web_forge_repair_success():
         r = client.post("/web/forge/repair",
                         data={"item_key": "inv:0", "percent": "10"})
     assert r.status_code == 200
-    # forge_steps_saving=1 не трогает quality multiplier → ровно +10
-    assert st.inventory[0]['quality'][0] == 60.0
+    # Предмет ушёл в кузницу, сессия активна, ресурсы списаны (результат позже).
+    assert len(st.inventory) == 0
+    assert st.forge.active is True
+    assert st.forge.op_type == 'repair'
+    assert st.forge.payload['item']['quality'][0] == 50.0  # ещё не применено
     assert st.steps.can_use < pre_steps
 
 
 def test_web_forge_repair_clamps_over_max():
-    """percent больше доступного → clamp к max (не падает, чинит на максимум)."""
+    """percent больше доступного → clamp к max (не падает, стартует на максимум)."""
     state = _forge_unlocked_state()
     # today лимитирует can_use (recompute из today): ~5% (5000 / 990 eff steps)
     state.steps.today = 5_000
@@ -5691,8 +5695,9 @@ def test_web_forge_repair_clamps_over_max():
         r = client.post("/web/forge/repair",
                         data={"item_key": "inv:0", "percent": "99"})
     assert r.status_code == 200
-    # quality выросла, но не до 100 (ресурсов на 99% не хватило)
-    assert 10.0 < st.inventory[0]['quality'][0] < 100.0
+    # Сессия стартовала, percent заклампился к max (< 99).
+    assert st.forge.active is True
+    assert 1 <= st.forge.payload['percent'] < 99
 
 
 def test_web_forge_repair_bad_key_shows_error():
@@ -5707,7 +5712,7 @@ def test_web_forge_repair_bad_key_shows_error():
 
 
 def test_api_forge_repair_success():
-    """JSON API: успешный ремонт возвращает ok + обновлённые ресурсы."""
+    """JSON API: старт ремонта возвращает ok; сессия активна (результат по таймеру)."""
     state = _forge_unlocked_state()
     state.inventory.append(_forge_item(quality=50.0))
     _setup_state(state)
@@ -5717,7 +5722,8 @@ def test_api_forge_repair_success():
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True
-    assert game.state.inventory[0]['quality'][0] == 60.0
+    assert game.state.forge.active is True
+    assert game.state.forge.op_type == 'repair'
 
 
 def test_api_forge_repair_bad_key_returns_422():
@@ -5757,7 +5763,8 @@ def test_web_forge_craft_preview_same_item_error():
 
 
 def test_web_forge_craft_success():
-    """POST /web/forge/craft: 2 источника → 1 предмет next grade в инвентаре."""
+    """4.59.4.2 — POST /web/forge/craft СТАРТУЕТ таймерный крафт: 2 источника
+    уходят в кузницу, результат (s-grade) появится по таймеру."""
     state = _forge_unlocked_state()
     state.inventory.append(_forge_item(grade='a-grade', quality=60.0, characteristic='luck'))
     state.inventory.append(_forge_item(grade='a-grade', quality=80.0, characteristic='luck'))
@@ -5767,10 +5774,12 @@ def test_web_forge_craft_success():
         r = client.post("/web/forge/craft",
                         data={"item_a": "inv:0", "item_b": "inv:1"})
     assert r.status_code == 200
-    # 2 источника удалены, 1 новый s-grade добавлен
-    assert len(st.inventory) == 1
-    assert st.inventory[0]['grade'][0] == 's-grade'
-    assert st.inventory[0]['quality'][0] == 70.0  # avg(60,80)
+    # Источники ушли в кузницу (инвентарь пуст), результат в сессии.
+    assert len(st.inventory) == 0
+    assert st.forge.active is True
+    assert st.forge.op_type == 'craft'
+    assert st.forge.payload['result']['grade'][0] == 's-grade'
+    assert st.forge.payload['result']['quality'][0] == 70.0  # avg(60,80)
 
 
 def test_api_forge_craft_splus_cap_returns_422():
@@ -5784,3 +5793,55 @@ def test_api_forge_craft_splus_cap_returns_422():
                         json={"item_a": "inv:0", "item_b": "inv:1"})
     assert r.status_code == 422
     assert r.json()["ok"] is False
+
+
+# ----- 4.59.4.2 — таймерное поведение web (active session / финализатор) -----
+
+def test_web_forge_blocks_new_op_when_active():
+    """При активной forge-сессии новый ремонт отклоняется («занята»)."""
+    from forge import start_repair_session
+    state = _forge_unlocked_state()
+    item = _forge_item(quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)  # активная сессия
+    _setup_state(state)
+    with TestClient(app) as client:
+        r = client.post("/web/forge/repair", data={"item_key": "inv:0", "percent": "5"})
+    assert r.status_code == 200
+    assert 'занята' in r.text.lower()
+
+
+def test_forge_active_session_renders_and_hides_forms():
+    """Активная сессия → блок «⏱ Активные сессии» + forge показывает «Идёт»,
+    формы repair/craft скрыты."""
+    from forge import start_repair_session
+    state = _forge_unlocked_state()
+    item = _forge_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'modal-forge-session' in body  # сессия + модалка
+    assert 'Идёт' in body
+    assert '/web/forge/repair' not in body  # формы скрыты в active-режиме
+
+
+def test_forge_finalizes_in_dashboard(monkeypatch):
+    """Истёкший таймер финализируется в _dashboard_context (GET /status):
+    результат применён, сессия очищена."""
+    monkeypatch.setattr('persistence.save_characteristic', lambda: "OK")
+    from forge import start_repair_session
+    import time as _t
+    state = _forge_unlocked_state()
+    item = _forge_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    state.forge.end_ts = _t.time() - 1  # таймер истёк
+    _setup_state(state)
+    with TestClient(app) as client:
+        client.get("/status")  # _dashboard_context → forge_check_done
+    st = game.state
+    assert st.forge.active is False
+    assert len(st.inventory) == 1
+    assert st.inventory[0]['quality'][0] == 60.0  # +10 (forge_repair_quality=0 → ×1.0)

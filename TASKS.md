@@ -4229,7 +4229,7 @@ Steps 🏃: N, Energy 🔋: M, Money 💰: K $
 
 6. **Gem rarity tuning** ⚠ **TODO на момент реализации 4.59.3.** Drop rate gems из Adventure — нужно подобрать через Monte-Carlo проходы (аналогично 4.29-replacement / `compute_grade_probabilities`). Целевая «редкость»: ~3-5 small gems за неделю, ~1 large за месяц. Учитывать luck multiplier + weekend / multi-day expedition boost. **Критическое balance decision** — при правильной редкости gems становятся «event», при неправильной — мусор или недостижимы.
 
-##### 4.59.4. Forge: таймеры на Repair + Crafting + навык ускорения (зонтичная) `[H / M / partial — 4.59.4.1 CLI+ядро done (28.05.2026, 0.2.6d); остался 4.59.4.2 web]`
+##### 4.59.4. Forge: таймеры на Repair + Crafting + навык ускорения (зонтичная) `[H / M / done (28.05.2026, 0.2.6e — 4.59.4.1 CLI+ядро 0.2.6d + 4.59.4.2 web 0.2.6e)]`
 
 **Контекст.** Сейчас (4.59.1 / 4.59.2 / 4.48.11) Repair и Crafting — **мгновенные** (try_spend → результат сразу). Это выбивается из основной game-loop механики 2Walks, где значимые действия занимают время (Work / Gym / Adventure — таймерные сессии, финализируются на тике). Forge станет таймерным по тому же паттерну.
 
@@ -4270,7 +4270,9 @@ class ForgeSession:
 5. CLI `forge.py` UI — `forge_menu` показывает активную сессию + countdown (как gym_menu при active training) и блокирует новую операцию; `_do_repair`/`_do_craft` зовут `start_*`. Хук `forge_check_done` в `game.py` main loop (между `skill_training_check_done` и `status_bar`).
 6. **Тесты:** round-trip ForgeSession; duration helpers + forge_speed clamp; start (списание + capture); finalizer (apply on time / save-first rollback / Restorer log на финише); CLI UI (active session render + block).
 
-###### 4.59.4.2. Web `[H / S / todo — blocked by 4.59.4.1]`
+###### 4.59.4.2. Web `[H / S / done (28.05.2026, 0.2.6e)]`
+
+**✅ Реализовано (28.05.2026, 0.2.6e).** `forge_check_done` в `_dashboard_context` (save-first сам). Endpoints `/web|api/forge/repair` + `/web/forge/craft` → `start_*` (вместо instant). `_build_forge_view` при active → `active`/`active_session` (формы скрыты, рендерит «Идёт» + countdown). Forge-сессия в «⏱ Активные сессии» + `modal-forge-session` (переиспользует JS-тики 4.48.10) + timer-context (`forge_start_ts`/`forge_end_ts`/`forge_progress`). `_validate_and_apply_repair/craft` pre-чек «занята». Web lock-check синхронизирован (+`forge_speed`). **Тесты:** +3 новых + 4 обновлены (instant→timed). 1413 passed, mypy 0 issues.
 
 UI-надстройка (ядро уже готово). До этой задачи web-endpoints продолжают звать instant `repair_item`/`craft_item` (web остаётся мгновенным — no breakage).
 1. `_dashboard_context` — добавить `forge_check_done(state)` (рядом с work/skill финализаторами) + persist при transition.

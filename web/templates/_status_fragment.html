@@ -277,7 +277,7 @@
 {# Активные сессии — показываем только если активны. Клик по блоку открывает
    модалку с детальной информацией (4.x — прошло/осталось/длительность/прогресс
    + специфика по типу сессии). #}
-{% if state.training.active or state.work.active or state.adventure.active %}
+{% if state.training.active or state.work.active or state.adventure.active or state.forge.active %}
 <section id="active-sessions">
     <article>
         <header><strong>⏱ Активные сессии</strong> <small style="color: var(--pico-muted-color);">— нажми блок для деталей</small></header>
@@ -331,6 +331,23 @@
             {% if adv_start_ts and adv_end_ts %}
                 <progress data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}" value="{{ '%.2f' % adv_progress }}" max="100"></progress>
                 <small><span data-progress-start-ts="{{ adv_start_ts }}" data-progress-end-ts="{{ adv_end_ts }}">{{ '%.2f' % adv_progress }}</span> %{% if adv_progress >= 100 %} ✓ Завершено{% endif %}</small>
+            {% endif %}
+        </p>
+        {% endif %}
+
+        {% if state.forge.active and forge_view.active_session %}
+        <p data-open-session-modal="modal-forge-session" style="cursor: pointer;">
+            🔨 Кузница: <strong>{{ forge_view.active_session.label }}</strong>
+            ({{ forge_view.active_session.detail }})
+            <br>
+            🕑 До завершения:
+            {% if forge_end_ts %}
+                <span data-end-ts="{{ forge_end_ts }}" class="timer-active">…</span>
+            {% else %}
+                —
+            {% endif %}
+            {% if forge_start_ts and forge_end_ts %}
+                <progress data-progress-start-ts="{{ forge_start_ts }}" data-progress-end-ts="{{ forge_end_ts }}" value="{{ '%.2f' % forge_progress }}" max="100"></progress>
             {% endif %}
         </p>
         {% endif %}
@@ -398,6 +415,24 @@
                 <small>{% for grade, pct in adv.probabilities %}{{ grade }} [{{ pct }}]{% if not loop.last %} · {% endif %}{% endfor %}</small>
             </div>
             {% endif %}{% endfor %}
+            <footer><button data-close-modal class="outline" style="width: auto;">Закрыть</button></footer>
+        </article>
+    </dialog>
+    {% endif %}
+
+    {% if state.forge.active and forge_view.active_session and forge_start_ts and forge_end_ts %}
+    <dialog id="modal-forge-session">
+        <article>
+            <header><strong>🔨 Кузница — {{ forge_view.active_session.label }}</strong></header>
+            <div class="session-row"><span>⏱ Прошло</span><strong data-elapsed-start-ts="{{ forge_start_ts }}">…</strong></div>
+            <div class="session-row"><span>🕑 Осталось</span><strong data-end-ts="{{ forge_end_ts }}" class="timer-active">…</strong></div>
+            <div class="session-row"><span>⏳ Длительность</span><strong>{{ format_minutes(((forge_end_ts - forge_start_ts) / 60) | int) }}</strong></div>
+            <div class="session-row"><span>📊 Прогресс</span><strong><span data-progress-start-ts="{{ forge_start_ts }}" data-progress-end-ts="{{ forge_end_ts }}">{{ '%.1f' % forge_progress }}</span> %</strong></div>
+            <progress data-progress-start-ts="{{ forge_start_ts }}" data-progress-end-ts="{{ forge_end_ts }}" value="{{ '%.2f' % forge_progress }}" max="100"></progress>
+            <div class="session-row"><span>📅 Начато</span><strong data-abs-ts="{{ forge_start_ts }}">…</strong></div>
+            <div class="session-row"><span>🏁 Завершится</span><strong data-abs-ts="{{ forge_end_ts }}">…</strong></div>
+            <hr>
+            <div class="session-row"><span>🔧 Операция</span><strong>{{ forge_view.active_session.detail }}</strong></div>
             <footer><button data-close-modal class="outline" style="width: auto;">Закрыть</button></footer>
         </article>
     </dialog>
@@ -1076,7 +1111,18 @@
 
         {% if forge_view.locked %}
             <small class="equipment-empty">🔒 Заблокирована. Прокачай любой навык
-            Кузницы (экономия шагов / золота / качество ремонта) в Спортзале до 1 уровня.</small>
+            Кузницы (экономия шагов / золота / качество ремонта / скорость) в Спортзале до 1 уровня.</small>
+        {% elif forge_view.active %}
+            {# 4.59.4.2 — одна операция за раз: формы скрыты, показываем таймер. #}
+            <p style="margin: 0.3rem 0;">
+                🔨 Идёт {{ forge_view.active_session.detail }}:
+                <strong>{{ forge_view.active_session.label }}</strong>.
+                {% if forge_end_ts %}
+                🕑 Завершится через <span data-end-ts="{{ forge_end_ts }}" class="timer-active">…</span>.
+                {% endif %}
+            </p>
+            <small class="equipment-empty">Дождись завершения — одна операция за раз
+            (детали и прогресс — в блоке «⏱ Активные сессии»).</small>
         {% else %}
 
         {# ---- Repair ---- #}

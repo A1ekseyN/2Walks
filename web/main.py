@@ -889,6 +889,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         skill_training_check_done(state)
         work_check_done(state)
         _finalize_adventure_with_drop_capture(state)
+        # 4.59.4.2 — финализатор Кузницы (repair/craft по таймеру). Сам делает
+        # save-first persist + STALE-rollback (как work_check_done).
+        from forge import forge_check_done
+        forge_check_done(state)
 
     # 4.48.9 — Auto-accrue банковских процентов на каждом render. Симметрично
     # CLI bank_menu (capitalize-on-change). preview_deposit_amount /
@@ -937,6 +941,9 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # Adventure start_ts/end_ts уже хранятся как float timestamps.
     adv_start_ts = state.adventure.start_ts if state.adventure.active and state.adventure.start_ts else None
     adv_end_ts = state.adventure.end_ts if state.adventure.active and state.adventure.end_ts else None
+    # 4.59.4.2 — Forge session start/end уже float timestamps.
+    forge_start_ts = state.forge.timestamp if state.forge.active and state.forge.timestamp else None
+    forge_end_ts = state.forge.end_ts if state.forge.active and state.forge.end_ts else None
 
     adventure_finished = (
         state.adventure.active
@@ -949,6 +956,7 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     training_progress = _compute_progress_pct(training_start_ts, training_end_ts, now_ts)
     work_progress = _compute_progress_pct(work_start_ts, work_end_ts, now_ts)
     adv_progress = _compute_progress_pct(adv_start_ts, adv_end_ts, now_ts)
+    forge_progress = _compute_progress_pct(forge_start_ts, forge_end_ts, now_ts)
 
     # Уровень навыка для текущей тренировки — для отображения "до какого уровня".
     training_skill_target = None
@@ -1031,6 +1039,10 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "adv_end_ts": adv_end_ts,
         "adv_progress": adv_progress,
         "adventure_finished": adventure_finished,
+        # 4.59.4.2 — Forge session timers (repair/craft).
+        "forge_start_ts": forge_start_ts,
+        "forge_end_ts": forge_end_ts,
+        "forge_progress": forge_progress,
         # Now (для server-side rendering первоначального countdown — клиент потом
         # пересчитывает на JS).
         "now_ts": now_ts,
@@ -3122,15 +3134,47 @@ def _build_forge_view(state) -> dict:
     """
     g = state.gym
     locked = (g.forge_steps_saving < 1 and g.forge_money_saving < 1
-              and g.forge_repair_quality < 1)
+              and g.forge_repair_quality < 1 and g.forge_speed < 1)
     if locked:
-        return {'locked': True, 'repair_items': [], 'craft_groups': [],
+        return {'locked': True, 'active': False, 'active_session': None,
+                'repair_items': [], 'craft_groups': [],
                 'has_repair': False, 'has_craft': False,
                 'repair_cost_per_pct': None}
 
+    # 4.59.4.2 — одна операция за раз: при активной forge-сессии формы скрыты,
+    # показываем только активную сессию (детали + countdown в active-sessions).
+    fs = state.forge
+    if fs.active:
+        p = fs.payload
+        if fs.op_type == 'repair':
+            item = p.get('item', {})
+            label = (f"{str((item.get('item_type') or ['?'])[0]).title()} "
+                     f"{(item.get('grade') or ['?'])[0]}")
+            detail = f"ремонт +{p.get('percent', 0)}%"
+        else:
+            res = p.get('result', {})
+            label = (f"{str((res.get('item_type') or ['?'])[0]).title()} "
+                     f"{p.get('to_grade', '?')}")
+            detail = (f"крафт → +{(res.get('bonus') or [0])[0]} "
+                      f"{str((res.get('characteristic') or [''])[0]).title()}")
+        return {
+            'locked': False,
+            'active': True,
+            'active_session': {
+                'op_type': fs.op_type,
+                'label': label,
+                'detail': detail,
+                'end_ts': fs.end_ts,
+                'start_ts': fs.timestamp,
+            },
+            'repair_items': [], 'craft_groups': [],
+            'has_repair': False, 'has_craft': False,
+            'repair_cost_per_pct': None,
+        }
+
     from forge import (
         _EQUIPMENT_SLOTS, max_repair_percent, repair_cost_effective,
-        find_craftable_groups, GRADE_BONUS_VALUE,
+        find_craftable_groups, GRADE_BONUS_VALUE, repair_duration, craft_duration,
     )
     from bonus import apply_trader
 
@@ -3195,13 +3239,19 @@ def _build_forge_view(state) -> dict:
             'count': len(candidates),
             'candidates': candidates,
             'is_capped': next_grade is None,
+            # 4.59.4.2 — длительность крафта (секунды) для отображения.
+            'duration_sec': craft_duration(grade, state) if next_grade else 0,
         })
 
     return {
         'locked': False,
+        'active': False,
+        'active_session': None,
         'repair_items': repair_items,
         'has_repair': bool(repair_items),
         'repair_cost_per_pct': {'steps': eff_steps, 'money': eff_money, 'energy': eff_energy},
+        # 4.59.4.2 — длительность ремонта за 1% (секунды) для подсказки в UI.
+        'repair_duration_per_pct_sec': repair_duration(1, state),
         'craft_groups': craft_groups,
         'has_craft': bool(craft_groups),
     }
@@ -3259,10 +3309,14 @@ def _build_craft_preview(state, key_a: str, key_b: str) -> dict:
 
 
 def _validate_and_apply_repair(state, item_key: str, percent) -> Optional[str]:
-    """Resolve key → item → repair на `percent`% (clamp к max_affordable).
-    None при успехе, текст ошибки иначе, STALE_MARKER при concurrent save."""
-    from forge import max_repair_percent, repair_item
+    """Resolve key → item → СТАРТ таймерного ремонта на `percent`% (clamp к
+    max_affordable). Предмет уходит в кузницу, результат применит
+    forge_check_done по таймеру. None при успехе, текст ошибки иначе,
+    STALE_MARKER при concurrent save (4.59.4.2)."""
+    from forge import max_repair_percent, start_repair_session
 
+    if state.forge.active:
+        return 'Кузница занята — дождись завершения текущей операции.'
     item = _resolve_forge_item(state, item_key)
     if item is None:
         return 'Предмет не найден (список обновился) — обнови страницу.'
@@ -3279,8 +3333,8 @@ def _validate_and_apply_repair(state, item_key: str, percent) -> Optional[str]:
         return 'Недостаточно ресурсов даже на 1% ремонта.'
     if pct > max_pct:
         pct = max_pct  # «Макс»-friendly: чиним на сколько хватает
-    if not repair_item(state, item, pct):
-        return 'Не удалось отремонтировать (ресурсы?).'
+    if not start_repair_session(state, item, pct):
+        return 'Не удалось начать ремонт (ресурсы / уже идёт операция).'
     stale = _persist_and_handle_stale(endpoint='forge_repair')
     if stale:
         return STALE_MARKER
@@ -3288,17 +3342,20 @@ def _validate_and_apply_repair(state, item_key: str, percent) -> Optional[str]:
 
 
 def _validate_and_apply_craft(state, key_a: str, key_b: str) -> Optional[str]:
-    """Resolve 2 ключа → craft_item (heavy-валидация внутри). None при успехе."""
-    from forge import craft_item
+    """Resolve 2 ключа → СТАРТ таймерного крафта (heavy-валидация в
+    start_craft_session). Источники уходят в кузницу, результат появится по
+    таймеру. None при успехе (4.59.4.2)."""
+    from forge import start_craft_session
 
+    if state.forge.active:
+        return 'Кузница занята — дождись завершения текущей операции.'
     item_a = _resolve_forge_item(state, key_a)
     item_b = _resolve_forge_item(state, key_b)
     if item_a is None or item_b is None:
         return 'Предметы не найдены (список обновился) — обнови страницу.'
     if item_a is item_b:
         return 'Нужно выбрать два РАЗНЫХ предмета.'
-    new_item = craft_item(state, item_a, item_b)
-    if new_item is None:
+    if start_craft_session(state, item_a, item_b) is None:
         return 'Крафт не удался — проверь грейд / ресурсы / место в рюкзаке.'
     stale = _persist_and_handle_stale(endpoint='forge_craft')
     if stale:
