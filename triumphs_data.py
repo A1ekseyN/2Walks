@@ -511,7 +511,7 @@ TRIUMPHS: dict[str, dict] = {
     # зависит от ресурсов (можно чинить порциями). Tier 1000 = 10 полных ремонтов
     # 0→100. Один общий счётчик (тип предмета не ось сложности — per-type не нужен;
     # обсуждено 28.05.2026). item_repaired (forge.py) уже пишет from/to_quality →
-    # backfill из history автоматический. Остаток 4.62.1.11 — crafts + first S+.
+    # backfill из history автоматический.
     'restorer': {
         'name': 'Restorer',
         'category': 'forge',
@@ -520,6 +520,17 @@ TRIUMPHS: dict[str, dict] = {
         # 4.60 — БЕЗ round: копим дробное quality точно (forge_repair_quality
         # даёт дробный буст). Движок не int-кастит (см. triumphs.register_event).
         'count_delta': lambda p: max(0.0, p.get('to_quality', 0) - p.get('from_quality', 0)),
+    },
+    # Crafter (4.62.1.11 part: Crafting, 28.05.2026) — счётчик скрафченных
+    # предметов. Каждый крафт = +1 (даёт ровно 1 предмет). item_crafted
+    # (forge.py craft_item + forge_check_done) уже логируется → backfill авто.
+    # Без seal у категории forge (решено 28.05.2026). First-S+ триумф отменён.
+    'crafter': {
+        'name': 'Crafter',
+        'category': 'forge',
+        'tiers': [5, 10, 25, 50, 100],
+        'event_hooks': ['item_crafted'],
+        'count_delta': lambda p: 1,
     },
 }
 

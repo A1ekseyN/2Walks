@@ -1016,3 +1016,45 @@ class TestRestorer:
     def test_restorer_forge_category_exists(self):
         from triumphs_data import CATEGORIES
         assert 'forge' in CATEGORIES
+
+
+class TestCrafter:
+    """🔨 Crafter — event-based счётчик скрафченных предметов (4.62.1.11).
+    Каждый item_crafted = +1 (крафт даёт ровно 1 предмет). Без seal."""
+
+    def test_crafter_in_catalog(self):
+        spec = TRIUMPHS['crafter']
+        assert spec['name'] == 'Crafter'
+        assert spec['category'] == 'forge'
+        assert spec['tiers'] == [5, 10, 25, 50, 100]
+        assert spec['event_hooks'] == ['item_crafted']
+        assert 'metric' not in spec
+
+    def test_crafter_count_delta_is_one_per_craft(self):
+        cd = TRIUMPHS['crafter']['count_delta']
+        assert cd({'to_grade': 's-grade'}) == 1
+        assert cd({}) == 1  # +1 независимо от payload
+
+    def test_crafter_accumulates_per_craft(self):
+        state = GameState.default_new_game()
+        for _ in range(3):
+            register_event(state, 'item_crafted', to_grade='b-grade')
+        assert state.triumphs['crafter']['count'] == 3
+
+    def test_crafter_tier_unlock_at_5(self):
+        state = GameState.default_new_game()
+        for _ in range(5):
+            register_event(state, 'item_crafted', to_grade='b-grade')
+        assert state.triumphs['crafter']['tier'] == 1
+
+    def test_crafter_capstone_at_100(self):
+        state = GameState.default_new_game()
+        for _ in range(100):
+            register_event(state, 'item_crafted', to_grade='a-grade')
+        assert state.triumphs['crafter']['count'] == 100
+        assert state.triumphs['crafter']['tier'] == 5
+
+    def test_forge_category_has_no_seal(self):
+        """Решение 28.05.2026 — у категории forge нет seal."""
+        from triumphs_data import SEALS
+        assert 'forge' not in SEALS
