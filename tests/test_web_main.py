@@ -2657,11 +2657,11 @@ def test_gym_skills_use_nested_details():
     gym_section = body[gym_pos:next_section_pos]
     # Внутри Gym-блока — nested <details> по одному на каждый навык
     # (после 0.2.4j / 4.22 — 20 навыков: + 3 energy_optimization_* после move_opt;
-    # после 4.60 — 23 навыка: + 3 forge_* в самом низу).
+    # после 4.60 — 23 навыка: + 3 forge_*; после 4.59.4 — 24: + forge_speed).
     import re
     details_tags = re.findall(r'<details(?:\s[^>]*)?>', gym_section)
-    # 1 внешний + 23 nested = 24.
-    assert len(details_tags) == 24
+    # 1 внешний + 24 nested = 25.
+    assert len(details_tags) == 25
     # Ни один не должен быть `open`.
     for tag in details_tags:
         assert "open" not in tag, f"details unexpectedly open: {tag}"
@@ -2932,6 +2932,8 @@ def test_build_gym_skills_returns_all_entries():
         "backpack_skill",
         # 4.60 — Forge resource-saving + quality skills (в самом низу)
         "forge_steps_saving", "forge_money_saving", "forge_repair_quality",
+        # 4.59.4 — Forge speed skill
+        "forge_speed",
     ]
 
 

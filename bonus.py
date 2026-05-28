@@ -276,3 +276,14 @@ def forge_repair_multiplier(state: GameState) -> float:
     """Множитель восстановленного quality за ремонт: 1 + forge_repair_quality/100.
     Lvl 0 → ×1.0 (без изменений), lvl 10 → ×1.1, lvl 30 → ×1.3."""
     return 1.0 + state.gym.forge_repair_quality / 100.0
+
+
+def apply_forge_speed(seconds: int, state: GameState) -> int:
+    """4.59.4 — -1%/level (state.gym.forge_speed) к длительности forge-операций
+    (repair + craft). Линейная, clamp min=60 сек (никогда не мгновенно).
+    Отдельный навык от Speed (тот остаётся для Work/Gym/Adventure)."""
+    skill = state.gym.forge_speed
+    if skill <= 0:
+        return max(60, int(seconds))
+    reduced = int(seconds * (1 - min(skill, 100) / 100))
+    return max(60, reduced)

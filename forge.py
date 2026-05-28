@@ -9,14 +9,15 @@
 Все handler'ы 3-5 — stub'ы для отложенной 4.59.3 (Gems system).
 """
 
+from datetime import datetime, timedelta
 from typing import Optional
 
 from colorama import Fore, Style
 
 from actions import try_spend
 from bonus import apply_trader, backpack_capacity
-from functions_02 import format_money
-from state import GameState
+from functions_02 import format_money, format_timedelta
+from state import ForgeSession, GameState
 
 
 # ----- 4.59.1 Repair: pure helpers -----
@@ -295,6 +296,9 @@ def _repair_preview_and_apply(state: GameState, item: dict) -> None:
         return
 
     print(f'Можешь восстановить: до {max_pct}% (хватает ресурсов).')
+    # 4.59.4 — показываем длительность таймера для выбранного значения.
+    print(f'Время ремонта: 1% = {format_timedelta(timedelta(seconds=repair_duration(1, state)))}'
+          f' (полный по {max_pct}% ≈ {format_timedelta(timedelta(seconds=repair_duration(max_pct, state)))}).')
     pct = _ask_int(f'Сколько процентов восстановить (1..{max_pct}, 0 — отмена)? \n>>> ')
     if pct is None or pct == 0:
         print('\nРемонт отменён.')
@@ -303,15 +307,18 @@ def _repair_preview_and_apply(state: GameState, item: dict) -> None:
         print('\nЗначение вне диапазона. Ремонт отменён.')
         return
 
-    if not repair_item(state, item, pct):
-        print('\nНе удалось списать ресурсы (race condition?). Ремонт отменён.')
+    # 4.59.4 — таймерный ремонт: списание + предмет уходит в кузницу,
+    # результат применится в forge_check_done по таймеру.
+    steps_spent, money_spent, energy_spent = repair_cost_effective(pct, state)
+    if not start_repair_session(state, item, pct):
+        print('\nНе удалось начать ремонт (ресурсы / уже идёт операция).')
         return
 
-    new_quality = item['quality'][0]
-    steps_spent, money_spent, energy_spent = repair_cost_effective(pct, state)
-    print(f'\n✅ Ремонт +{pct}%. Quality: {round(float(quality), 2)} → '
-          f'{round(float(new_quality), 2)}. '
-          f'Потрачено: {_fmt_cost(steps_spent, money_spent, energy_spent, sep=" / ")}.')
+    dur = format_timedelta(timedelta(seconds=repair_duration(pct, state)))
+    print(f'\n🔨 Ремонт начат: +{pct}% (quality {round(float(quality), 2)} → '
+          f'{round(min(100.0, float(quality) + pct * (1 + state.gym.forge_repair_quality / 100.0)), 2)}). '
+          f'Списано: {_fmt_cost(steps_spent, money_spent, energy_spent, sep=" / ")}. '
+          f'Предмет в кузнице, завершится через {dur}.')
 
 
 # ----- 4.59.2 Crafting: pure helpers -----
@@ -381,6 +388,31 @@ def crafting_cost_effective(source_grade: str, state: GameState) -> tuple[int, f
     from bonus import apply_forge_steps_saving, apply_forge_money_saving
     steps, money, energy = crafting_cost(source_grade)
     return apply_forge_steps_saving(steps, state), apply_forge_money_saving(money, state), energy
+
+
+# ----- 4.59.4 Таймеры (длительность операций) -----
+
+REPAIR_SECONDS_PER_PERCENT = 3600   # 1 час на 1 п.п. quality
+# Длительность крафта по грейду собираемых предметов (источника), в часах.
+# S+ нельзя крафтить (cap) → в таблице нет.
+CRAFT_HOURS_BY_GRADE: dict[str, int] = {
+    'c-grade': 1,
+    'b-grade': 4,
+    'a-grade': 8,
+    's-grade': 12,
+}
+
+
+def repair_duration(percent: int, state: GameState) -> int:
+    """Длительность ремонта в секундах: percent ч × forge_speed-скидка (clamp 60с)."""
+    from bonus import apply_forge_speed
+    return apply_forge_speed(percent * REPAIR_SECONDS_PER_PERCENT, state)
+
+
+def craft_duration(source_grade: str, state: GameState) -> int:
+    """Длительность крафта в секундах по грейду источника × forge_speed (clamp 60с)."""
+    from bonus import apply_forge_speed
+    return apply_forge_speed(CRAFT_HOURS_BY_GRADE.get(source_grade, 0) * 3600, state)
 
 
 def _item_key(item: dict) -> Optional[tuple[str, str, str]]:
@@ -498,16 +530,7 @@ def craft_item(state: GameState, item_a: dict, item_b: dict) -> Optional[dict]:
     # Создаём новый item.
     quality_a = float(item_a['quality'][0])
     quality_b = float(item_b['quality'][0])
-    new_quality = round((quality_a + quality_b) / 2, 2)
-    new_item: dict = {
-        'item_name': [item_a['item_type'][0]],
-        'item_type': [item_a['item_type'][0]],
-        'grade': [next_grade],
-        'characteristic': [item_a['characteristic'][0]],
-        'bonus': [GRADE_BONUS_VALUE[next_grade]],
-        'quality': [new_quality],
-        'price': [int(new_quality * GRADE_PRICE_MULTIPLIER[next_grade])],
-    }
+    new_item = _compute_craft_result(item_a, item_b, next_grade)
     state.inventory.append(new_item)
 
     from history import log_event
@@ -519,7 +542,7 @@ def craft_item(state: GameState, item_a: dict, item_b: dict) -> Optional[dict]:
         to_grade=next_grade,
         qual_1=round(quality_a, 2),
         qual_2=round(quality_b, 2),
-        new_quality=new_quality,
+        new_quality=new_item['quality'][0],
         new_price=new_item['price'][0],
         was_equipped=n_equipped_sources,
         # 4.62.1.4 (22.05.2026) — cost_* в payload для Triumphs energy tracking.
@@ -528,6 +551,234 @@ def craft_item(state: GameState, item_a: dict, item_b: dict) -> Optional[dict]:
         cost_energy=energy,
     )
     return new_item
+
+
+def _compute_craft_result(item_a: dict, item_b: dict, next_grade: str) -> dict:
+    """Новый item из 2 источников: quality = avg, bonus/price по next_grade.
+    Чистая функция (без мутаций) — общая для instant craft_item и
+    таймерного start_craft_session (4.59.4)."""
+    quality_a = float(item_a['quality'][0])
+    quality_b = float(item_b['quality'][0])
+    new_quality = round((quality_a + quality_b) / 2, 2)
+    return {
+        'item_name': [item_a['item_type'][0]],
+        'item_type': [item_a['item_type'][0]],
+        'grade': [next_grade],
+        'characteristic': [item_a['characteristic'][0]],
+        'bonus': [GRADE_BONUS_VALUE[next_grade]],
+        'quality': [new_quality],
+        'price': [int(new_quality * GRADE_PRICE_MULTIPLIER[next_grade])],
+    }
+
+
+# ----- 4.59.4 Таймерные сессии (start + финализатор) -----
+
+def start_repair_session(state: GameState, item: dict, percent: int) -> bool:
+    """4.59.4 — старт таймерного ремонта: списание ресурсов + capture предмета.
+
+    Предмет физически убирается из инвентаря/слота в `state.forge.payload`
+    (capture-into-session); результат применяется в `forge_check_done` по
+    таймеру. Returns False без мутаций при отказе (active session / percent вне
+    диапазона / нет ресурсов / предмет не найден). Caller должен clamp percent
+    к max_repair_percent заранее (здесь reject при превышении)."""
+    if state.forge.active:
+        return False
+    if percent <= 0:
+        return False
+    if (item.get('quality') or [None])[0] is None:
+        return False
+    max_pct = max_repair_percent(state, item)
+    if max_pct < 1 or percent > max_pct:
+        return False
+    loc = _locate_sources(state, [item])
+    if loc is None:
+        return False
+    steps, money, energy = repair_cost_effective(percent, state)
+    if not try_spend(state, steps=steps, energy=energy, money=float(money)):
+        return False
+    # Capture: убираем предмет из его местоположения.
+    slot_attr = loc[0]
+    if slot_attr is not None:
+        setattr(state.equipment, slot_attr, None)
+    else:
+        state.inventory = [it for it in state.inventory if it is not item]
+    now_ts = datetime.now().timestamp()
+    state.forge = ForgeSession(
+        active=True,
+        op_type='repair',
+        timestamp=now_ts,
+        end_ts=now_ts + repair_duration(percent, state),
+        payload={
+            'item': item,
+            'percent': percent,
+            'cost_steps': steps,
+            'cost_money': money,
+            'cost_energy': energy,
+        },
+    )
+    return True
+
+
+def start_craft_session(state: GameState, item_a: dict, item_b: dict) -> Optional[dict]:
+    """4.59.4 — старт таймерного крафта: списание + capture 2 источников.
+
+    Источники убираются из инвентаря/слотов сразу; результат (вычислен на
+    старте) кладётся в `state.forge.payload` и добавляется в инвентарь в
+    `forge_check_done`. Returns dict результата (для отображения) или None при
+    отказе (те же pre-checks, что у `craft_item` + нет active forge-сессии)."""
+    if state.forge.active:
+        return None
+    if item_a is item_b:
+        return None
+    key_a = _item_key(item_a)
+    key_b = _item_key(item_b)
+    if key_a is None or key_b is None or key_a != key_b:
+        return None
+    _, _, grade = key_a
+    next_grade = GRADE_NEXT.get(grade)
+    if next_grade is None:  # s+grade cap
+        return None
+    sources_meta = _locate_sources(state, [item_a, item_b])
+    if sources_meta is None:
+        return None
+    n_inv_sources = sum(1 for s in sources_meta if s is None)
+    n_equipped = len(sources_meta) - n_inv_sources
+    # capacity на финише: текущий - inventory-sources + 1 (результат).
+    projected = len(state.inventory) - n_inv_sources + 1
+    if projected > backpack_capacity(state):
+        return None
+    steps, money, energy = crafting_cost_effective(grade, state)
+    if not try_spend(state, steps=steps, energy=energy, money=float(money)):
+        return None
+    # Capture источников.
+    for slot_attr in sources_meta:
+        if slot_attr is not None:
+            setattr(state.equipment, slot_attr, None)
+    state.inventory = [it for it in state.inventory if it is not item_a and it is not item_b]
+    result = _compute_craft_result(item_a, item_b, next_grade)
+    now_ts = datetime.now().timestamp()
+    state.forge = ForgeSession(
+        active=True,
+        op_type='craft',
+        timestamp=now_ts,
+        end_ts=now_ts + craft_duration(grade, state),
+        payload={
+            'result': result,
+            'from_grade': grade,
+            'to_grade': next_grade,
+            'was_equipped': n_equipped,
+            'qual_1': round(float(item_a['quality'][0]), 2),
+            'qual_2': round(float(item_b['quality'][0]), 2),
+            'cost_steps': steps,
+            'cost_money': money,
+            'cost_energy': energy,
+        },
+    )
+    return result
+
+
+def forge_check_done(state: GameState) -> GameState:
+    """4.59.4 — финализатор forge-сессии по таймеру (save-first atomic).
+
+    Когда `end_ts <= now`: применяет результат (repair → quality boost через
+    `forge_repair_multiplier`; craft → новый item в инвентарь), `log_event`
+    (Restorer/Investor триумфы учитываются ЗДЕСЬ, на финише). Save-first +
+    rollback на STALE (mirrors work_check_done): tentative mutate → save → при
+    STALE откатываем и `finalize_stale=True`, fresh reload подтянет state.
+    Возвращает state для chain-композиции. Зовётся на тике CLI main loop +
+    в web `_dashboard_context` (4.59.4.2)."""
+    if not state.forge.active or state.forge.end_ts is None:
+        return state
+    now_ts = datetime.now().timestamp()
+    if state.forge.end_ts > now_ts:
+        return state  # ещё идёт
+
+    op = state.forge.op_type
+    payload = state.forge.payload
+
+    # Snapshot для rollback на STALE.
+    snap_inventory = list(state.inventory)
+    snap_forge = ForgeSession(
+        active=True, op_type=op, end_ts=state.forge.end_ts,
+        timestamp=state.forge.timestamp, payload=dict(payload),
+    )
+
+    log_type: Optional[str] = None
+    log_payload: dict = {}
+    repair_item_ref: Optional[dict] = None
+    repair_from_quality = 0.0
+
+    if op == 'repair':
+        from bonus import forge_repair_multiplier
+        item = payload.get('item')
+        percent = int(payload.get('percent', 0))
+        repair_item_ref = item
+        repair_from_quality = float(item['quality'][0])
+        restored = percent * forge_repair_multiplier(state)
+        item['quality'][0] = min(100.0, repair_from_quality + restored)
+        _recalc_item_price(item)
+        state.inventory.append(item)
+        log_type = 'item_repaired'
+        log_payload = dict(
+            item_type=item.get('item_type', [None])[0],
+            grade=item.get('grade', [None])[0],
+            from_quality=round(repair_from_quality, 2),
+            to_quality=round(float(item['quality'][0]), 2),
+            cost_steps=payload.get('cost_steps', 0),
+            cost_money=payload.get('cost_money', 0),
+            cost_energy=payload.get('cost_energy', 0),
+        )
+    elif op == 'craft':
+        result = payload.get('result')
+        state.inventory.append(result)
+        log_type = 'item_crafted'
+        log_payload = dict(
+            item_type=result.get('item_type', [None])[0],
+            characteristic=result.get('characteristic', [None])[0],
+            from_grade=payload.get('from_grade'),
+            to_grade=payload.get('to_grade'),
+            qual_1=payload.get('qual_1'),
+            qual_2=payload.get('qual_2'),
+            new_quality=result.get('quality', [None])[0],
+            new_price=result.get('price', [None])[0],
+            was_equipped=payload.get('was_equipped', 0),
+            cost_steps=payload.get('cost_steps', 0),
+            cost_money=payload.get('cost_money', 0),
+            cost_energy=payload.get('cost_energy', 0),
+        )
+    else:
+        # Неизвестный op_type — просто очищаем сессию (защита).
+        state.forge = ForgeSession()
+        return state
+
+    # Tentative: очищаем сессию.
+    state.forge = ForgeSession()
+
+    # Commit в Sheets.
+    from persistence import save_characteristic
+    status = save_characteristic()
+    if status == "STALE":
+        # Rollback — результат не подтверждён. Fresh reload подтянет state
+        # (если другой процесс успел финализировать — там уже применено).
+        state.inventory = snap_inventory
+        if op == 'repair' and repair_item_ref is not None:
+            repair_item_ref['quality'][0] = repair_from_quality
+            _recalc_item_price(repair_item_ref)
+        state.forge = snap_forge
+        state.finalize_stale = True
+        print('[forge finalize] STALE — откат, fresh reload подтянет state.')
+        return state
+
+    # Commit подтверждён — log_event + уведомление.
+    from history import log_event
+    log_event(log_type, **log_payload)
+    if op == 'repair':
+        print(f'\n🔨 Кузница: ремонт завершён — quality '
+              f'{log_payload["from_quality"]} → {log_payload["to_quality"]}.')
+    else:
+        print(f'\n🔨 Кузница: крафт завершён — '
+              f'{str(log_payload["item_type"]).title()} {log_payload["to_grade"]}.')
+    return state
 
 
 def _locate_sources(state: GameState, items: list[dict]) -> Optional[list[Optional[str]]]:
@@ -676,6 +927,8 @@ def _craft_preview_and_confirm(
     print(f'  quality = ({round(quality_a, 2)} + {round(quality_b, 2)}) / 2 = {new_quality}')
     print(f'  price ≈ {_c_money(format_money(new_price_with_trader))} $ (с учётом trader skill)')
     print(f'\nCost: {_fmt_cost(steps, money, energy, energy_word="энергии")}')
+    # 4.59.4 — длительность крафта (по грейду источника).
+    print(f'Время крафта: {format_timedelta(timedelta(seconds=craft_duration(group["grade"], state)))}.')
 
     # Equipped warning
     equipped_sources = [
@@ -698,15 +951,18 @@ def _craft_preview_and_confirm(
         print('\nКрафт отменён.')
         return
 
-    result = craft_item(state, item_a, item_b)
+    # 4.59.4 — таймерный крафт: списание + источники уходят в кузницу,
+    # новый предмет появится в инвентаре по таймеру (forge_check_done).
+    result = start_craft_session(state, item_a, item_b)
     if result is None:
-        print('\nНе удалось выполнить крафт (ресурсы / overflow инвентаря / stale ссылки).')
+        print('\nНе удалось начать крафт (ресурсы / overflow инвентаря / уже идёт операция).')
         return
 
-    print(f'\n✅ Создан: {result["item_type"][0].title()} {result["grade"][0]} '
+    dur = format_timedelta(timedelta(seconds=craft_duration(group["grade"], state)))
+    print(f'\n🔨 Крафт начат: → {result["item_type"][0].title()} {result["grade"][0]} '
           f'{result["characteristic"][0]} +{result["bonus"][0]} '
-          f'(quality {result["quality"][0]}, price {_c_money(result["price"][0])} $). '
-          f'Положен в инвентарь.')
+          f'(quality {result["quality"][0]}). Источники в кузнице, '
+          f'завершится через {dur}.')
 
 
 def _do_socket_create(state: GameState) -> None:
@@ -724,6 +980,25 @@ def _do_gem_combine(state: GameState) -> None:
     print('\n⚙ Объединить камни — в разработке (4.59.3, отложено).')
 
 
+def _print_active_forge_session(state: GameState) -> None:
+    """4.59.4 — вывод активной forge-сессии (op + что в работе + countdown)."""
+    fs = state.forge
+    remaining = max(0.0, (fs.end_ts or 0.0) - datetime.now().timestamp())
+    td = format_timedelta(timedelta(seconds=int(remaining)))
+    if fs.op_type == 'repair':
+        item = fs.payload.get('item', {})
+        label = (f"{str((item.get('item_type') or ['?'])[0]).title()} "
+                 f"{(item.get('grade') or ['?'])[0]}")
+        print(f"\n🔨 Идёт ремонт: {label} (+{fs.payload.get('percent', 0)}%).")
+    else:
+        res = fs.payload.get('result', {})
+        label = (f"{str((res.get('item_type') or ['?'])[0]).title()} "
+                 f"{fs.payload.get('to_grade', '?')}")
+        print(f"\n🔨 Идёт крафт: → {label}.")
+    print(f"🕑 Завершится через: {Fore.CYAN}{td}{Style.RESET_ALL}.")
+    print("\nОдна операция за раз — дождись завершения.")
+
+
 def forge_menu(state: GameState) -> None:
     """Главное меню Кузницы. Цикл retry — выходит только по '0'.
 
@@ -731,6 +1006,13 @@ def forge_menu(state: GameState) -> None:
     и dispatch на handler-функции. Невалидный выбор → continue цикла.
     """
     while True:
+        # 4.59.4 — одна операция за раз: если идёт ремонт/крафт, показываем
+        # таймер и выходим (новую операцию начать нельзя, пока идёт текущая).
+        if state.forge.active:
+            _print_forge_header(state)
+            _print_active_forge_session(state)
+            return
+
         _print_forge_header(state)
         print('\nВ кузнице можно:')
         print('\t1. Отремонтировать предмет')

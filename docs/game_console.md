@@ -48,7 +48,7 @@ python game.py
 | Идентификатор дня и шаги | `state.date_last_enter`, `state.timestamp_last_enter`, `state.steps.{today,used,yesterday,total_used,can_use,daily_bonus}` |
 | Уровень и очки | `state.char_level.{level,up_skills,skill_stamina,skill_energy_max,skill_speed,skill_energy_regen,skill_luck}` |
 | Ресурсы | `state.energy`, `state.energy_max` (cache; canonical = `bonus.compute_energy_max(state)`), `state.energy_time_stamp`, `state.money` |
-| Прокачиваемые навыки (Gym) | `state.gym.{stamina,energy_max_skill,energy_regen_skill,speed_skill,luck_skill,neatness_in_using_things,move_optimization_adventure,move_optimization_gym,move_optimization_work,energy_optimization_adventure,energy_optimization_gym,energy_optimization_work,...,forge_steps_saving,forge_money_saving,forge_repair_quality}` (23 навыка total после 0.2.6a / 4.60) |
+| Прокачиваемые навыки (Gym) | `state.gym.{stamina,energy_max_skill,energy_regen_skill,speed_skill,luck_skill,neatness_in_using_things,move_optimization_adventure,move_optimization_gym,move_optimization_work,energy_optimization_adventure,energy_optimization_gym,energy_optimization_work,...,forge_steps_saving,forge_money_saving,forge_repair_quality,forge_speed}` (24 навыка total после 0.2.6d / 4.59.4.1) |
 | Текущая тренировка | `state.training.{active,skill_name,timestamp,time_end}` |
 | Работа | `state.work.{work_type,active,hours,salary,start,end}` |
 | Приключение | `state.adventure.{active,name,start_ts,end_ts}` + `state.adventure.counters` (dict с 7 ключами `walk_easy/walk_normal/.../walk_30k`) |
@@ -136,7 +136,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 Меню `gym_menu(state)` позволяет запустить тренировку одного из навыков. На каждый навык рассчитана стоимость следующего уровня по общей таблице `skill_training_table` (`skill_training_data.py`): `steps`, `energy`, `money`, `time` (в секундах).
 
-Пункты меню Gym (23 навыка после 0.2.6a / 4.60):
+Пункты меню Gym (24 навыка после 0.2.6d / 4.59.4.1):
 
 1. Stamina — +1 % к общему количеству шагов.
 2. Energy Max — +1 ед. к максимуму энергии.
@@ -156,7 +156,8 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 20. Размер инвентаря — +1 слот к рюкзаку.
 21. **Кузница: экономия шагов** (`forge_steps_saving`) — -1 % к шагам в ремонте/крафте (0.2.6a / task 4.60).
 22. **Кузница: экономия золота** (`forge_money_saving`) — -1 % к золоту в ремонте/крафте.
-23. **Кузница: качество ремонта** (`forge_repair_quality`) — множитель ×(1+lvl/100) к восстановленному quality за ремонт. Любой из навыков 21-23 ≥1 разблокирует локацию Кузница.
+23. **Кузница: качество ремонта** (`forge_repair_quality`) — множитель ×(1+lvl/100) к восстановленному quality за ремонт.
+24. **Кузница: скорость работы** (`forge_speed`) — -1%/lvl к длительности ремонта/крафта (clamp 1 мин; 4.59.4.1). Любой из навыков 21-24 ≥1 разблокирует локацию Кузница.
 
 При выборе ресурсы списываются через `actions.try_spend(state, steps, energy, money)` (атомарно: либо все хватит и спишется, либо ничего), затем `actions.start_training(state, skill_name, time_end, ...)` выставляет `state.training.active=True`, `state.training.skill_name`, `state.training.time_end = now + time * speed_modifier`. Фактический прирост уровня навыка случится в `skill_training_check_done(state)` на следующем тике главного цикла.
 

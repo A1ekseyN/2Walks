@@ -98,6 +98,7 @@ class GymSkills:
     forge_steps_saving: int = 0          # -1%/level к шагам в forge-операциях (repair + craft)
     forge_money_saving: int = 0          # -1%/level к золоту в forge-операциях (repair + craft)
     forge_repair_quality: int = 0        # +1%/level к восстановленному quality за ремонт (×(1+lvl/100))
+    forge_speed: int = 0                 # 4.59.4 — -1%/level к длительности ремонта/крафта (clamp min 60с)
 
 
 @dataclass
@@ -138,6 +139,24 @@ class AdventureSession:
         'walk_25k': 0,
         'walk_30k': 0,
     })
+
+
+@dataclass
+class ForgeSession:
+    """4.59.4 — таймерная сессия Кузницы (repair / craft).
+
+    `end_ts` — float Unix ts (НЕ datetime: грабли 5.6.1 — _deser_datetime терял).
+    `payload` хранит снапшоты предметов «в кузнице» (capture-into-session):
+    - repair: {'item': <item-dict>, 'percent': int}
+    - craft:  {'sources': [<item-dict>, <item-dict>], 'result': <item-dict>}
+    Предмет(ы) физически убраны из инвентаря/экипировки на старте, возвращаются
+    в инвентарь на финише (forge.forge_check_done).
+    """
+    active: bool = False
+    op_type: Optional[str] = None           # 'repair' | 'craft'
+    end_ts: Optional[float] = None          # float Unix ts завершения
+    timestamp: Optional[float] = None       # float Unix ts старта
+    payload: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -197,6 +216,9 @@ class GameState:
     training: TrainingSession = field(default_factory=TrainingSession)
     work: WorkSession = field(default_factory=WorkSession)
     adventure: AdventureSession = field(default_factory=AdventureSession)
+    # 4.59.4 — таймерная сессия Кузницы (repair/craft). Round-trip через
+    # flat-key 'forge_session' ({} для legacy сейвов).
+    forge: ForgeSession = field(default_factory=ForgeSession)
     equipment: Equipment = field(default_factory=Equipment)
     bank: BankState = field(default_factory=BankState)
     # Item dicts имеют структуру {item_name: [str], bonus: [int], ...} (списки в
@@ -398,6 +420,7 @@ class GameState:
                 forge_steps_saving=int(d.get('forge_steps_saving', 0) or 0),
                 forge_money_saving=int(d.get('forge_money_saving', 0) or 0),
                 forge_repair_quality=int(d.get('forge_repair_quality', 0) or 0),
+                forge_speed=int(d.get('forge_speed', 0) or 0),
             ),
 
             training=TrainingSession(
@@ -441,6 +464,15 @@ class GameState:
                     'walk_25k': int(d.get('adventure_walk_25k_counter', 0)),
                     'walk_30k': int(d.get('adventure_walk_30k_counter', 0)),
                 },
+            ),
+
+            # 4.59.4 — Forge session. flat-key 'forge_session' (dict; {} legacy).
+            forge=ForgeSession(
+                active=bool((d.get('forge_session') or {}).get('active', False)),
+                op_type=(d.get('forge_session') or {}).get('op_type'),
+                end_ts=(d.get('forge_session') or {}).get('end_ts'),
+                timestamp=(d.get('forge_session') or {}).get('timestamp'),
+                payload=dict((d.get('forge_session') or {}).get('payload') or {}),
             ),
 
             equipment=Equipment(
@@ -504,6 +536,7 @@ class GameState:
         self.training = new.training
         self.work = new.work
         self.adventure = new.adventure
+        self.forge = new.forge
         self.equipment = new.equipment
         self.bank = new.bank
         self.inventory = new.inventory
@@ -588,6 +621,7 @@ class GameState:
             'forge_steps_saving': self.gym.forge_steps_saving,
             'forge_money_saving': self.gym.forge_money_saving,
             'forge_repair_quality': self.gym.forge_repair_quality,
+            'forge_speed': self.gym.forge_speed,
 
             # Move optimization
             'move_optimization_adventure': self.gym.move_optimization_adventure,
@@ -605,6 +639,16 @@ class GameState:
             'working_start': self.work.start,
             'working_end': self.work.end,
             'work_longest_shift_hours': self.work.longest_shift_hours,
+
+            # 4.59.4 — Forge session (repair/craft таймер). Вложенный dict,
+            # round-trip-симметрично с from_dict (flat-key 'forge_session').
+            'forge_session': {
+                'active': self.forge.active,
+                'op_type': self.forge.op_type,
+                'end_ts': self.forge.end_ts,
+                'timestamp': self.forge.timestamp,
+                'payload': self.forge.payload,
+            },
 
             # Inventory
             'inventory': self.inventory,

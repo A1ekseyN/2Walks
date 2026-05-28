@@ -72,8 +72,9 @@ def forge_location(state: GameState):
     """
     g = state.gym
     if (g.forge_steps_saving < 1 and g.forge_money_saving < 1
-            and g.forge_repair_quality < 1):
+            and g.forge_repair_quality < 1 and g.forge_speed < 1):
         print('\n🔒 Кузница заблокирована. Прокачай любой навык Кузницы в '
-              'Спортзале (экономия шагов / золота / качество ремонта) до 1 уровня.')
+              'Спортзале (экономия шагов / золота / качество ремонта / скорость) '
+              'до 1 уровня.')
         return
     forge_menu(state)

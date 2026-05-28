@@ -4229,33 +4229,57 @@ Steps 🏃: N, Energy 🔋: M, Money 💰: K $
 
 6. **Gem rarity tuning** ⚠ **TODO на момент реализации 4.59.3.** Drop rate gems из Adventure — нужно подобрать через Monte-Carlo проходы (аналогично 4.29-replacement / `compute_grade_probabilities`). Целевая «редкость»: ~3-5 small gems за неделю, ~1 large за месяц. Учитывать luck multiplier + weekend / multi-day expedition boost. **Критическое balance decision** — при правильной редкости gems становятся «event», при неправильной — мусор или недостижимы.
 
-##### 4.59.4. Forge: таймеры на Repair + Crafting + навык ускорения `[H / M / todo (обсуждено 28.05.2026)]`
+##### 4.59.4. Forge: таймеры на Repair + Crafting + навык ускорения (зонтичная) `[H / M / partial — 4.59.4.1 CLI+ядро done (28.05.2026, 0.2.6d); остался 4.59.4.2 web]`
 
-**Контекст.** Сейчас (4.59.1 / 4.59.2 / 4.48.11) Repair и Crafting — **мгновенные** операции (try_spend → результат сразу). Это нарушает основную game-loop'овую механику 2Walks, где значимые действия занимают время (Work / Gym / Adventure — таймерные сессии, финализируются на тике). Forge должен стать таймерным по тому же паттерну.
+**Контекст.** Сейчас (4.59.1 / 4.59.2 / 4.48.11) Repair и Crafting — **мгновенные** (try_spend → результат сразу). Это выбивается из основной game-loop механики 2Walks, где значимые действия занимают время (Work / Gym / Adventure — таймерные сессии, финализируются на тике). Forge станет таймерным по тому же паттерну.
 
-**Дизайн (зафиксировано 28.05.2026):**
+**Финализированный дизайн (28.05.2026, AskUserQuestion):**
 
 | Решение | Выбор |
 |---|---|
-| Таймер на Repair | **1 час на каждый 1% quality.** Ремонт +35% → 35 часов. |
-| Таймер на Crafting | **По grade источника** (чем выше grade — тем дольше): C-grade 1 ч · B-grade 4 ч · A-grade 8 ч · s-grade 12 ч · S+grade 24 ч. *(уточнить ключ при реализации: tier источника vs результата — S+ как источник невозможен (cap), вероятно это время для крафта **в** S+, т.е. source = s-grade; согласовать таблицу с GRADE_TIER в forge.py).* |
-| Навык ускорения | **Один** новый Gym-навык (например `forge_speed`) — ускоряет И Repair, И Crafting. Достаточно одного (не плодим по операции). Формула по аналогии со Speed / `speed_skill_equipment_and_level_bonus` — `-1%/lvl` к длительности (или процент, согласовать). |
-| Session model | Новая активная сессия (как `state.training` / `state.work` / `state.adventure`) — поле `state.forge_session` (round-trip) + финализатор `forge_check_done(state)` на тике CLI main loop + в `_dashboard_context` (web). |
+| Таймер Repair | **1 час на 1% quality.** Ремонт +35% → 35 ч. (намеренный тайм-синк; с `forge_speed` сжимается, игрок чинит порциями) |
+| Таймер Crafting | **По грейду источника:** 2×C→B = 1ч · 2×B→A = 4ч · 2×A→S = 8ч · 2×S→S+ = 12ч. (S+ нельзя крафтить — строка «S+ 24ч» из черновика отброшена) |
+| Навык `forge_speed` | **Один** новый Gym-навык, ускоряет И Repair, И Crafting. Линейный **−1%/lvl**, СВОЙ хелпер `apply_forge_speed(seconds, state) = max(60, int(seconds × (1 − forge_speed/100)))` (clamp 60 сек — никогда не мгновенно). НЕ через `speed_skill_equipment_and_level_bonus` (Speed остаётся для Work/Gym/Adventure). |
+| **Предмет во время работы** | **Уходит в кузницу** (capture-into-session): на старте предмет(ы) убираются из инвентаря/экипировки в `state.forge_session.payload` (снапшот, round-trip). Пока идёт работа — недоступны (их нет в инвентаре → нельзя продать/надеть/скрафтить, никаких guard'ов в mutation-сайтах). На финише возвращаются в инвентарь. Robust: переживает save/load (identity dict'а не нужна), нет orphan-результатов, **попутно нет overflow** (на старте место освобождается, на финише возвращается ≤ столько же: repair 1→1, craft 2→1). Надетый предмет на ремонт снимается (теряет бонус на время). |
+| Одна операция за раз | Да — одна `ForgeSession`, новая блокируется пока идёт текущая (как Work locked to vacancy). |
+| Отмена | **Нет** (ресурсы списаны на старте, как Work — no refund). |
+| Финиш | Результат → в инвентарь (надетый после ремонта НЕ авто-возвращается в слот — игрок переодевает). |
 
-**Реализация (эскиз):**
-1. `state.py` — `ForgeSession` dataclass (active / op_type 'repair'|'craft' / target item ref / params / time_end / timestamp) + round-trip; новый Gym-навык `forge_speed` (round-trip).
-2. `forge.py` — `repair_item` / `craft_item` больше не применяют результат сразу: стартуют сессию (try_spend ресурсов СРАЗУ, как Work списывает на старте; результат применяется в финализаторе). Helper'ы длительности `repair_duration(percent, state)` / `craft_duration(grade, state)` с учётом `forge_speed`.
-3. `forge_check_done(state)` — финализатор: по таймеру применяет результат (quality boost / новый item), log_event, освобождает сессию. Толерантен к STALE (как другие финализаторы).
-4. Gym (`gym.py` skill_options + `_SKILL_DESCRIPTIONS`, web `_GYM_SKILL_DISPLAY`) — +1 навык `forge_speed` (gym count 23→24).
-5. CLI + web UI — Forge показывает активную сессию + таймер (как Gym/Work), блокирует новую операцию пока идёт текущая (одна forge-сессия за раз, как Work locked to vacancy).
-6. Web: forge-сессия в «⏱ Активные сессии» + session-modal (4.48.10).
+**Session model:**
+```python
+@dataclass
+class ForgeSession:
+    active: bool = False
+    op_type: Optional[str] = None     # 'repair' | 'craft'
+    end_ts: Optional[float] = None    # float (НЕ datetime — грабли 5.6.1)
+    timestamp: Optional[float] = None
+    payload: dict = field(default_factory=dict)
+    # repair: {'item': <снапшот>, 'percent': int} (результат = quality + percent×forge_repair_multiplier)
+    # craft:  {'sources': [<снапшот>, <снапшот>], 'result': {grade/quality/bonus/price}}
+```
 
-**Зависимость:** реализуется **после** 4.48.11 (Forge web instant) — так базовый web-UI уже будет, таймеры надстраиваются. Триумф **Restorer** (4.62.1.11) учитывает восстановленный quality — финализатор должен звать тот же `register_event`/`log_event('item_repaired')` что и сейчас (на момент применения результата, не старта).
+###### 4.59.4.1. CLI + общее ядро `[H / M / done (28.05.2026, 0.2.6d)]`
 
-**Open questions для реализации:**
-- Точный ключ craft-таблицы времени (tier источника, согласовать с «S+grade 24 ч»).
-- Формула `forge_speed` — линейный `-1%/lvl` (как move_optimization) или через общий `speed_skill_equipment_and_level_bonus`? Скорее отдельный линейный (Speed уже занят длительностью Work/Gym/Adventure).
-- Можно ли отменить активную forge-операцию (refund ресурсов)? По аналогии с Work — нет (списано на старте).
+**✅ Реализовано (28.05.2026, 0.2.6d).** `state.ForgeSession` (op_type/`end_ts: float`/payload, round-trip flat-key `forge_session`) + навык `forge_speed` (gym 23→24, gate расширен). `bonus.apply_forge_speed` (−1%/lvl, clamp 60с). `forge.repair_duration` (1ч/1%) / `craft_duration` (C/B/A/S=1/4/8/12ч). `start_repair_session` / `start_craft_session` (списание + **capture предмета в сессию** + таймер); `forge_check_done` финализатор (save-first atomic + STALE-rollback; `log_event` на финише → Restorer/Investor там же); `repair_item`/`craft_item` остались instant-apply (финализатор + interim web). CLI `forge_menu` блокирует новую операцию при active + показывает таймер (`_print_active_forge_session`); `_repair_preview_and_apply`/`_craft_preview_and_confirm` зовут `start_*`. Хук в `game.py` main loop. **Тесты:** +21. 1410 passed, mypy 0 issues.
+
+Общая инфраструктура (нужна и CLI, и web) + CLI UI.
+1. `state.py` — `ForgeSession` dataclass + round-trip (flat-key `forge_session`, {} для legacy); навык `forge_speed: int = 0` в `GymSkills` + round-trip.
+2. `bonus.py` — `apply_forge_speed(seconds, state) -> int` (линейный −1%/lvl, clamp 60).
+3. `forge.py` — хелперы длительности `repair_duration(percent, state)` / `craft_duration(source_grade, state)` (база×3600 сек, через `apply_forge_speed`); `start_repair_session(state, item, percent)` / `start_craft_session(state, a, b)` — try_spend ресурсов СРАЗУ + capture предмет(ы) в сессию + `end_ts = now + duration`; текущие `repair_item`/`craft_item` остаются как «применить результат» (зовёт финализатор + interim-web). `forge_check_done(state)` — финализатор save-first atomic (rollback на STALE, как `work_check_done`): по таймеру применяет результат (repair — quality boost через `forge_repair_multiplier`; craft — новый item), `log_event('item_repaired'/'item_crafted')` (Restorer/Investor триумфы учтутся на финише, не старте), возвращает предмет(ы) в инвентарь, чистит сессию.
+4. `gym.py` (`skill_options` + `_SKILL_DESCRIPTIONS`) + web `_GYM_SKILL_DISPLAY` — +1 навык `forge_speed` (gym 23→24; gym shared CLI/web — правится здесь).
+5. CLI `forge.py` UI — `forge_menu` показывает активную сессию + countdown (как gym_menu при active training) и блокирует новую операцию; `_do_repair`/`_do_craft` зовут `start_*`. Хук `forge_check_done` в `game.py` main loop (между `skill_training_check_done` и `status_bar`).
+6. **Тесты:** round-trip ForgeSession; duration helpers + forge_speed clamp; start (списание + capture); finalizer (apply on time / save-first rollback / Restorer log на финише); CLI UI (active session render + block).
+
+###### 4.59.4.2. Web `[H / S / todo — blocked by 4.59.4.1]`
+
+UI-надстройка (ядро уже готово). До этой задачи web-endpoints продолжают звать instant `repair_item`/`craft_item` (web остаётся мгновенным — no breakage).
+1. `_dashboard_context` — добавить `forge_check_done(state)` (рядом с work/skill финализаторами) + persist при transition.
+2. `_build_forge_view` — показывать активную forge-сессию (op_type / предмет / countdown) + блокировать формы repair/craft пока active.
+3. Web-endpoints `/web|api/forge/repair` + `/web/forge/craft` — переключить на `start_*` (вместо instant apply).
+4. Forge-сессия в «⏱ Активные сессии» + session-modal (4.48.10) — детали (Прошло/Осталось/Длительность/op-специфика).
+5. **Тесты:** endpoint стартует сессию (не применяет сразу); active session в view блокирует новую; финализатор в dashboard_context.
+
+**Зависимость:** Restorer (4.62.1.11) / Investor (4.62.1.12) — `log_event` на финише (текущий payload не меняется). gym count 23→24 — обновить доку (`docs/game_console.md`, CLAUDE.md) при 4.59.4.1.
 
 ---
 

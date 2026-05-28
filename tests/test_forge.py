@@ -4,6 +4,7 @@
 4.59.1 — Repair: pure helpers (cost / max / candidates / apply) + UI flow.
 4.60   — Forge skills: forge_steps_saving / forge_money_saving (экономия
          на repair+craft) + forge_repair_quality (множитель восстановления).
+4.59.4 — Таймеры на Repair/Crafting + навык forge_speed + capture-in-session.
 """
 
 import pytest
@@ -11,18 +12,24 @@ import pytest
 from state import GameState
 from forge import (
     craft_item,
+    craft_duration,
     crafting_cost,
     crafting_cost_effective,
     find_craftable_groups,
+    forge_check_done,
     forge_menu,
     max_repair_percent,
     repair_candidates,
     repair_cost,
     repair_cost_effective,
+    repair_duration,
     repair_item,
+    start_craft_session,
+    start_repair_session,
 )
 from bonus import (
     apply_forge_money_saving,
+    apply_forge_speed,
     apply_forge_steps_saving,
     forge_repair_multiplier,
 )
@@ -281,23 +288,29 @@ def test_repair_menu_back_to_forge(monkeypatch, capsys):
 
 
 def test_repair_flow_full_success(monkeypatch, capsys):
-    """Полный flow: выбор предмета → ввод процентов → ремонт."""
+    """4.59.4 — flow: выбор предмета → ввод % → СТАРТ таймерного ремонта.
+    Результат применится в forge_check_done по таймеру (не сразу)."""
     state = GameState.default_new_game()
     state.steps.can_use = 10_000
     state.money = 1_000.0
     state.energy = 100
     state.equipment.head = _make_item(item_type='helmet', grade='a-grade',
                                        quality=50.0)
-    # Repair → выбрать предмет 1 → восстановить 10% → выйти из Forge
-    inputs = iter(['1', '1', '10', '0'])
+    # Repair → выбрать предмет 1 → восстановить 10% (после старта меню сразу
+    # покажет активную сессию и выйдет — '0' не понадобится)
+    inputs = iter(['1', '1', '10'])
     monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
 
     forge_menu(state)
 
     out = capsys.readouterr().out
-    assert 'Ремонт +10%' in out
-    assert state.equipment.head['quality'][0] == 60.0
+    assert 'Ремонт начат: +10%' in out
+    # Предмет ушёл в кузницу (слот пуст), ресурсы списаны, сессия активна.
+    assert state.equipment.head is None
     assert state.steps.can_use == 0
+    assert state.forge.active is True
+    assert state.forge.op_type == 'repair'
+    assert state.forge.payload['item']['quality'][0] == 50.0  # ещё не применено
 
 
 def test_repair_flow_insufficient_resources_shows_message(monkeypatch, capsys):
@@ -647,7 +660,8 @@ def test_craft_menu_lists_groups(monkeypatch, capsys):
 
 
 def test_craft_flow_full_success(monkeypatch, capsys):
-    """Полный flow: список → выбор группы → выбор 2 → yes → success."""
+    """4.59.4 — flow: список → группа → 2 предмета → yes → СТАРТ таймерного
+    крафта. Источники уходят в кузницу, результат появится по таймеру."""
     state = GameState.default_new_game()
     state.steps.can_use = 5000
     state.money = 500.0
@@ -656,17 +670,21 @@ def test_craft_flow_full_success(monkeypatch, capsys):
         _make_item('ring', 'b-grade', 60.0, 'luck', 2),
         _make_item('ring', 'b-grade', 80.0, 'luck', 2),
     ])
-    # Craft → выбрать группу 1 → выбрать "1,2" → yes → выйти Forge
-    inputs = iter(['2', '1', '1,2', 'yes', '0'])
+    # Craft → выбрать группу 1 → выбрать "1,2" → yes (после старта меню покажет
+    # активную сессию и выйдет)
+    inputs = iter(['2', '1', '1,2', 'yes'])
     monkeypatch.setattr('builtins.input', lambda *a, **k: next(inputs))
 
     forge_menu(state)
 
     out = capsys.readouterr().out
-    assert 'Создан' in out
+    assert 'Крафт начат' in out
     assert 'a-grade' in out
-    assert len(state.inventory) == 1
-    assert state.inventory[0]['grade'][0] == 'a-grade'
+    # Источники ушли в кузницу (инвентарь пуст), результат в сессии.
+    assert len(state.inventory) == 0
+    assert state.forge.active is True
+    assert state.forge.op_type == 'craft'
+    assert state.forge.payload['result']['grade'][0] == 'a-grade'
     assert state.steps.can_use == 3000
 
 
@@ -927,3 +945,221 @@ def test_restorer_count_delta_reads_boosted_to_quality():
     assert cd({'from_quality': 50.0, 'to_quality': 51.1}) == pytest.approx(1.1)
     # boosted ×1.5: 10% → +15
     assert cd({'from_quality': 50.0, 'to_quality': 65.0}) == pytest.approx(15.0)
+
+
+# ===== 4.59.4 — Таймеры Repair/Crafting + forge_speed + capture-in-session =====
+
+import time as _time
+
+
+def _forge_state(steps=1_000_000, money=1_000_000.0, energy=100_000):
+    """State с ресурсами + разблокированной Кузницей (forge_speed=0 по умолчанию)."""
+    state = GameState.default_new_game()
+    state.steps.can_use = steps
+    state.money = money
+    state.energy = energy
+    return state
+
+
+# ----- duration helpers + forge_speed -----
+
+def test_repair_duration_base():
+    """1% = 1 час (3600 сек); линейно по percent (forge_speed=0)."""
+    state = _forge_state()
+    assert repair_duration(1, state) == 3600
+    assert repair_duration(10, state) == 36000
+
+
+def test_craft_duration_by_source_grade():
+    """C/B/A/S = 1/4/8/12 ч (forge_speed=0)."""
+    state = _forge_state()
+    assert craft_duration('c-grade', state) == 3600
+    assert craft_duration('b-grade', state) == 4 * 3600
+    assert craft_duration('a-grade', state) == 8 * 3600
+    assert craft_duration('s-grade', state) == 12 * 3600
+
+
+def test_apply_forge_speed_linear_and_clamp():
+    state = _forge_state()
+    assert apply_forge_speed(36000, state) == 36000          # skill 0
+    state.gym.forge_speed = 50
+    assert apply_forge_speed(36000, state) == 18000          # -50%
+    state.gym.forge_speed = 100
+    assert apply_forge_speed(36000, state) == 60             # clamp 60с (не 0)
+
+
+def test_repair_duration_with_forge_speed():
+    state = _forge_state()
+    state.gym.forge_speed = 50
+    assert repair_duration(10, state) == 18000  # 36000 × 0.5
+
+
+# ----- start_repair_session (capture) -----
+
+def test_start_repair_session_captures_from_inventory():
+    state = _forge_state()
+    item = _make_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.inventory.append(item)
+    ok = start_repair_session(state, item, 10)
+    assert ok is True
+    # Предмет ушёл в кузницу (из инвентаря), сессия активна, ресурсы списаны.
+    assert item not in state.inventory
+    assert state.forge.active is True
+    assert state.forge.op_type == 'repair'
+    assert state.forge.payload['item'] is item
+    assert state.forge.payload['percent'] == 10
+    assert state.steps.can_use == 1_000_000 - 10_000
+
+
+def test_start_repair_session_captures_from_equipment():
+    state = _forge_state()
+    item = _make_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.equipment.foots = item
+    ok = start_repair_session(state, item, 5)
+    assert ok is True
+    assert state.equipment.foots is None  # снят в кузницу
+    assert state.forge.payload['item'] is item
+
+
+def test_start_repair_session_rejects_when_active():
+    state = _forge_state()
+    i1 = _make_item(quality=50.0)
+    i2 = _make_item(quality=40.0)
+    state.inventory.extend([i1, i2])
+    assert start_repair_session(state, i1, 5) is True
+    # Вторая операция — отказ (одна за раз).
+    assert start_repair_session(state, i2, 5) is False
+    assert i2 in state.inventory  # не тронут
+
+
+def test_start_repair_session_rejects_over_max():
+    state = _forge_state(steps=3000)  # хватает ~ на 3%
+    item = _make_item(quality=10.0)
+    state.inventory.append(item)
+    assert start_repair_session(state, item, 50) is False
+    assert state.forge.active is False
+    assert item in state.inventory  # без мутаций
+
+
+# ----- start_craft_session (capture sources) -----
+
+def test_start_craft_session_captures_sources():
+    state = _forge_state()
+    a = _make_item('ring', 'b-grade', 60.0, 'luck', 2)
+    b = _make_item('ring', 'b-grade', 80.0, 'luck', 2)
+    state.inventory.extend([a, b])
+    result = start_craft_session(state, a, b)
+    assert result is not None
+    assert result['grade'][0] == 'a-grade'
+    assert result['quality'][0] == 70.0
+    # Источники ушли в кузницу, результат в сессии (НЕ в инвентаре).
+    assert len(state.inventory) == 0
+    assert state.forge.active is True
+    assert state.forge.op_type == 'craft'
+    assert state.forge.payload['result'] is result
+    assert state.forge.payload['to_grade'] == 'a-grade'
+
+
+def test_start_craft_session_rejects_when_active():
+    state = _forge_state()
+    a = _make_item('ring', 'b-grade', 60.0, 'luck', 2)
+    b = _make_item('ring', 'b-grade', 80.0, 'luck', 2)
+    c = _make_item('ring', 'c-grade', 50.0, 'luck', 1)
+    d = _make_item('ring', 'c-grade', 50.0, 'luck', 1)
+    state.inventory.extend([a, b, c, d])
+    assert start_craft_session(state, a, b) is not None
+    assert start_craft_session(state, c, d) is None  # одна за раз
+
+
+# ----- forge_check_done (финализатор) -----
+
+def test_forge_check_done_not_due_noop():
+    """Таймер ещё идёт → no-op."""
+    state = _forge_state()
+    item = _make_item(quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    assert state.forge.active is True
+    forge_check_done(state)  # end_ts в будущем
+    assert state.forge.active is True  # не финализировано
+
+
+def test_forge_check_done_repair_applies(monkeypatch):
+    """Таймер истёк → quality применяется (с forge_repair_quality множителем),
+    предмет в инвентаре, сессия очищена."""
+    monkeypatch.setattr('persistence.save_characteristic', lambda: "OK")
+    state = _forge_state()
+    state.gym.forge_repair_quality = 50  # ×1.5
+    item = _make_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    state.forge.end_ts = _time.time() - 1  # таймер истёк
+    forge_check_done(state)
+    assert state.forge.active is False
+    # 50 + 10×1.5 = 65
+    assert item['quality'][0] == pytest.approx(65.0)
+    assert item in state.inventory
+
+
+def test_forge_check_done_craft_applies(monkeypatch):
+    """Таймер истёк → результат крафта в инвентаре, сессия очищена."""
+    monkeypatch.setattr('persistence.save_characteristic', lambda: "OK")
+    state = _forge_state()
+    a = _make_item('ring', 'b-grade', 60.0, 'luck', 2)
+    b = _make_item('ring', 'b-grade', 80.0, 'luck', 2)
+    state.inventory.extend([a, b])
+    result = start_craft_session(state, a, b)
+    state.forge.end_ts = _time.time() - 1
+    forge_check_done(state)
+    assert state.forge.active is False
+    assert len(state.inventory) == 1
+    assert state.inventory[0] is result
+    assert state.inventory[0]['grade'][0] == 'a-grade'
+
+
+def test_forge_check_done_stale_rollback(monkeypatch):
+    """save STALE → откат: сессия восстановлена, quality не применён."""
+    monkeypatch.setattr('persistence.save_characteristic', lambda: "STALE")
+    state = _forge_state()
+    item = _make_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    state.forge.end_ts = _time.time() - 1
+    forge_check_done(state)
+    # Откат: сессия активна снова, quality НЕ применён, предмет не в инвентаре.
+    assert state.forge.active is True
+    assert state.forge.op_type == 'repair'
+    assert item['quality'][0] == 50.0
+    assert item not in state.inventory
+    assert state.finalize_stale is True
+
+
+def test_forge_session_round_trip():
+    """ForgeSession переживает to_dict/from_dict."""
+    state = _forge_state()
+    item = _make_item(quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    restored = GameState.from_dict(state.to_dict())
+    assert restored.forge.active is True
+    assert restored.forge.op_type == 'repair'
+    assert restored.forge.payload['percent'] == 10
+    assert restored.forge.end_ts == state.forge.end_ts
+
+
+def test_forge_menu_blocks_when_active(monkeypatch, capsys):
+    """4.59.4 — при активной сессии меню показывает таймер и выходит
+    (новую операцию начать нельзя)."""
+    state = _forge_state()
+    item = _make_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    # Пытаемся войти в меню — input не должен запрашиваться (сразу return).
+    monkeypatch.setattr('builtins.input',
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError('меню не должно спрашивать выбор при active')))
+    forge_menu(state)
+    out = capsys.readouterr().out
+    assert 'Идёт ремонт' in out
+    assert 'Завершится через' in out
+    assert state.forge.active is True

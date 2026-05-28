@@ -27,6 +27,7 @@ from functions import (
     energy_time_charge,
     status_bar,
 )
+from forge import forge_check_done
 from google_sheets_db import GameStateRepo, StepsLogRepo
 from gym import skill_training_check_done
 from inventory import inventory_menu
@@ -183,6 +184,7 @@ def play():
                 energy_time_charge(state)
                 work_check_done(state)
                 skill_training_check_done(state)
+                forge_check_done(state)  # 4.59.4 — финализатор Кузницы (repair/craft)
 
                 # 4.50.1 — Auto-collect pending drop если место освободилось
                 # (например, прокачали backpack_skill в Gym или продали предмет).

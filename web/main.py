@@ -525,6 +525,12 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "effect": "+1 % к восстановленному качеству за ремонт",
         "available": True,
     },
+    "forge_speed": {
+        "title": "Кузница: скорость работы", "icon": "🔨",
+        "field": "forge_speed",
+        "effect": "-1 % к длительности ремонта/крафта (4.59.4)",
+        "available": True,
+    },
 }
 
 

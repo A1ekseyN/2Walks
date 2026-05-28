@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 70 ключей legacy save format (69 + last_modified)."""
+    """to_dict() возвращает все 72 ключа legacy save format (71 + last_modified)."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -333,6 +333,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'backpack_skill',
         # 4.60 — Forge resource-saving + quality skills
         'forge_steps_saving', 'forge_money_saving', 'forge_repair_quality',
+        # 4.59.4 — Forge speed skill
+        'forge_speed',
         'move_optimization_adventure', 'move_optimization_gym',
         'move_optimization_work',
         'energy_optimization_adventure', 'energy_optimization_gym',
@@ -369,6 +371,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'unclaimed_unlocks',
         # 4.62.1.5.1 — Iron Worker longest single shift
         'work_longest_shift_hours',
+        # 4.59.4 — Forge timer session (repair/craft)
+        'forge_session',
         # 4.54.1 — Optimistic concurrency
         'last_modified',
     }
