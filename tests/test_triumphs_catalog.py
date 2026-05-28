@@ -988,9 +988,11 @@ class TestRestorer:
         assert 'metric' not in spec
 
     def test_restorer_count_delta_is_quality_restored(self):
+        # 4.60 — count_delta БЕЗ округления (forge_repair_quality даёт дробный
+        # буск, точность важна для прогресса триумфа).
         cd = TRIUMPHS['restorer']['count_delta']
-        assert cd({'from_quality': 0.0, 'to_quality': 100.0}) == 100   # полный
-        assert cd({'from_quality': 50.5, 'to_quality': 80.3}) == 30     # частичный (round)
+        assert cd({'from_quality': 0.0, 'to_quality': 100.0}) == 100.0  # полный
+        assert cd({'from_quality': 50.5, 'to_quality': 80.3}) == pytest.approx(29.8)  # дробный
         assert cd({}) == 0                                             # graceful
 
     def test_restorer_accumulates_quality(self):

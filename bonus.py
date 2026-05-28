@@ -250,3 +250,29 @@ def energy_regen_interval(base_seconds: int, state: GameState) -> int:
     """
     total = state.gym.energy_regen_skill + state.char_level.skill_energy_regen
     return int(base_seconds - (base_seconds / 100) * total)
+
+
+# --- 4.60 — Forge skills (28.05.2026) ---
+
+def apply_forge_steps_saving(cost: int, state: GameState) -> int:
+    """-1%/level (state.gym.forge_steps_saving) к шагам forge-операций (repair/craft).
+    Линейная, clamp min=0. int (шаги дискретны)."""
+    skill = state.gym.forge_steps_saving
+    if skill <= 0:
+        return cost
+    return max(0, int(round(cost * (1 - min(skill, 100) / 100))))
+
+
+def apply_forge_money_saving(cost: float, state: GameState) -> float:
+    """-1%/level (state.gym.forge_money_saving) к золоту forge-операций (repair/craft).
+    Линейная, clamp min=0, round до 2 знаков."""
+    skill = state.gym.forge_money_saving
+    if skill <= 0:
+        return round(float(cost), 2)
+    return round(max(0.0, cost * (1 - min(skill, 100) / 100)), 2)
+
+
+def forge_repair_multiplier(state: GameState) -> float:
+    """Множитель восстановленного quality за ремонт: 1 + forge_repair_quality/100.
+    Lvl 0 → ×1.0 (без изменений), lvl 10 → ×1.1, lvl 30 → ×1.3."""
+    return 1.0 + state.gym.forge_repair_quality / 100.0

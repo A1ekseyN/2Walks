@@ -83,11 +83,43 @@ def test_bank_location_opens_menu(monkeypatch, capsys):
 
 def test_forge_location_opens_menu(monkeypatch, capsys):
     """4.59.0 — forge_location вызывает интерактивное меню Кузницы.
-    Передаём '0' (Назад) — меню должно отрисоваться и сразу вернуться."""
+    Передаём '0' (Назад) — меню должно отрисоваться и сразу вернуться.
+    4.60 — нужен прокачанный forge-навык (иначе локация заблокирована)."""
     state = GameState.default_new_game()
+    state.gym.forge_repair_quality = 1  # разблокирует Кузницу
     monkeypatch.setattr('builtins.input', lambda *args, **kwargs: '0')
     forge_location(state)
     out = capsys.readouterr().out
     assert '🔨 Кузница' in out
     assert 'Отремонтировать предмет' in out
     assert 'Улучшить Grade предмета' in out
+
+
+def test_forge_location_locked_without_skill(monkeypatch, capsys):
+    """4.60 — без прокачанного forge-навыка Кузница заблокирована:
+    печатает сообщение о блокировке и НЕ открывает меню (input не вызывается)."""
+    state = GameState.default_new_game()
+    assert state.gym.forge_steps_saving == 0
+    assert state.gym.forge_money_saving == 0
+    assert state.gym.forge_repair_quality == 0
+
+    def _fail_input(*args, **kwargs):
+        raise AssertionError('меню не должно запрашивать ввод при блокировке')
+
+    monkeypatch.setattr('builtins.input', _fail_input)
+    forge_location(state)
+    out = capsys.readouterr().out
+    assert '🔒' in out
+    assert 'заблокирована' in out
+    assert 'Отремонтировать предмет' not in out
+
+
+def test_forge_location_unlocks_with_any_forge_skill(monkeypatch, capsys):
+    """4.60 — достаточно одного из трёх forge-навыков ≥1 для разблокировки."""
+    for skill in ('forge_steps_saving', 'forge_money_saving', 'forge_repair_quality'):
+        state = GameState.default_new_game()
+        setattr(state.gym, skill, 1)
+        monkeypatch.setattr('builtins.input', lambda *args, **kwargs: '0')
+        forge_location(state)
+        out = capsys.readouterr().out
+        assert '🔨 Кузница' in out, f'{skill} должен разблокировать Кузницу'

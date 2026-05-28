@@ -478,7 +478,8 @@ TRIUMPHS: dict[str, dict] = {
         'category': 'money',
         'tiers': [1_000, 10_000, 50_000, 250_000, 1_000_000],
         'event_hooks': ['skill_train_start'],
-        'count_delta': lambda p: p.get('cost_money', 0),
+        # int() — деньги счётчиком целым (движок с 4.60 не int-кастит сам).
+        'count_delta': lambda p: int(p.get('cost_money', 0)),
     },
 
     # ----- 🔥 Streak (4.62.1.9 part: Total days played, 27.05.2026) -----
@@ -516,7 +517,9 @@ TRIUMPHS: dict[str, dict] = {
         'category': 'forge',
         'tiers': [25, 50, 100, 500, 1000],
         'event_hooks': ['item_repaired'],
-        'count_delta': lambda p: max(0, round(p.get('to_quality', 0) - p.get('from_quality', 0))),
+        # 4.60 — БЕЗ round: копим дробное quality точно (forge_repair_quality
+        # даёт дробный буст). Движок не int-кастит (см. triumphs.register_event).
+        'count_delta': lambda p: max(0.0, p.get('to_quality', 0) - p.get('from_quality', 0)),
     },
 }
 

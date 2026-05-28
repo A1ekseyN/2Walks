@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 67 ключей legacy save format (66 + last_modified)."""
+    """to_dict() возвращает все 70 ключей legacy save format (69 + last_modified)."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -331,6 +331,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'banking_interest_rate', 'loan_capacity', 'loan_interest_reduction',
         'inspiration', 'money_saving', 'earnings_boost', 'trader',
         'backpack_skill',
+        # 4.60 — Forge resource-saving + quality skills
+        'forge_steps_saving', 'forge_money_saving', 'forge_repair_quality',
         'move_optimization_adventure', 'move_optimization_gym',
         'move_optimization_work',
         'energy_optimization_adventure', 'energy_optimization_gym',

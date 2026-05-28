@@ -94,6 +94,10 @@ class GymSkills:
     earnings_boost: int = 0              # 4.23 — +1%/level к зарплате (только Work). Линейный без cap, на lvl=100 удвоение дохода
     trader: int = 0             # 4.28 — +1%/level к цене продажи предметов. Линейный без cap, на lvl=100 удвоение
     backpack_skill: int = 0              # 4.50 — +1 слот к инвентарю за уровень. Base = 10, cap = 10 + skill
+    # 4.60 — Forge skills (28.05.2026). Прокачка любого ≥1 разблокирует локацию Кузница.
+    forge_steps_saving: int = 0          # -1%/level к шагам в forge-операциях (repair + craft)
+    forge_money_saving: int = 0          # -1%/level к золоту в forge-операциях (repair + craft)
+    forge_repair_quality: int = 0        # +1%/level к восстановленному quality за ремонт (×(1+lvl/100))
 
 
 @dataclass
@@ -391,6 +395,9 @@ class GameState:
                 earnings_boost=int(d.get('earnings_boost', 0)),
                 trader=int(d.get('trader', 0)),
                 backpack_skill=int(d.get('backpack_skill', 0)),
+                forge_steps_saving=int(d.get('forge_steps_saving', 0) or 0),
+                forge_money_saving=int(d.get('forge_money_saving', 0) or 0),
+                forge_repair_quality=int(d.get('forge_repair_quality', 0) or 0),
             ),
 
             training=TrainingSession(
@@ -578,6 +585,9 @@ class GameState:
             'earnings_boost': self.gym.earnings_boost,
             'trader': self.gym.trader,
             'backpack_skill': self.gym.backpack_skill,
+            'forge_steps_saving': self.gym.forge_steps_saving,
+            'forge_money_saving': self.gym.forge_money_saving,
+            'forge_repair_quality': self.gym.forge_repair_quality,
 
             # Move optimization
             'move_optimization_adventure': self.gym.move_optimization_adventure,

@@ -142,12 +142,15 @@ def register_event(state, event_type: str, **payload) -> list[dict]:
             # Optional delta function (например work_done +hours).
             delta_fn = spec.get('count_delta', lambda _p: 1)
             try:
-                delta = int(delta_fn(payload))
+                # 4.60 — НЕ int-кастим: count_delta может вернуть float (Restorer
+                # копит дробное quality точно). int-триумфы возвращают int → count
+                # остаётся int. Сравнение/дисплей через _read_current_value (int).
+                delta = delta_fn(payload)
             except Exception:  # noqa: BLE001
                 delta = 1
             if delta > 0:
                 triumph_state = _ensure_triumph_state(state, triumph_id)
-                triumph_state['count'] = int(triumph_state.get('count', 0)) + delta
+                triumph_state['count'] = triumph_state.get('count', 0) + delta
 
         # 2. Recheck tier unlocks (works for both metric и event-based).
         current_value = _read_current_value(state, spec_with_id)
@@ -703,7 +706,7 @@ def _replay_events_into_counters(state, events: list[dict]) -> dict[str, int]:
                     continue
             delta_fn = spec.get('count_delta', lambda _p: 1)
             try:
-                delta = int(delta_fn(payload))
+                delta = delta_fn(payload)  # 4.60 — float-safe (см. register_event)
             except Exception:  # noqa: BLE001
                 delta = 1
             if delta > 0:

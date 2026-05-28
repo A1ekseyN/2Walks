@@ -506,6 +506,25 @@ _GYM_SKILL_DISPLAY: dict[str, dict[str, Any]] = {
         "effect": "+1 слот к рюкзаку (база 10)",
         "available": True,
     },
+    # 4.60 — Forge skills (28.05.2026). Любой ≥1 разблокирует локацию Кузница (CLI).
+    "forge_steps_saving": {
+        "title": "Кузница: экономия шагов", "icon": "🔨",
+        "field": "forge_steps_saving",
+        "effect": "-1 % к шагам в Кузнице (ремонт/крафт)",
+        "available": True,
+    },
+    "forge_money_saving": {
+        "title": "Кузница: экономия золота", "icon": "🔨",
+        "field": "forge_money_saving",
+        "effect": "-1 % к золоту в Кузнице (ремонт/крафт)",
+        "available": True,
+    },
+    "forge_repair_quality": {
+        "title": "Кузница: качество ремонта", "icon": "🔨",
+        "field": "forge_repair_quality",
+        "effect": "+1 % к восстановленному качеству за ремонт",
+        "available": True,
+    },
 }
 
 

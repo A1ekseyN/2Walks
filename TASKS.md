@@ -4207,7 +4207,21 @@ Steps 🏃: N, Energy 🔋: M, Money 💰: K $
 
 ---
 
-### 4.60. Forge resource saving skills (3 навыка экономии для Кузницы) `[L / S / todo (14.05.2026, выделена из 4.59 — реализация после MVP)]`
+### 4.60. Forge resource saving skills + gate разблокировки `[L / S / done (28.05.2026, 0.2.6a)]`
+
+**✅ Реализовано (28.05.2026, 0.2.6a) — скоуп уточнён vs первоначального плана:**
+- 3 навыка вместо «3 экономии»: `forge_steps_saving` (−1%/lvl шаги), `forge_money_saving` (−1%/lvl золото), **`forge_repair_quality`** (множитель ×(1+lvl/100) к восстановленному quality за ремонт — на 10 lvl 1% ремонта даёт +1.1%).
+- **Energy-навык НЕ вводим** (решение 28.05.2026) — энергия в forge-операциях без скидки. `forge_energy_saving` из первоначального плана отменён.
+- Экономия применяется к **Repair И Crafting** (gem-combining — когда/если будет 4.59.3).
+- **Gate разблокировки локации:** Кузница заблокирована, пока любой из 3 навыков не прокачан до ≥1 (симметрично Банку с `banking_interest_rate`). `locations.forge_location` печатает 🔒-сообщение и `return` без открытия меню.
+- **Restorer (4.62.1.11) учитывает дробный буст без округления** → движок triumphs перестал int-кастить `count_delta` (`register_event` + `_replay_events_into_counters`); count хранится float, tier-сравнение/дисплей через `_read_current_value` остаётся int. `Investor.count_delta` обёрнут `int()`.
+- Формула экономии: `max(0, int(round(cost × (1 − min(skill,100)/100))))` для шагов (clamp 0, не min=1 как у energy_optimization — ремонт МОЖЕТ быть бесплатным при skill=100); money — `round(..., 2)` float.
+- Файлы: `state.py` (+3 поля round-trip), `bonus.py` (3 helper'а), `forge.py` (`repair_cost_effective` / `crafting_cost_effective` + `repair_item` множитель + `max_repair_percent` учёт скидок), `locations.py` (gate), `gym.py` (skill_options 21-23 + `_SKILL_DESCRIPTIONS`), `web/main.py` (`_GYM_SKILL_DISPLAY` 3 entries 🔨).
+- **Тесты:** +21 (bonus helpers / effective cost / quality boost / savings / max_repair_percent / unlock gate / Restorer float-precision; обновлены gym-count 20→23 + state legacy keys 67→70). 1383 passed, mypy 0 issues.
+
+---
+
+**Исходный план (для истории — частично изменён при реализации):**
 
 **Низкоприоритетный follow-up для 4.59.** В MVP Кузницы (4.59.0 / 4.59.1 / 4.59.2) — операции Repair и Crafting используют фиксированные cost'ы без skill'ов экономии. Эта задача добавляет 3 раздельных skill'а в pattern существующих `energy_optimization_*` / `move_optimization_*`.
 

@@ -60,9 +60,11 @@ def max_repair_percent(state: GameState, item: dict) -> int:
     headroom = max(0, int(100 - quality))
     if headroom == 0:
         return 0
-    by_steps = state.steps.can_use // REPAIR_STEPS_PER_PERCENT
-    by_money = int(state.money) // REPAIR_MONEY_PER_PERCENT
-    by_energy = state.energy // REPAIR_ENERGY_PER_PERCENT
+    # 4.60 — эффективная цена за 1% с учётом forge-скидок (steps/money).
+    eff_steps, eff_money, eff_energy = repair_cost_effective(1, state)
+    by_steps = headroom if eff_steps <= 0 else state.steps.can_use // eff_steps
+    by_money = headroom if eff_money <= 0 else int(state.money // eff_money)
+    by_energy = headroom if eff_energy <= 0 else state.energy // eff_energy
     return min(headroom, by_steps, by_money, by_energy)
 
 
@@ -147,11 +149,14 @@ def repair_item(state: GameState, item: dict, percent: int) -> bool:
     max_pct = max_repair_percent(state, item)
     if percent > max_pct:
         return False
-    steps, money, energy = repair_cost(percent)
+    steps, money, energy = repair_cost_effective(percent, state)
     from_quality = item['quality'][0]
     if not try_spend(state, steps=steps, energy=energy, money=float(money)):
         return False
-    item['quality'][0] = min(100.0, from_quality + percent)
+    # 4.60 — forge_repair_quality: восстанавливаем percent × множитель (≥1).
+    from bonus import forge_repair_multiplier
+    restored = percent * forge_repair_multiplier(state)
+    item['quality'][0] = min(100.0, from_quality + restored)
     _recalc_item_price(item)
     from history import log_event
     log_event(
@@ -204,11 +209,16 @@ def _c_quality(quality) -> str:
     return f'{color}{quality}{Style.RESET_ALL}'
 
 
-def _fmt_cost(steps: int, money: int, energy: int, sep: str = ' + ',
+def _fmt_cost(steps: int, money: float, energy: int, sep: str = ' + ',
               energy_word: str = 'эн') -> str:
-    """Цветной cost-string: 'X шагов + Y $ + Z эн' с status_bar-цветами."""
+    """Цветной cost-string: 'X шагов + Y $ + Z эн' с status_bar-цветами.
+
+    money может быть float (forge-скидки округляют до 2 знаков) — целые
+    значения показываем без хвоста '.0'.
+    """
+    money_disp: object = int(money) if float(money).is_integer() else round(money, 2)
     return (f'{_c_steps(steps)} шагов{sep}'
-            f'{_c_money(money)} ${sep}'
+            f'{_c_money(money_disp)} ${sep}'
             f'{_c_energy(energy)} {energy_word}')
 
 
@@ -270,7 +280,7 @@ def _repair_preview_and_apply(state: GameState, item: dict) -> None:
     quality = item['quality'][0]
     headroom = max(0, int(100 - quality))
     max_pct = max_repair_percent(state, item)
-    full_steps, full_money, full_energy = repair_cost(headroom)
+    full_steps, full_money, full_energy = repair_cost_effective(headroom, state)
 
     item_type = item.get('item_type', ['?'])[0]
     grade = item.get('grade', ['?'])[0]
@@ -298,7 +308,7 @@ def _repair_preview_and_apply(state: GameState, item: dict) -> None:
         return
 
     new_quality = item['quality'][0]
-    steps_spent, money_spent, energy_spent = repair_cost(pct)
+    steps_spent, money_spent, energy_spent = repair_cost_effective(pct, state)
     print(f'\n✅ Ремонт +{pct}%. Quality: {round(float(quality), 2)} → '
           f'{round(float(new_quality), 2)}. '
           f'Потрачено: {_fmt_cost(steps_spent, money_spent, energy_spent, sep=" / ")}.')
@@ -349,6 +359,28 @@ def crafting_cost(source_grade: str) -> tuple[int, int, int]:
         return (0, 0, 0)
     tier = GRADE_TIER.get(source_grade, 0)
     return (tier * 1000, tier * 100, tier * 10)
+
+
+# 4.60 — Эффективная стоимость с учётом forge-навыков экономии (steps/money).
+# Energy не трогаем (по дизайну 28.05.2026 — energy-навыка пока нет).
+def repair_cost_effective(percent: int, state: GameState) -> tuple[int, float, int]:
+    """repair_cost со скидками forge_steps_saving / forge_money_saving.
+
+    money — float (apply_forge_money_saving округляет до 2 знаков); steps/energy — int.
+    """
+    from bonus import apply_forge_steps_saving, apply_forge_money_saving
+    steps, money, energy = repair_cost(percent)
+    return apply_forge_steps_saving(steps, state), apply_forge_money_saving(money, state), energy
+
+
+def crafting_cost_effective(source_grade: str, state: GameState) -> tuple[int, float, int]:
+    """crafting_cost со скидками forge_steps_saving / forge_money_saving.
+
+    money — float (apply_forge_money_saving округляет до 2 знаков); steps/energy — int.
+    """
+    from bonus import apply_forge_steps_saving, apply_forge_money_saving
+    steps, money, energy = crafting_cost(source_grade)
+    return apply_forge_steps_saving(steps, state), apply_forge_money_saving(money, state), energy
 
 
 def _item_key(item: dict) -> Optional[tuple[str, str, str]]:
@@ -402,7 +434,7 @@ def find_craftable_groups(state: GameState) -> list[dict]:
         if len(candidates) < 2:
             continue
         next_grade = GRADE_NEXT.get(grade)
-        cost = crafting_cost(grade)
+        cost = crafting_cost_effective(grade, state)
         groups.append({
             'item_type': item_type,
             'characteristic': characteristic,
@@ -452,7 +484,7 @@ def craft_item(state: GameState, item_a: dict, item_b: dict) -> Optional[dict]:
     if projected_inv_size > backpack_capacity(state):
         return None
 
-    steps, money, energy = crafting_cost(grade)
+    steps, money, energy = crafting_cost_effective(grade, state)
     if not try_spend(state, steps=steps, energy=energy, money=float(money)):
         return None
 

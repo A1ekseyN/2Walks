@@ -64,5 +64,16 @@ def bank_location(state: GameState):
 
 
 def forge_location(state: GameState):
-    """4.59 — Кузница / Blacksmith. Repair + Crafting + (deferred) Gems."""
+    """4.59 — Кузница / Blacksmith. Repair + Crafting + (deferred) Gems.
+
+    4.60 — Локация заблокирована, пока не прокачан хотя бы один forge-навык
+    (forge_steps_saving / forge_money_saving / forge_repair_quality) до ≥1.
+    Навыки качаются в Спортзале (Gym).
+    """
+    g = state.gym
+    if (g.forge_steps_saving < 1 and g.forge_money_saving < 1
+            and g.forge_repair_quality < 1):
+        print('\n🔒 Кузница заблокирована. Прокачай любой навык Кузницы в '
+              'Спортзале (экономия шагов / золота / качество ремонта) до 1 уровня.')
+        return
     forge_menu(state)

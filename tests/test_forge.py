@@ -2,18 +2,29 @@
 
 4.59.0 — skeleton-меню с 5 пунктами. UI-smoke тесты.
 4.59.1 — Repair: pure helpers (cost / max / candidates / apply) + UI flow.
+4.60   — Forge skills: forge_steps_saving / forge_money_saving (экономия
+         на repair+craft) + forge_repair_quality (множитель восстановления).
 """
+
+import pytest
 
 from state import GameState
 from forge import (
     craft_item,
     crafting_cost,
+    crafting_cost_effective,
     find_craftable_groups,
     forge_menu,
     max_repair_percent,
     repair_candidates,
     repair_cost,
+    repair_cost_effective,
     repair_item,
+)
+from bonus import (
+    apply_forge_money_saving,
+    apply_forge_steps_saving,
+    forge_repair_multiplier,
 )
 
 
@@ -734,3 +745,185 @@ def test_craft_flow_splus_cap_blocks(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert 'cap' in out  # cap mentioned in group line или после выбора
+
+
+# ===== 4.60 — Forge skills (steps/money saving + repair quality) =====
+
+# ----- bonus.py helpers -----
+
+def test_apply_forge_steps_saving_no_skill_is_identity():
+    state = GameState.default_new_game()
+    assert state.gym.forge_steps_saving == 0
+    assert apply_forge_steps_saving(1000, state) == 1000
+
+
+def test_apply_forge_steps_saving_linear_per_level():
+    state = GameState.default_new_game()
+    state.gym.forge_steps_saving = 10  # -10%
+    assert apply_forge_steps_saving(1000, state) == 900
+    state.gym.forge_steps_saving = 25  # -25%
+    assert apply_forge_steps_saving(1000, state) == 750
+
+
+def test_apply_forge_steps_saving_clamps_at_100():
+    state = GameState.default_new_game()
+    state.gym.forge_steps_saving = 150  # clamp до 100% → 0
+    assert apply_forge_steps_saving(1000, state) == 0
+
+
+def test_apply_forge_money_saving_no_skill_is_identity():
+    state = GameState.default_new_game()
+    assert apply_forge_money_saving(100, state) == 100.0
+
+
+def test_apply_forge_money_saving_linear_per_level():
+    state = GameState.default_new_game()
+    state.gym.forge_money_saving = 20  # -20%
+    assert apply_forge_money_saving(100, state) == 80.0
+
+
+def test_apply_forge_money_saving_clamps_at_100():
+    state = GameState.default_new_game()
+    state.gym.forge_money_saving = 100
+    assert apply_forge_money_saving(100, state) == 0.0
+
+
+def test_forge_repair_multiplier_no_skill_is_one():
+    state = GameState.default_new_game()
+    assert forge_repair_multiplier(state) == 1.0
+
+
+def test_forge_repair_multiplier_grows_per_level():
+    state = GameState.default_new_game()
+    state.gym.forge_repair_quality = 10  # ×1.1
+    assert forge_repair_multiplier(state) == pytest.approx(1.1)
+    state.gym.forge_repair_quality = 50  # ×1.5
+    assert forge_repair_multiplier(state) == pytest.approx(1.5)
+
+
+# ----- effective cost wrappers (repair + craft) -----
+
+def test_repair_cost_effective_applies_steps_and_money_saving():
+    state = GameState.default_new_game()
+    state.gym.forge_steps_saving = 10  # -10% шагов
+    state.gym.forge_money_saving = 20  # -20% денег
+    steps, money, energy = repair_cost_effective(10, state)
+    assert steps == 9000   # 10_000 × 0.9
+    assert money == 800.0  # 1_000 × 0.8
+    assert energy == 100   # энергия БЕЗ скидки (по дизайну 4.60)
+
+
+def test_crafting_cost_effective_applies_savings():
+    state = GameState.default_new_game()
+    state.gym.forge_steps_saving = 50  # -50% шагов
+    state.gym.forge_money_saving = 50  # -50% денег
+    # a-grade tier=3 → base (3000, 300, 30)
+    steps, money, energy = crafting_cost_effective('a-grade', state)
+    assert steps == 1500
+    assert money == 150.0
+    assert energy == 30  # без скидки
+
+
+# ----- repair_item: quality multiplier -----
+
+def test_repair_item_quality_boost_restores_more():
+    """forge_repair_quality=50 → ×1.5: 10% ремонта восстанавливает 15%."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 100_000
+    state.money = 10_000.0
+    state.energy = 1_000
+    state.gym.forge_repair_quality = 50  # ×1.5
+    item = _make_item(grade='a-grade', quality=50.0)
+
+    ok = repair_item(state, item, 10)
+    assert ok is True
+    # 50 + 10×1.5 = 65
+    assert item['quality'][0] == pytest.approx(65.0)
+
+
+def test_repair_item_quality_boost_fractional_no_rounding():
+    """lvl 10 → ×1.1: 1% восстанавливает 1.1% (дробное, без округления)."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 100_000
+    state.money = 10_000.0
+    state.energy = 1_000
+    state.gym.forge_repair_quality = 10  # ×1.1
+    item = _make_item(quality=50.0)
+
+    ok = repair_item(state, item, 1)
+    assert ok is True
+    assert item['quality'][0] == pytest.approx(51.1)
+
+
+def test_repair_item_quality_boost_clamps_at_100():
+    """Множитель не пробивает потолок 100."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 100_000
+    state.money = 10_000.0
+    state.energy = 1_000
+    state.gym.forge_repair_quality = 100  # ×2.0
+    item = _make_item(quality=90.0)
+
+    ok = repair_item(state, item, 10)  # 90 + 10×2 = 110 → clamp 100
+    assert ok is True
+    assert item['quality'][0] == 100.0
+
+
+def test_repair_item_uses_discounted_cost():
+    """forge_steps/money_saving удешевляют сам ремонт."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 10_000
+    state.money = 1_000.0
+    state.energy = 100
+    state.gym.forge_steps_saving = 50  # -50%
+    state.gym.forge_money_saving = 50  # -50%
+    item = _make_item(quality=50.0)
+
+    ok = repair_item(state, item, 10)
+    assert ok is True
+    # 10% ремонта: base (10_000, 1_000, 100) → -50% steps/money
+    assert state.steps.can_use == 5_000   # 10_000 - 5_000
+    assert state.money == 500.0           # 1_000 - 500
+    assert state.energy == 0              # энергия полная
+
+
+# ----- max_repair_percent: savings raise the cap -----
+
+def test_max_repair_percent_steps_saving_raises_cap():
+    """Со скидкой на шаги тех же ресурсов хватает на больший ремонт."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 10_000   # без скидки → 10%
+    state.money = 1_000_000.0
+    state.energy = 1_000_000
+    item = _make_item(quality=0.0)  # headroom 100
+
+    assert max_repair_percent(state, item) == 10
+    state.gym.forge_steps_saving = 50  # -50% → цена 500/1% → 20%
+    assert max_repair_percent(state, item) == 20
+
+
+def test_max_repair_percent_full_steps_saving_only_limited_by_money():
+    """forge_steps_saving=100 → шаги бесплатны, кап лимитируется деньгами."""
+    state = GameState.default_new_game()
+    state.steps.can_use = 0          # без скидки не отремонтировать вообще
+    state.money = 500.0              # → 5% по деньгам
+    state.energy = 1_000_000
+    state.gym.forge_steps_saving = 100  # шаги → 0
+    item = _make_item(quality=0.0)
+
+    assert max_repair_percent(state, item) == 5
+
+
+# ----- Restorer triumph integration (boosted quality counts, no rounding) -----
+
+def test_restorer_count_delta_reads_boosted_to_quality():
+    """Restorer count_delta = to_quality - from_quality БЕЗ округления —
+    дробный буст от forge_repair_quality зачитывается точно.
+    (register_event замокан autouse-фикстурой вне triumph-тестов, поэтому
+    проверяем чистый count_delta.)"""
+    from triumphs_data import TRIUMPHS
+    cd = TRIUMPHS['restorer']['count_delta']
+    # 1% ремонта × ×1.1 множитель → to_quality поднят на 1.1
+    assert cd({'from_quality': 50.0, 'to_quality': 51.1}) == pytest.approx(1.1)
+    # boosted ×1.5: 10% → +15
+    assert cd({'from_quality': 50.0, 'to_quality': 65.0}) == pytest.approx(15.0)

@@ -64,7 +64,9 @@ triumphs: dict[str, dict] = field(default_factory=dict)
 # Entry structure: {
 #   'tier': int (highest unlocked tier, 0 = none),
 #   'unlocked_at': dict[str→str] (tier index → ISO datetime),
-#   'count': int (event-based accumulator counter; metric-based не использует),
+#   'count': int | float (event-based accumulator counter; metric-based не
+#            использует). Обычно int; float для дробных метрик (Restorer копит
+#            восстановленный quality — since 0.2.6a / 4.60, движок не int-кастит).
 # }
 
 # 4.62.0.1 — Pinned triumph IDs (≤3 enforced в pin operation).
@@ -80,9 +82,22 @@ triumphs_backfill_dismissed: bool = False
 # Entries: {'triumph_id': str, 'tier': int, 'unlocked_ts': float, 'kind': 'triumph' | 'seal'}
 # `kind='seal'` (4.62.3) → triumph_id = category key, tier = 0 (unused).
 unclaimed_unlocks: list[dict] = field(default_factory=list)
+
+# 4.62.7.6 — игровой день, в который web-баннер unclaimed был dismiss'нут
+# (server-side, переживает refresh; на rollover баннер возвращается сам).
+unclaimed_banner_dismissed_date: str = ''
 ```
 
-**Дополнительный pseudo-entry** в `state.triumphs`:
+**Backing-поля для metric-based триумфов** (живут в своих dataclass'ах, round-trip как обычные поля state — не часть `triumphs` dict, но триумфы на них завязаны):
+
+```python
+StepsState.total_walked: float          # 4.62.1.1.1 — Wayfarer (реально пройдено; +=yesterday на rollover)
+StepsState.daily_streak_record: int     # 4.62.1.9   — On Fire (max стрик 10k+ подряд, monotonic)
+GameState.days_played: int              # 4.62.1.9   — Dedicated (уникальные активные дни)
+WorkSession.longest_shift_hours: int    # 4.62.1.5.1 — Iron Worker (max-tracker, обновляется в work_check_done)
+```
+
+**Дополнительные pseudo-entries** в `state.triumphs`:
 
 ```python
 state.triumphs['__seal__'] = {'acknowledged': list[str]}
@@ -90,6 +105,11 @@ state.triumphs['__seal__'] = {'acknowledged': list[str]}
 # для idempotency check_seal_unlocks. Создаётся lazy через setdefault.
 # Defensive: iteration кода `triumphs.py:backfill_unclaimed_from_existing`
 # делает `spec = TRIUMPHS.get(triumph_id)` → None для '__seal__' → skip.
+
+state.triumphs['__synth_done__'] = {'done': True}
+# 4.62.4.1 — anti-loop marker: ставится после первого
+# backfill_unclaimed_from_existing. Без него после claim_all следующий
+# restart re-populate'ил бы queue (бесконечный цикл). True one-shot.
 ```
 
 ---
@@ -323,19 +343,20 @@ Lazy imports + try/except чтобы избежать circular dependency.
 
 ---
 
-## 11. Каталог triumph'ов (0.2.5v, 25.05.2026)
+## 11. Каталог triumph'ов (0.2.6a, 28.05.2026)
 
 **Score system:** `POINTS_PER_TIER = 10`. Capstone = 10 × num_tiers points (50 для 5-tier triumph'а, 40 для 4-tier). Очки начисляются только за **собранные (claimed)** tier'ы (`total_score` = Σ `max(0, tier − unclaimed_count) × points_per`, 0.2.6 fix) — несобранные unlock'и сидят в queue и дают 0 очков.
 
 **Total: 52 triumph в 10 категориях, 7 seals** (с 0.2.6a +1 Wayfarer в Steps — реально пройденные `total_walked`, рядом с Marathoner, seal steps требует обоих capstone'ов; +1 Investor в Money 💰 — `cost_money` из `skill_train_start`, без seal; +2 Streak 🔥 — Dedicated `days_played` (уникальные дни 1/7/31/184/365) + On Fire `daily_streak_record` (подряд 10k+ 3/7/14/21/31), без seal) (с 0.2.5w +1 Iron Worker в Work; с 0.2.6 +1 Veteran в Progression ⭐ + seal Veteran; +6 Drops 💎 — Collector + 5 per-grade, seal Treasure Hunter). NB: тиры Veteran 15-30 пока недостижимы — level-кэп = 12, расширение в TASKS 4.64 (отложено). Drops: event-based на `[drop, drop_pending, drop_force_sold]` с grade-фильтром, tiers 10/50/100/250/500/1000.
 
-### 🏃 Steps (1) — 4.62.1.1 / 0.2.5m
+### 🏃 Steps (2) — 4.62.1.1 / 0.2.5m + 4.62.1.1.1 / 0.2.6a
 
 | ID | Name | Tiers | Tracking | Metric / Hook |
 |---|---|---|---|---|
-| `marathoner` | Marathoner | `[100k, 500k, 1M, 5M, 10M]` | metric | `state.steps.total_used` |
+| `marathoner` | Marathoner | `[100k, 500k, 1M, 5M, 10M]` | metric | `state.steps.total_used` (потрачено, раздуто бонусами) |
+| `wayfarer` | Wayfarer | `[100k, 500k, 1M, 5M, 10M]` | metric | `state.steps.total_walked` (реально пройдено; rollover-accumulator) |
 
-**Seal:** Marathoner.
+**Seal:** Marathoner — требует capstone **обоих** (Marathoner + Wayfarer), 4.62.1.1.1.
 
 ### 🔋 Energy (4) — 4.62.1.4 / 0.2.5p
 
@@ -425,6 +446,62 @@ Plus 1 metric-based (4.62.1.5.1 / 0.2.5w):
 
 **Seal:** Workaholic.
 
+### ⭐ Progression (1) — 4.62.1.8 / 0.2.6
+
+Metric-based на уровень персонажа.
+
+| ID | Name | Tiers | Metric |
+|---|---|---|---|
+| `veteran` | Veteran | `[5, 10, 15, 20, 25, 30]` | `state.char_level.level` |
+
+**Seal:** Veteran (⭐). **NB:** текущий level-кэп = 12 (`level.py:LEVEL_THRESHOLDS`) → тиры 15-30 и capstone-seal пока **недостижимы**; расширение градации уровней — отложенная задача 4.64. Тиры 5/10 анлокаются сразу через `init_metric_check` для игроков L5+.
+
+### 💎 Drops (6) — 4.62.1.7 / 0.2.6
+
+Event-based. Хук `['drop', 'drop_pending', 'drop_force_sold']` — три взаимоисключающих **generation**-события (момент дропа). `drop_auto_collected` / `drop_resolved_*` НЕ считаются (это разрешение уже посчитанного pending — иначе двойной счёт). Один дроп → Collector +1 и matching grade +1. Фильтр читает **плоский** `payload['grade']`. Все 6 имеют tiers `[10, 50, 100, 250, 500, 1000]`.
+
+| ID | Name | Filter |
+|---|---|---|
+| `collector` | Collector | — (любой grade) |
+| `drops_c` | C-Grade Collector | `p['grade'] == 'c-grade'` |
+| `drops_b` | B-Grade Collector | `p['grade'] == 'b-grade'` |
+| `drops_a` | A-Grade Collector | `p['grade'] == 'a-grade'` |
+| `drops_s` | S-Grade Collector | `p['grade'] == 's-grade'` |
+| `drops_s_plus` | S+ Grade Collector | `p['grade'] == 's+grade'` |
+
+**Seal:** Treasure Hunter (💎) — capstone всех 6 на 1000.
+
+### 💰 Money (1) — 4.62.1.12 / 0.2.6a
+
+Event-based accumulator. Суммирует `cost_money` из `skill_train_start` (gym.py уже пишет его в payload — новый event не нужен). `cost_money` = реально уплачено (после `money_saving` скидки). Один агрегатный триумф (не per-skill — дублировал бы 20 gym-level триумфов).
+
+| ID | Name | Tiers | Hook | count_delta |
+|---|---|---|---|---|
+| `investor` | Investor | `[1k, 10k, 50k, 250k, 1M]` | skill_train_start | `int(p['cost_money'])` |
+
+**Seal:** нет.
+
+### 🔥 Streak (2) — 4.62.1.9 / 0.2.6a
+
+Оба metric-based.
+
+| ID | Name | Tiers | Metric | Смысл |
+|---|---|---|---|---|
+| `dedicated` | Dedicated | `[1, 7, 31, 184, 365]` | `state.days_played` | уникальные активные дни (НЕ подряд; +1 на rollover если день имел ≥1 шаг) |
+| `on_fire` | On Fire | `[3, 7, 14, 21, 31]` | `state.steps.daily_streak_record` | макс стрик **подряд** дней с 10k+ (rollover-max от `daily_bonus`, monotonic — не откатывается при обрыве; freeze-ready для 4.36) |
+
+**Seal:** нет.
+
+### 🔨 Forge (1) — 4.62.1.11 part / 0.2.6a
+
+Event-based accumulator восстановленного quality. `count_delta = to_quality − from_quality` (очки качества за ремонт, НЕ число кликов — клик зависит от ресурсов, чинят порциями). Tier 1000 = 10 полных ремонтов 0→100. `item_repaired` (forge.py) уже пишет from/to_quality → backfill автоматический.
+
+| ID | Name | Tiers | Hook | count_delta |
+|---|---|---|---|---|
+| `restorer` | Restorer | `[25, 50, 100, 500, 1000]` | item_repaired | `max(0.0, p['to_quality'] − p['from_quality'])` (**float, без round**) |
+
+**Forge-навык `forge_repair_quality` (4.60)** даёт множитель ×(1+lvl/100) к восстановленному quality → `to_quality` поднимается дробно. Restorer считает буст **точно** (count хранится float; движок не int-кастит — см. раздел 12 «Float vs int в count_delta»). **Seal:** нет. **Остаток 4.62.1.11** — crafts (Total items crafted + First S+).
+
 ---
 
 ## 12. Как добавить новый triumph (recipe)
@@ -462,6 +539,8 @@ Plus 1 metric-based (4.62.1.5.1 / 0.2.5w):
 4. Опционально `event_filter` если триумф учитывает подмножество events.
 5. Тесты — accumulator correctness, tier unlock, capstone.
 6. **Backfill:** если payload format стабилен — `backfill_from_history` автоматически подберёт events из старой `history.jsonl`.
+
+> **Float vs int в `count_delta` (since 0.2.6a / 4.60).** Движок (`register_event` + `_replay_events_into_counters`) **больше НЕ int-кастит** результат `count_delta` — `count` хранится в том типе, что вернула лямбда. Для целочисленных счётчиков (деньги, часы, штуки) **явно оборачивай `int(...)`** в лямбде (как `Investor` выше), иначе float из payload «протечёт» в `count`. Для дробных метрик (например **Restorer** копит `to_quality − from_quality`, а `forge_repair_quality`-навык даёт дробный буст) лямбда возвращает float — точность сохраняется. Tier-сравнение и дисплей всегда идут через `_read_current_value` (он `int()`-ит для сравнения с порогами), так что storage=float / compare=int.
 
 ### Max-tracking semantic (один-в-один как Iron Worker)
 
