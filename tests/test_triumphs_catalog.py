@@ -969,3 +969,48 @@ class TestOnFire:
         f = [u for u in unlocked if u['triumph_id'] == 'on_fire']
         assert state.triumphs['on_fire']['tier'] == 5
         assert f[-1]['is_capstone'] is True
+
+
+# ===========================================================================
+# 4.62.1.11 (part) — Restorer (Forge: восстановленное quality)
+# ===========================================================================
+
+class TestRestorer:
+    """🔨 Restorer — event-based accumulator: восстановленные очки quality
+    (to_quality − from_quality) из item_repaired. НЕ число ремонтов."""
+
+    def test_restorer_in_catalog(self):
+        spec = TRIUMPHS['restorer']
+        assert spec['name'] == 'Restorer'
+        assert spec['category'] == 'forge'
+        assert spec['tiers'] == [25, 50, 100, 500, 1000]
+        assert spec['event_hooks'] == ['item_repaired']
+        assert 'metric' not in spec
+
+    def test_restorer_count_delta_is_quality_restored(self):
+        cd = TRIUMPHS['restorer']['count_delta']
+        assert cd({'from_quality': 0.0, 'to_quality': 100.0}) == 100   # полный
+        assert cd({'from_quality': 50.5, 'to_quality': 80.3}) == 30     # частичный (round)
+        assert cd({}) == 0                                             # graceful
+
+    def test_restorer_accumulates_quality(self):
+        state = GameState.default_new_game()
+        register_event(state, 'item_repaired', from_quality=0.0, to_quality=100.0)
+        register_event(state, 'item_repaired', from_quality=60.0, to_quality=100.0)
+        assert state.triumphs['restorer']['count'] == 140  # 100 + 40
+
+    def test_restorer_tier_unlock_at_25(self):
+        state = GameState.default_new_game()
+        register_event(state, 'item_repaired', from_quality=0.0, to_quality=25.0)
+        assert state.triumphs['restorer']['tier'] == 1
+
+    def test_restorer_capstone_at_1000(self):
+        state = GameState.default_new_game()
+        for _ in range(10):  # 10 полных ремонтов 0→100 = 1000 очков
+            register_event(state, 'item_repaired', from_quality=0.0, to_quality=100.0)
+        assert state.triumphs['restorer']['count'] == 1000
+        assert state.triumphs['restorer']['tier'] == 5
+
+    def test_restorer_forge_category_exists(self):
+        from triumphs_data import CATEGORIES
+        assert 'forge' in CATEGORIES

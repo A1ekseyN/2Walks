@@ -4681,14 +4681,15 @@ User insight 27.05.2026: Marathoner считает **потраченные** ш
 - **Max single deposit** — biggest deposit amount в один момент. Tiers `[1_000, 10_000, 100_000, 1_000_000]`. Trophy.
 - Hook: event_hooks=['deposit_*', 'repay_*'].
 
-##### 4.62.1.11. Forge triumphs `[L / S / todo (blocked by 4.62.0)]`
+##### 4.62.1.11. Forge triumphs `[L / S / partial — Restorer (Repair) done (28.05.2026, 0.2.6a); остались crafts]`
 
 **Категория `forge`. Event-based.**
 
-- **Total repairs done** — counter. Tiers `[10, 100, 1000]`. Capstone: +N% к neatness_in_using_things.
-- **Total items crafted** — counter. Tiers `[1, 10, 100]`. Trophy.
-- **First S+ item crafted** — one-shot milestone.
-- Hook: event_hooks=['item_repaired', 'item_crafted'].
+- ✅ **Restorer (Repair)** — done 28.05.2026. **Метрика пересмотрена** (обсуждение 28.05): не «число ремонтов», а **сумма восстановленного quality** (`count_delta = to_quality − from_quality`), т.к. клик зависит от ресурсов (можно чинить порциями). Tiers **[25, 50, 100, 500, 1000]** (1000 = 10 полных ремонтов 0→100). `event_hooks=['item_repaired']`. Один общий счётчик (per-type отклонён — тип предмета не ось сложности). `item_repaired` уже несёт from/to_quality → backfill автоматический. Capstone-бонус отложен в 4.62.2.1.
+- ❌ **Total items crafted** (остаток) — counter. Hook `item_crafted`. Tiers TBD.
+- ❌ **First S+ item crafted** (остаток) — one-shot, `event_filter: to_grade == 's+grade'`.
+
+**Файлы (Restorer):** `triumphs_data.py`. **Тесты:** 6 (TestRestorer). Каталог 51→52, категория `forge` теперь не пустая. 1364 passed, mypy 0 issues.
 
 ##### 4.62.1.12. Money spent on Gym `[L / XS / done (27.05.2026, 0.2.6a)]`
 

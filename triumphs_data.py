@@ -503,6 +503,21 @@ TRIUMPHS: dict[str, dict] = {
         'tiers': [3, 7, 14, 21, 31],
         'metric': lambda state: state.steps.daily_streak_record,
     },
+
+    # ----- 🔨 Forge (4.62.1.11 part: Repair, 28.05.2026) -----
+    # Restorer — event-based accumulator восстановленного quality. count_delta =
+    # to_quality − from_quality (очки качества за ремонт), НЕ число кликов: клик
+    # зависит от ресурсов (можно чинить порциями). Tier 1000 = 10 полных ремонтов
+    # 0→100. Один общий счётчик (тип предмета не ось сложности — per-type не нужен;
+    # обсуждено 28.05.2026). item_repaired (forge.py) уже пишет from/to_quality →
+    # backfill из history автоматический. Остаток 4.62.1.11 — crafts + first S+.
+    'restorer': {
+        'name': 'Restorer',
+        'category': 'forge',
+        'tiers': [25, 50, 100, 500, 1000],
+        'event_hooks': ['item_repaired'],
+        'count_delta': lambda p: max(0, round(p.get('to_quality', 0) - p.get('from_quality', 0))),
+    },
 }
 
 
