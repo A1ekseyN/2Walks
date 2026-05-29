@@ -55,6 +55,12 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     if game.state is not None:
         return game.state
 
+    # 4.54.0.3 — предупреждение на старте, чтобы случайно не оставить DRY_RUN в проде.
+    import settings
+    if settings.dry_run:
+        print('\n⚠️  DRY_RUN: запись отключена (Sheets game_state / steps_log / '
+              'history + state.json). Smoke-режим — изменения НЕ сохраняются.')
+
     if state is not None:
         game.state = state
         return game.state

@@ -233,6 +233,9 @@ class GameStateRepo:
         locale-парсинга. Для JSON-blob важно чтобы Sheets не интерпретировал
         строку как formula (если начинается с `=`).
         """
+        import settings
+        if settings.dry_run:   # 4.54.0.3 — smoke: не пишем в Sheets
+            return
         ping = time.time()
         rows = _state_dict_to_blob_rows(state_dict)
         ws = self._worksheet()
@@ -326,6 +329,9 @@ class GameStateRepo:
         Sheets / Python округляется в микросекундах, без epsilon идентичные
         saves могли бы давать false-positive STALE.
         """
+        import settings
+        if settings.dry_run:   # 4.54.0.3 — smoke: no-op, без load_meta/записи
+            return "OK"
         if expected_last_modified is not None:
             current = self.load_meta()
             if current > expected_last_modified + 0.01:
@@ -381,6 +387,9 @@ class StepsLogRepo:
         Без этого `1714398000.123` мог бы сохраниться как `'1714398000,123'`
         и потом падать `float(...)` в `for_day()`. См. fix в `GameStateRepo.save`.
         """
+        import settings
+        if settings.dry_run:   # 4.54.0.3 — smoke: не пишем в steps_log
+            return
         ws = self._ensure_sheet()
         entry = _format_steps_entry(ts, user_id, steps, source)
         ws.append_row(entry, value_input_option=ValueInputOption.raw)
@@ -460,6 +469,9 @@ class HistoryLogRepo:
         payload-поля не парсились по локали (баг 2.13 / 0.2.3g). payload
         сериализуется в JSON-строку.
         """
+        import settings
+        if settings.dry_run:   # 4.54.0.3 — smoke: не пишем в history Sheet
+            return
         ws = self._ensure_sheet()
         dt_str = f"{event['date']} {event['time']}"
         payload_json = json.dumps(event.get('payload', {}), ensure_ascii=False)

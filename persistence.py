@@ -331,6 +331,12 @@ def save_characteristic() -> Literal["OK", "STALE"]:
     if game.state is None:
         raise RuntimeError("game.state не инициализирован — вызови init_game_state() до save_characteristic().")
 
+    # 4.54.0.3 — dry-run: smoke-песочница. Никаких записей (Sheets + state.json),
+    # возвращаем "OK" чтобы flow продолжился как при успешном save.
+    import settings
+    if settings.dry_run:
+        return "OK"
+
     # 4.48.5.3 (0.2.5c): defense против регрессии steps.today при save.
     # Web RAM мог устареть относительно steps_log (max-merge выполняется только
     # в try_reload_state на GET /, не на каждом mutation endpoint). Без этого

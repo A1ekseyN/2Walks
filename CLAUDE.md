@@ -23,6 +23,11 @@ python game.py
 # Run the web interface (FastAPI, dev mode). Requires venv active or call .venv/bin/uvicorn directly.
 source .venv/bin/activate && uvicorn web.main:app --reload --host 127.0.0.1 --port 8008
 
+# Smoke-проверка БЕЗ загрязнения прода (4.54.0.3): DRY_RUN=1 → все persistence
+# write-paths (Sheets game_state/steps_log/history + state.json/history.jsonl) no-op,
+# reads работают. Защищает и web-смок, и `python -c`-смок. Печатает warning на старте.
+DRY_RUN=1 uvicorn web.main:app --reload --port 8008   # или DRY_RUN=1 python -c "..."
+
 # Show current Sheets game_state contents (debugging)
 python google_sheets_db.py
 

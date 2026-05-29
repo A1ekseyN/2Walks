@@ -294,3 +294,20 @@ def test_json_default_raises_for_unsupported_type():
 
     with pytest.raises(TypeError):
         _json_default(object())
+
+
+# ----- 4.54.0.3 — dry-run: save_characteristic no-op → "OK" -----
+
+def test_dry_run_save_characteristic_returns_ok_without_writes(monkeypatch):
+    """DRY_RUN → save_characteristic возвращает 'OK' и не зовёт GameStateRepo.save_safe."""
+    from state import GameState
+    from characteristics import game
+    import persistence
+    monkeypatch.setattr('settings.dry_run', True)
+    game.state = GameState.default_new_game()
+
+    def _boom(*a, **k):
+        raise AssertionError('save_safe не должен вызываться в dry-run')
+    monkeypatch.setattr('google_sheets_db.GameStateRepo.save_safe', _boom)
+
+    assert persistence.save_characteristic() == 'OK'

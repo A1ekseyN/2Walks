@@ -235,6 +235,23 @@ alias 2walks-status='ssh aleksey@192.168.0.155 "sudo systemctl status 2walks --n
 
 Для обычной игры — production-сервер. Если запустишь оба одновременно (локальный uvicorn + production), они будут конкурировать за один state в Sheets — STALE prompt'ы будут срабатывать чаще (но защита 4.54 сработает). Лучше выбрать один в каждый момент.
 
+### Smoke-тестирование без загрязнения прода — `DRY_RUN` (4.54.0.3)
+
+⚠️ **Никогда не дёргай live mutation-endpoint'ы (`POST /api/work/start`, `/api/steps`, …) против боевого state без `DRY_RUN`** — они пишут в реальные Sheets (`steps_log` / `game_state`) под твоим user_id, и наутро max-merge подтянет мусор (реальный инцидент 03.05.2026). То же касается ручных `python -c` смоков, мутирующих `game.state`.
+
+**Решение — флаг `DRY_RUN`** (env-переменная, читается в `settings.dry_run`): все записи (Sheets `game_state` / `steps_log` / `history` + локальные `state.json` / `history.jsonl`) становятся **no-op**, а чтение работает как обычно → смокаешь поверх RAM-копии реального state, прод не трогается. На старте печатается `⚠️ DRY_RUN: запись отключена …`.
+
+```bash
+# Web-смок в песочнице
+DRY_RUN=1 uvicorn web.main:app --reload --port 8008
+# → дёргай любые endpoint'ы: ответы честные, в Sheets/state.json НИЧЕГО не пишется
+
+# Ручной python-смок в песочнице
+DRY_RUN=1 python -c "import characteristics; characteristics.init_game_state(); ..."
+```
+
+NB: `DRY_RUN` отключает и реальный Sheets round-trip — для проверки самой персистентности (что save_safe корректно ловит STALE и т.п.) используются unit-тесты с mock'ом gspread (`tests/test_sheets_repo.py`), а изолированный реальный Sheet (отдельный spreadsheet) — отложенный вариант B до появления CI.
+
 ### CLI ↔ production-web concurrency
 
 Тот же дизайн что и для локального case (см. раздел «Concurrent CLI ↔ web — sync через optimistic timestamp» ниже). Сервер записывает `last_modified` в Sheets при mutation; CLI на MacBook'е на следующем `s` получает STALE-prompt с diff'ом если сервер успел сохранить позже. Reload (`r`) → re-init из Sheets → синхронизация.

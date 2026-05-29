@@ -118,6 +118,11 @@ def log_event(event_type: str, **payload: Any) -> None:
     тесты не загрязняли state.triumphs. Empty catalog (4.62.0.x foundation)
     — register_event no-op в любом случае.
     """
+    # 4.54.0.3 — dry-run: smoke-песочница, не пишем ни local jsonl, ни Sheets,
+    # ни register_event (RAM-мутация triumphs в throwaway-сессии не нужна).
+    import settings
+    if settings.dry_run:
+        return
     event = _build_event(event_type, payload)
     _write_local(event)
     _write_sheets(event)

@@ -594,3 +594,51 @@ def test_steps_log_for_day_returns_empty_when_log_empty(monkeypatch):
     monkeypatch.setattr(repo, '_ensure_sheet', lambda: ws)
 
     assert repo.for_day('2026-05-01') == []
+
+
+# ----- 4.54.0.3 — dry-run: persistence write-paths no-op -----
+
+def test_dry_run_game_state_save_noop(monkeypatch):
+    """DRY_RUN → GameStateRepo.save не трогает worksheet (нет записи в Sheets)."""
+    monkeypatch.setattr('settings.dry_run', True)
+    ws = _mock_worksheet()
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+    repo.save({'energy': 50, 'last_modified': 1.0})
+    ws.clear.assert_not_called()
+    ws.update.assert_not_called()
+
+
+def test_dry_run_game_state_save_safe_returns_ok_without_load(monkeypatch):
+    """DRY_RUN → save_safe возвращает 'OK' без load_meta / записи."""
+    monkeypatch.setattr('settings.dry_run', True)
+    ws = _mock_worksheet()
+    repo = _mock_repo_with_ws(GameStateRepo, ws, monkeypatch)
+
+    def _boom():
+        raise AssertionError('load_meta не должен вызываться в dry-run')
+    monkeypatch.setattr(repo, 'load_meta', _boom)
+
+    assert repo.save_safe({'energy': 1}, expected_last_modified=5.0) == 'OK'
+    ws.update.assert_not_called()
+
+
+def test_dry_run_steps_log_append_noop(monkeypatch):
+    """DRY_RUN → StepsLogRepo.append не пишет строку в steps_log."""
+    monkeypatch.setattr('settings.dry_run', True)
+    ws = MagicMock()
+    repo = StepsLogRepo()
+    monkeypatch.setattr(repo, '_ensure_sheet', lambda: ws)
+    repo.append(1.0, 5000, 'manual')
+    ws.append_row.assert_not_called()
+
+
+def test_dry_run_history_append_noop(monkeypatch):
+    """DRY_RUN → HistoryLogRepo.append не пишет строку в history."""
+    monkeypatch.setattr('settings.dry_run', True)
+    ws = MagicMock()
+    repo = HistoryLogRepo()
+    monkeypatch.setattr(repo, '_ensure_sheet', lambda: ws)
+    repo.append({'ts': 1.0, 'date': '2026-05-29', 'time': '10:00:00',
+                 'user_id': 'alex', 'game_version': '0.2.6j', 'type': 'work_done',
+                 'payload': {}})
+    ws.append_row.assert_not_called()

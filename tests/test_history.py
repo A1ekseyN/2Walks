@@ -186,3 +186,17 @@ def test_log_event_with_no_payload(tmp_path, monkeypatch):
     parsed = json.loads(line)
     assert parsed['type'] == 'save'
     assert parsed['payload'] == {}
+
+
+# ---------- 4.54.0.3 — dry-run: log_event no-op ----------
+
+def test_dry_run_log_event_skips_local_and_sheets(monkeypatch):
+    """DRY_RUN → log_event не пишет ни jsonl, ни Sheets."""
+    monkeypatch.setattr('settings.dry_run', True)
+    local = MagicMock()
+    sheets = MagicMock()
+    monkeypatch.setattr(history, '_write_local', local)
+    monkeypatch.setattr(history, '_write_sheets', sheets)
+    log_event('work_done', hours=4)
+    local.assert_not_called()
+    sheets.assert_not_called()
