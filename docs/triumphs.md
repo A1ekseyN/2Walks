@@ -345,11 +345,11 @@ Lazy imports + try/except чтобы избежать circular dependency.
 
 ---
 
-## 11. Каталог triumph'ов (0.2.6h, 28.05.2026)
+## 11. Каталог triumph'ов (0.2.6i, 29.05.2026)
 
 **Score system:** `POINTS_PER_TIER = 10`. Capstone = 10 × num_tiers points (50 для 5-tier triumph'а, 40 для 4-tier). Очки начисляются только за **собранные (claimed)** tier'ы (`total_score` = Σ `max(0, tier − unclaimed_count) × points_per`, 0.2.6 fix) — несобранные unlock'и сидят в queue и дают 0 очков.
 
-**Total: 55 triumph в 10 категориях, 7 seals** (с 0.2.6a +1 Wayfarer в Steps — реально пройденные `total_walked`, рядом с Marathoner, seal steps требует обоих capstone'ов; +1 Investor в Money 💰 — `cost_money` из `skill_train_start`, без seal; +2 Streak 🔥 — Dedicated `days_played` (уникальные дни 1/7/31/184/365) + On Fire `daily_streak_record` (подряд 10k+ 3/7/14/21/31), без seal) (с 0.2.5w +1 Iron Worker в Work; с 0.2.6 +1 Veteran в Progression ⭐ + seal Veteran; +6 Drops 💎 — Collector + 5 per-grade, seal Treasure Hunter) (с 0.2.6f +1 Crafter в Forge 🔨 — счётчик `item_crafted` 5/10/25/50/100, без seal) (с 0.2.6g-h +2 Bank 🏦 — Capitalist `bank.total_interest_earned` 100/500/1000/5000/10000 + Saver `bank.days_with_deposit` 7/30/90/180/365, без seal; категория bank была пустой). NB: тиры Veteran 15-30 пока недостижимы — level-кэп = 12, расширение в TASKS 4.64 (отложено). Drops: event-based на `[drop, drop_pending, drop_force_sold]` с grade-фильтром, tiers 10/50/100/250/500/1000.
+**Total: 61 triumph в 10 категориях, 7 seals** (с 0.2.6a +1 Wayfarer в Steps — реально пройденные `total_walked`, рядом с Marathoner, seal steps требует обоих capstone'ов; +1 Investor в Money 💰 — `cost_money` из `skill_train_start`, без seal; +2 Streak 🔥 — Dedicated `days_played` (уникальные дни 1/7/31/184/365) + On Fire `daily_streak_record` (подряд 10k+ 3/7/14/21/31), без seal) (с 0.2.5w +1 Iron Worker в Work; с 0.2.6 +1 Veteran в Progression ⭐ + seal Veteran; +6 Drops 💎 — Collector + 5 per-grade, seal Treasure Hunter) (с 0.2.6f +1 Crafter в Forge 🔨 — счётчик `item_crafted` 5/10/25/50/100, без seal) (с 0.2.6g-h +2 Bank 🏦 — Capitalist `bank.total_interest_earned` 100/500/1000/5000/10000 + Saver `bank.days_with_deposit` 7/30/90/180/365, без seal; категория bank была пустой) (с 0.2.6i +6 Collection 🎒 — 5 per-type drop-счётчиков + Connoisseur (90+), tiers 5/10/25/50/100, без seal; категория была пустой). NB: тиры Veteran 15-30 пока недостижимы — level-кэп = 12, расширение в TASKS 4.64 (отложено). Drops: event-based на `[drop, drop_pending, drop_force_sold]` с grade-фильтром, tiers 10/50/100/250/500/1000.
 
 ### 🏃 Steps (2) — 4.62.1.1 / 0.2.5m + 4.62.1.1.1 / 0.2.6a
 
@@ -515,6 +515,21 @@ Event-based accumulator. Суммирует `cost_money` из `skill_train_start
 | `saver` | Saver | `[7, 30, 90, 180, 365]` | `state.bank.days_with_deposit` |
 
 **Seal:** нет (решение 28.05.2026). **Backfill:** нет — оба forward-only с 0 (исторические проценты/дни не трекались; как Wayfarer/Dedicated). **Saver by design:** проверка в момент rollover → можно снять днём и вернуть до начала дня (засчитается); multi-day gap → +1 за пропуск (consistency с Dedicated). **4.62.1.10 закрыта.** Кредитный триумф («всего погашено») — отложен.
+
+### 🎒 Collection (6) — 4.62.1.14 / 0.2.6i
+
+Все event-based, `+1` в момент дропа (хуки `drop` / `drop_pending` / `drop_force_sold`, **drop-only**). **Зеркально к Drops 💎** (там per-grade) — Collection считает **по типам предметов** + качество. **per-grade НЕ дублируем** (он в категории drops: `drops_c/b/a/s/s_plus`; S+ milestone = `drops_s_plus`). Payload drop-событий уже несёт `item_type` + `quality` → новых полей/событий не добавляли, backfill автоматический. Все tiers `[5, 10, 25, 50, 100]`.
+
+| ID | Name | event_filter |
+|---|---|---|
+| `ringbearer` | Ringbearer | `p['item_type'] == 'ring'` |
+| `jeweler` | Jeweler | `p['item_type'] == 'necklace'` |
+| `headhunter` | Headhunter | `p['item_type'] == 'helmet'` |
+| `tailor` | Tailor | `p['item_type'] == 't-shirt'` |
+| `cobbler` | Cobbler | `p['item_type'] == 'shoes'` |
+| `connoisseur` | Connoisseur | `p['quality'] >= 90` |
+
+**Seal:** нет. **Дизайн (29.05.2026):** исходные Unique combos / Max quality / Max grade переосмыслены — per-grade живёт в Drops, S+ milestone = `drops_s_plus`, Max quality → Connoisseur (счётчик 90+ дропов, не max-ever). Lifestyle (4.62.1.13) отменена. **4.62.1.14 закрыта.**
 
 ---
 

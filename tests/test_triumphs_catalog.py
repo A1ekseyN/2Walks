@@ -1195,3 +1195,82 @@ class TestSaver:
         state.bank.days_with_deposit = 123
         restored = GameState.from_dict(state.to_dict())
         assert restored.bank.days_with_deposit == 123
+
+
+class TestCollection:
+    """🎒 Collection — event-based per-type drop-счётчики + Connoisseur (90+).
+    +1 на дропе (хуки drop/drop_pending/drop_force_sold). Tiers [5,10,25,50,100].
+    Per-grade НЕ дублируем (он в категории drops). Без seal."""
+
+    _PER_TYPE = {
+        'ringbearer': 'ring',
+        'jeweler': 'necklace',
+        'headhunter': 'helmet',
+        'tailor': 't-shirt',
+        'cobbler': 'shoes',
+    }
+
+    def test_collection_per_type_in_catalog(self):
+        for tid, itype in self._PER_TYPE.items():
+            spec = TRIUMPHS[tid]
+            assert spec['category'] == 'collection'
+            assert spec['tiers'] == [5, 10, 25, 50, 100]
+            assert spec['event_hooks'] == ['drop', 'drop_pending', 'drop_force_sold']
+            assert 'metric' not in spec
+            # фильтр пропускает свой тип и режет чужой
+            assert spec['event_filter']({'item_type': itype}) is True
+            assert spec['event_filter']({'item_type': 'other'}) is False
+
+    def test_connoisseur_in_catalog_and_filter(self):
+        spec = TRIUMPHS['connoisseur']
+        assert spec['name'] == 'Connoisseur'
+        assert spec['category'] == 'collection'
+        assert spec['tiers'] == [5, 10, 25, 50, 100]
+        assert spec['event_hooks'] == ['drop', 'drop_pending', 'drop_force_sold']
+        f = spec['event_filter']
+        assert f({'quality': 90}) is True
+        assert f({'quality': 100}) is True
+        assert f({'quality': 89}) is False
+        assert f({}) is False  # нет quality → не считаем
+
+    def test_ringbearer_counts_only_rings(self):
+        state = GameState.default_new_game()
+        register_event(state, 'drop', item_type='ring', quality=50)
+        register_event(state, 'drop', item_type='helmet', quality=50)
+        register_event(state, 'drop_pending', item_type='ring', quality=50)
+        assert state.triumphs['ringbearer']['count'] == 2
+        assert state.triumphs['headhunter']['count'] == 1
+
+    def test_collection_counts_all_three_drop_hooks(self):
+        state = GameState.default_new_game()
+        register_event(state, 'drop', item_type='shoes', quality=10)
+        register_event(state, 'drop_pending', item_type='shoes', quality=10)
+        register_event(state, 'drop_force_sold', item_type='shoes', quality=10)
+        assert state.triumphs['cobbler']['count'] == 3
+
+    def test_connoisseur_counts_high_quality_any_type(self):
+        state = GameState.default_new_game()
+        register_event(state, 'drop', item_type='ring', quality=95)
+        register_event(state, 'drop', item_type='helmet', quality=90)
+        register_event(state, 'drop', item_type='shoes', quality=40)  # ниже порога
+        assert state.triumphs['connoisseur']['count'] == 2
+
+    def test_collection_tier_unlock_at_5_and_capstone_at_100(self):
+        state = GameState.default_new_game()
+        for _ in range(5):
+            register_event(state, 'drop', item_type='ring', quality=10)
+        assert state.triumphs['ringbearer']['tier'] == 1
+        for _ in range(95):
+            register_event(state, 'drop', item_type='ring', quality=10)
+        assert state.triumphs['ringbearer']['count'] == 100
+        assert state.triumphs['ringbearer']['tier'] == 5
+
+    def test_collection_no_dup_with_drops_per_grade(self):
+        """Collection — по типам, Drops — по грейдам. Не дублируют друг друга."""
+        assert TRIUMPHS['ringbearer']['category'] == 'collection'
+        assert TRIUMPHS['drops_s_plus']['category'] == 'drops'
+
+    def test_collection_category_no_seal(self):
+        from triumphs_data import CATEGORIES, SEALS
+        assert 'collection' in CATEGORIES
+        assert 'collection' not in SEALS

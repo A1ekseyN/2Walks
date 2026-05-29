@@ -555,6 +555,55 @@ TRIUMPHS: dict[str, dict] = {
         'tiers': [7, 30, 90, 180, 365],
         'metric': lambda state: state.bank.days_with_deposit,
     },
+
+    # ----- 🎒 Collection (4.62.1.14, 29.05.2026) -----
+    # Event-based, +1 в момент дропа. Зеркально к Drops (там по грейдам) —
+    # Collection по ТИПАМ предметов + качество. Drop-only (хуки те же, что у
+    # Drops: drop / drop_pending / drop_force_sold; payload несёт item_type +
+    # quality). Per-grade НЕ дублируем — он уже в категории drops (drops_c/b/a/
+    # s/s_plus). Все tiers [5, 10, 25, 50, 100]. Backfill из history авто. Без seal.
+    'ringbearer': {
+        'name': 'Ringbearer',
+        'category': 'collection',
+        'tiers': [5, 10, 25, 50, 100],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('item_type') == 'ring',
+    },
+    'jeweler': {
+        'name': 'Jeweler',
+        'category': 'collection',
+        'tiers': [5, 10, 25, 50, 100],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('item_type') == 'necklace',
+    },
+    'headhunter': {
+        'name': 'Headhunter',
+        'category': 'collection',
+        'tiers': [5, 10, 25, 50, 100],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('item_type') == 'helmet',
+    },
+    'tailor': {
+        'name': 'Tailor',
+        'category': 'collection',
+        'tiers': [5, 10, 25, 50, 100],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('item_type') == 't-shirt',
+    },
+    'cobbler': {
+        'name': 'Cobbler',
+        'category': 'collection',
+        'tiers': [5, 10, 25, 50, 100],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: p.get('item_type') == 'shoes',
+    },
+    'connoisseur': {
+        'name': 'Connoisseur',
+        'category': 'collection',
+        'tiers': [5, 10, 25, 50, 100],
+        'event_hooks': ['drop', 'drop_pending', 'drop_force_sold'],
+        'event_filter': lambda p: (p.get('quality') or 0) >= 90,
+    },
 }
 
 

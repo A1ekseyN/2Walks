@@ -4814,23 +4814,32 @@ User insight 27.05.2026: Marathoner считает **потраченные** ш
 
 **Файлы:** `triumphs_data.py` (Investor). **Тесты:** 5 (`TestInvestor`). Каталог 48→49 триумфов. 1347 passed, mypy 0 issues.
 
-##### 4.62.1.13. Lifestyle triumphs (optional) `[L / S / todo (blocked by 4.62.0)]`
+##### 4.62.1.13. Lifestyle triumphs (optional) `[L / S / rejected (29.05.2026 — time-of-day = время логирования, не ходьбы)]`
 
-**Категория `lifestyle`. Time-of-day based.**
+**ОТМЕНЕНО (29.05.2026).** Time-of-day триумфы (Early/Evening walker) семантически слабые: игра знает только **кумулятивное показание + время ВВОДА** (`steps_log.ts`), а не время физической ходьбы. «10k до полудня» технически = «залогировал ≥10k до полудня» → меряет дисциплину логирования, а не ходьбу (недосчёт при позднем вводе). Weekend Warrior был бы чистым (выходной = свойство даты), но в отрыве от Early/Evening категория `lifestyle` теряет смысл как «образ жизни». Решили не делать всю категорию. Если когда-нибудь включим iPhone-автосинк (4.13, отложен) — показания будут логироваться по интервалам, time-of-day станет честным, и можно вернуться.
 
-- **Early walker** — 10k+ шагов до noon в N дней. Trophy.
+**Исходный замысел (для истории):**
+- **Early walker** — 10k+ шагов до noon в N дней.
 - **Evening walker** — same для evening (18:00+).
-- **Weekend warrior** — 50k+ шагов за выходные. Trophy.
-- Hook: `steps_log` time-of-day analysis. Сложнее — нужен timestamp анализ.
+- **Weekend warrior** — 50k+ шагов за выходные.
+- Hook: `steps_log` time-of-day analysis.
 
-##### 4.62.1.14. Collection triumphs (optional) `[L / M / todo (blocked by 4.62.0)]`
+##### 4.62.1.14. Collection triumphs `[L / M / done (29.05.2026, 0.2.6i)]`
 
-**Категория `collection`. State scan.**
+**✅ Реализовано (29.05.2026, 0.2.6i) — дизайн переосмыслен 29.05.2026.** Категория 🎒 `collection` (была пустой) — **6 event-based триумфов**, `+1` в момент дропа (hook-подход; хуки `drop` / `drop_pending` / `drop_force_sold`, drop-only). Все tiers **[5, 10, 25, 50, 100]**, без seal, backfill из history авто.
 
-- **Unique combos** — за разнообразие (item_type × characteristic combinations collected). Trophy.
-- **Max quality** — first item quality 90+ / 100. Trophy.
-- **Max grade** — first S+ item ever owned (Inventory + Equipment). Trophy.
-- Hook: state scan на любом drop / craft / buy event.
+| Триумф | Фильтр | Что считает |
+|---|---|---|
+| Ringbearer | `item_type == 'ring'` | колец выпало |
+| Jeweler | `'necklace'` | ожерелий |
+| Headhunter | `'helmet'` | шлемов |
+| Tailor | `'t-shirt'` | футболок |
+| Cobbler | `'shoes'` | обуви |
+| Connoisseur | `quality >= 90` | дропов с качеством 90+ |
+
+**Зеркально к Drops** (там per-grade, тут per-type). **per-grade НЕ дублируем** — он уже есть в категории drops (`drops_c/b/a/s/s_plus`); S+ milestone закрыт `drops_s_plus`. Источник — только дропы (payload уже несёт `item_type`/`quality`, новых полей/событий не добавляли). Каталог 55→61.
+
+**Исходный замысел (переосмыслен):** Unique combos / Max quality / Max grade — отклонены в пользу per-type counts (per-grade живёт в Drops; Max grade S+ = `drops_s_plus`; Max quality → Connoisseur как счётчик 90+ дропов, а не max-ever). **Тесты:** 8 (`TestCollection`).
 
 ---
 
