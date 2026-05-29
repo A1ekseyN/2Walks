@@ -14,7 +14,7 @@ from state import GameState
 def _equipment_slots(state: GameState) -> list[Optional[dict]]:
     """Список dict'ов экипировки (или None) из всех слотов state.equipment."""
     eq = state.equipment
-    return [eq.head, eq.neck, eq.torso, eq.finger_01, eq.finger_02, eq.legs, eq.foots]
+    return [eq.head, eq.neck, eq.torso, eq.finger_01, eq.finger_02, eq.legs, eq.foots, eq.back]
 
 
 def _is_broken(item: dict) -> bool:

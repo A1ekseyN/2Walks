@@ -123,22 +123,46 @@ def apply_money_saving(cost: float, state: GameState) -> float:
 # Прокачка: state.gym.backpack_skill (+1 слот за уровень).
 BASE_BACKPACK_CAPACITY = 10
 
+# 4.51 — Рюкзак (equipment-слот 'back'): +N слотов в зависимости от грейда.
+# Capacity берём от ГРЕЙДА (не от поля bonus) — чтобы craft/drop апгрейд грейда
+# проставляли вместимость сами. Сломанный рюкзак (quality 0) даёт 0 (см. 4.61).
+BACKPACK_GRADE_SLOTS: dict[str, int] = {
+    'c-grade': 2,
+    'b-grade': 4,
+    'a-grade': 6,
+    's-grade': 8,
+    's+grade': 10,
+}
+
+
+def backpack_slots_bonus(state: GameState) -> int:
+    """4.51 — вклад надетого рюкзака (слот 'back') в ёмкость инвентаря.
+
+    0 если рюкзак не надет ИЛИ сломан (quality 0, механика 4.61). Иначе —
+    `BACKPACK_GRADE_SLOTS[grade]` по грейду надетого рюкзака."""
+    from equipment_bonus import _is_broken
+    item = state.equipment.back
+    if item is None or _is_broken(item):
+        return 0
+    grade = (item.get('grade') or [None])[0]
+    return BACKPACK_GRADE_SLOTS.get(grade, 0)
+
 
 def backpack_capacity(state: GameState) -> int:
-    """Текущая максимальная ёмкость инвентаря (4.50).
+    """Текущая максимальная ёмкость инвентаря (4.50 + 4.51).
 
-    `BASE_BACKPACK_CAPACITY + state.gym.backpack_skill`. Pure helper, без
-    мутаций. Используется в:
+    `BASE_BACKPACK_CAPACITY + state.gym.backpack_skill + backpack_slots_bonus`.
+    Pure helper, без мутаций. Используется в:
     - `shop.py:_buy_item` — блокировка покупки при full.
     - `equipment.py:_unequip` — блокировка снятия при full.
-    - `drop.py:item_collect` — будет в 4.50.1 (interactive sell-and-keep flow).
+    - `drop.py:item_collect` (4.50.1 sell-and-keep flow).
     - UI display: `inventory_view` (CLI), `_status_fragment.html` (web).
 
     Backwards-compat: если у игрока на момент введения capacity > base+skill —
     существующие предметы остаются (см. `inventory_full`), но новые не добавятся
     пока не освободится слот через продажу или Adventure-flow (4.50.1).
     """
-    return BASE_BACKPACK_CAPACITY + state.gym.backpack_skill
+    return BASE_BACKPACK_CAPACITY + state.gym.backpack_skill + backpack_slots_bonus(state)
 
 
 def inventory_full(state: GameState) -> bool:

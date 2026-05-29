@@ -971,6 +971,7 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         state.equipment.head, state.equipment.neck, state.equipment.torso,
         state.equipment.finger_01, state.equipment.finger_02,
         state.equipment.legs, state.equipment.foots,
+        state.equipment.back,  # 4.51 — рюкзак считается в worn-count
     ]
     equipment_worn = sum(1 for s in equipment_slots_list if s is not None)
 
@@ -1005,7 +1006,7 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "last_reload": get_last_reload(),
         # Equipment counters (для свёрнутого summary блока).
         "equipment_worn": equipment_worn,
-        "equipment_total_slots": 7,
+        "equipment_total_slots": 8,  # 4.51 — +слот «Спина» (рюкзак)
         # 4.50 — Capacity inventory (N/cap). cap = 10 + state.gym.backpack_skill.
         "inventory_capacity": backpack_capacity(state),
         # Steps + bonuses
@@ -1941,6 +1942,7 @@ _ITEM_TYPE_TO_SLOTS: dict[str, list[str]] = {
     't-shirt':  ['torso'],
     'ring':     ['finger_01', 'finger_02'],
     'shoes':    ['foots'],
+    'backpack': ['back'],   # 4.51 — рюкзак (слот «Спина»)
 }
 # Set всех equipment item_types (для wear button visibility).
 _EQUIPMENT_ITEM_TYPES: frozenset[str] = frozenset(_ITEM_TYPE_TO_SLOTS.keys())
@@ -1954,6 +1956,7 @@ _EQUIPMENT_SLOT_LABELS: dict[str, str] = {
     'finger_02':  'Палец 2',
     'legs':       'Ноги',
     'foots':      'Ступни',
+    'back':       'Спина',  # 4.51 — рюкзак
 }
 # Set всех валидных slot_attr (для wear/unwear validation).
 _VALID_SLOT_ATTRS: frozenset[str] = frozenset(_EQUIPMENT_SLOT_LABELS.keys())
@@ -2005,6 +2008,18 @@ def _sort_inventory_view(
     return sorted(indexed, key=key_fn)
 
 
+def _backpack_slots_for(item) -> Optional[int]:
+    """4.51 — для backpack-item возвращает +слоты по грейду (0 если сломан),
+    иначе None (не рюкзак). Для display «+N слотов» в инвентаре/экипировке."""
+    if item is None or (item.get('item_type') or [None])[0] != 'backpack':
+        return None
+    from equipment_bonus import _is_broken
+    from bonus import BACKPACK_GRADE_SLOTS
+    if _is_broken(item):
+        return 0
+    return BACKPACK_GRADE_SLOTS.get((item.get('grade') or [None])[0], 0)
+
+
 def _build_inventory_view(state, sort_key: str = 'default') -> dict:
     """Pre-compute UI данные для Inventory секции с sell/wear buttons.
 
@@ -2039,6 +2054,8 @@ def _build_inventory_view(state, sort_key: str = 'default') -> dict:
             'sell_price': sell_price,
             'is_equipment': is_equipment,
             'eligible_slots': eligible_slots,
+            # 4.51 — +N слотов для backpack (None если не рюкзак) → display.
+            'backpack_slots': _backpack_slots_for(item),
         })
 
     return {
@@ -2082,6 +2099,8 @@ def _build_equipment_view(state) -> dict:
             'item': item,
             'can_unequip': can_unequip,
             'block_reason': block_reason,
+            # 4.51 — +N слотов для рюкзака (None если в слоте не рюкзак) → display.
+            'backpack_slots': _backpack_slots_for(item),
         })
 
     return {

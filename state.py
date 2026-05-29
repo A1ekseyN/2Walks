@@ -168,6 +168,8 @@ class Equipment:
     finger_02: Optional[dict] = None
     legs: Optional[dict] = None
     foots: Optional[dict] = None
+    # 4.51 — слот «Спина» под рюкзак (item_type='backpack', +N слотов инвентаря).
+    back: Optional[dict] = None
 
 
 @dataclass
@@ -490,6 +492,7 @@ class GameState:
                 finger_02=d.get('equipment_finger_02'),
                 legs=d.get('equipment_legs'),
                 foots=d.get('equipment_foots'),
+                back=d.get('equipment_back'),  # 4.51 — рюкзак (None для legacy)
             ),
 
             # Bank (4.49.0.0 / 4.49.2.1). Старые сейвы без bank-keys → defaults BankState().
@@ -677,6 +680,7 @@ class GameState:
             'equipment_finger_02': self.equipment.finger_02,
             'equipment_legs': self.equipment.legs,
             'equipment_foots': self.equipment.foots,
+            'equipment_back': self.equipment.back,  # 4.51 — рюкзак
 
             # Adventure session
             'adventure': self.adventure.active,

@@ -64,6 +64,7 @@ _EQUIPMENT_SLOT_LABELS = {
     'equipment_finger_02': 'Палец 2',
     'equipment_legs': 'Ноги',
     'equipment_foots': 'Ступни',
+    'equipment_back': 'Спина',  # 4.51 — рюкзак
 }
 
 _ADVENTURE_COUNTER_LABELS = {

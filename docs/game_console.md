@@ -52,7 +52,7 @@ python game.py
 | Текущая тренировка | `state.training.{active,skill_name,timestamp,time_end}` |
 | Работа | `state.work.{work_type,active,hours,salary,start,end}` |
 | Приключение | `state.adventure.{active,name,start_ts,end_ts}` + `state.adventure.counters` (dict с 7 ключами `walk_easy/walk_normal/.../walk_30k`) |
-| Инвентарь и экипировка | `state.inventory` (список словарей-предметов), `state.equipment.{head,neck,torso,finger_01,finger_02,legs,foots}` |
+| Инвентарь и экипировка | `state.inventory` (список словарей-предметов), `state.equipment.{head,neck,torso,finger_01,finger_02,legs,foots,back}` (back — рюкзак, 4.51) |
 | Локация | `state.loc` (`home` / `gym` / `shop` / `work` / `adventure` / `garage` / `auto_dialer` / `bank`) |
 
 CSV / JSON / Google Sheets хранят flat-формат с прежними ключами; конвертация в обе стороны через `GameState.from_dict()` / `state.to_dict()`. При добавлении нового поля обнови оба маппинга.
@@ -195,7 +195,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 Выбор приключения проходит через `adventure_choice` → `adventure_choice_confirmation` → `check_requirements`. В случае успеха: ресурсы списываются через `try_spend`, далее `actions.start_adventure(state, name, start_ts, end_ts)` выставляет `state.adventure.active=True`, `state.adventure.name`, `state.adventure.end_ts = now + time*speed_modifier`.
 
-С 0.2.4f (4.29-replacement) каждый грейд в меню отображается с реальной вероятностью выпадения с учётом текущего luck: `(Награда: C-Grade [37.20%], B-Grade [33.36%])` (проценты в квадратных скобках). Расчёт — аналитический pure-helper `drop.compute_grade_probabilities(adv_name, state)` (без рандома). Item-type инфо («могут выпасть: ring · necklace · helmet · shoes · t-shirt по ~20% каждый») вынесена во вступительный текст т.к. одинакова для всех приключений. Тиры (grade, threshold) хранятся в `adventure_data.py['drops']` — единый источник правды для аналитики и реальной `one_item_random_grade()`.
+С 0.2.4f (4.29-replacement) каждый грейд в меню отображается с реальной вероятностью выпадения с учётом текущего luck: `(Награда: C-Grade [37.20%], B-Grade [33.36%])` (проценты в квадратных скобках). Расчёт — аналитический pure-helper `drop.compute_grade_probabilities(adv_name, state)` (без рандома). Item-type инфо («могут выпасть: ring · necklace · helmet · shoes · t-shirt по ~19% каждый + backpack ~5%») вынесена во вступительный текст т.к. одинакова для всех приключений. С 0.2.6j (4.51) добавлен редкий тип **backpack** — пре-гейт 5% в `item_type()` ДО обычного выбора 5 типов (не трогает grade-гейт «выпадет ли что-то»); рюкзак надевается в слот `back` и даёт +2/4/6/8/10 слотов инвентаря по грейду C..S+. Тиры (grade, threshold) хранятся в `adventure_data.py['drops']` — единый источник правды для аналитики и реальной `one_item_random_grade()`.
 
 С 0.2.4g (balance follow-up) S+ thresholds различаются по приключениям: walk_20k использует базовый `drop_percent_item_s_=15` (S+ — редкий бонус среди 3 тиров), walk_25k → `drop_percent_item_s_walk_25k=20`, walk_30k → `drop_percent_item_s_walk_30k=35`. Без этого walk_30k был неоправдан экономически (на luck=12 давал S+ 15.50% при цене +20% шагов/энергии/времени vs walk_25k S+ 14.09% + S 25.53%); теперь walk_30k явно позиционируется как endgame walk «специально за S+» (~36% S+ vs walk_25k ~18% при luck=12).
 
@@ -215,7 +215,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ### 4.1 Inventory (`i` в главном меню)
 
-`inventory_menu(state)` (`inventory.py`) выводит список `state.inventory` (заголовок «Инвентарь N/cap» с 0.2.4b — где `cap = bonus.backpack_capacity(state) = 10 + state.gym.backpack_skill`), отсортированный по `item_type → characteristic → -bonus`. Доступные действия: `s` — продажа (`sold_item(state)`), `0` — выход. Чистая логика выделена: `_sort_inventory(inventory)` и `_sell_item_at_index(state, index)` тестируются напрямую.
+`inventory_menu(state)` (`inventory.py`) выводит список `state.inventory` (заголовок «Инвентарь N/cap» с 0.2.4b — где `cap = bonus.backpack_capacity(state) = 10 + state.gym.backpack_skill + backpack_slots_bonus(state)` (4.51 — надетый рюкзак +2..10 по грейду)), отсортированный по `item_type → characteristic → -bonus`. Доступные действия: `s` — продажа (`sold_item(state)`), `0` — выход. Чистая логика выделена: `_sort_inventory(inventory)` и `_sell_item_at_index(state, index)` тестируются напрямую.
 
 С 0.2.4c (задача 4.50.1): если `state.pending_drop != None`, при заходе в Inventory сначала срабатывает `_pending_drop_prompt(state)` — показывает выпавшую находку и предлагает 3 опции: `1..N` (продать предмет №N из инвентаря, положить находку на освободившийся слот через `_resolve_pending_drop_sell_existing`), `s` (продать находку за base price через `_resolve_pending_drop_sell_new`), `0` (skip — pending остаётся, prompt появится при следующем заходе). Auto-collect: при освобождении слота между ходами (продажа / прокачка `backpack_skill` в Gym / снятие экипировки) `bonus.auto_collect_pending_drop(state)` в главном loop'е `game.py` без prompt'а кладёт находку в инвентарь и печатает «🎁 Освободилось место в рюкзаке...».
 
@@ -225,7 +225,7 @@ def enter_location(loc, enter_fn, can_reopen=False, call_map_on_switch=True):
 
 ### 4.2 Equipment (`e` в главном меню)
 
-`Equipment.equipment_view(self=None, state=state)` (`equipment.py`) печатает 7 слотов (`state.equipment.{head, neck, torso, finger_01, finger_02, legs, foots}`) и позволяет надевать/снимать предметы. Чистая логика — `_equip_from_inventory(state, slot_attr, idx)` и `_unequip(state, slot_attr)` — тестируется напрямую. Износ при активностях (Gym/Work/Adventure) считается классом `Wear_Equipped_Items(state)` в `inventory.py`. Бонусы экипировки считаются функциями `equipment_stamina_bonus(state)`, `equipment_energy_max_bonus(state)`, `equipment_speed_skill_bonus(state)`, `equipment_luck_bonus(state)` (`equipment_bonus.py`).
+`Equipment.equipment_view(self=None, state=state)` (`equipment.py`) печатает слоты (`state.equipment.{head, neck, torso, finger_01, finger_02, foots, back}`; `legs` — orphan, не отображается; `back` — рюкзак, 4.51, слот 7, показывает «+N слотов»; оптимизатор/пресеты — пункты 8/9) и позволяет надевать/снимать предметы. Чистая логика — `_equip_from_inventory(state, slot_attr, idx)` и `_unequip(state, slot_attr)` — тестируется напрямую. Износ при активностях (Gym/Work/Adventure) считается классом `Wear_Equipped_Items(state)` в `inventory.py`. Бонусы экипировки считаются функциями `equipment_stamina_bonus(state)`, `equipment_energy_max_bonus(state)`, `equipment_speed_skill_bonus(state)`, `equipment_luck_bonus(state)` (`equipment_bonus.py`).
 
 ### 4.3 Level и распределение очков (`u` в главном меню)
 

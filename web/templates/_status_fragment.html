@@ -833,7 +833,8 @@
                     {% if slot.item %}
                         {% if is_broken %}<span style="color: var(--pico-color-red-700, #b91c1c); font-weight: bold;">🔨 СЛОМАН</span>{% endif %}
                         {{ slot.item['item_name'][0].title() }} <em>{{ grade_short(slot.item['grade'][0]) }}</em>
-                        {% if is_broken %}+0{% else %}+{{ slot.item['bonus'][0] }}{% endif %} {{ slot.item['characteristic'][0].title() }}
+                        {% if slot.backpack_slots is not none %}+{{ slot.backpack_slots }} слотов
+                        {%- else %}{% if is_broken %}+0{% else %}+{{ slot.item['bonus'][0] }}{% endif %} {{ slot.item['characteristic'][0].title() }}{% endif %}
                         (Q: {{ "%.1f"|format(slot.item['quality'][0]) if slot.item['quality'][0] is number else slot.item['quality'][0] }})
                     {% else %}
                         <span class="equipment-empty">— пусто —</span>
@@ -1041,7 +1042,8 @@
                 <div class="item-row">
                     <span>
                         {{ loop.index }}. {{ item.item_type|title }} <em>{{ grade_short(item.grade) }}</em>
-                        +{{ item.bonus }} {{ item.characteristic|title }}
+                        {% if item.backpack_slots is not none %}+{{ item.backpack_slots }} слотов
+                        {%- else %}+{{ item.bonus }} {{ item.characteristic|title }}{% endif %}
                         (Q: {{ "%.1f"|format(item.quality) if item.quality is number else item.quality }})
                         — {{ format_money(item.sell_price) }} $
                     </span>

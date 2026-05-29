@@ -23,6 +23,7 @@ _SLOT_ATTR = {
     'equipment_finger_02': 'finger_02',
     'equipment_legs': 'legs',
     'equipment_foots': 'foots',
+    'equipment_back': 'back',  # 4.51 — рюкзак
 }
 
 
@@ -98,7 +99,7 @@ class Equipment:
 
         print('\n--- 🎒 Экипировка персонажа 🎒 ---')
         if all(slot is None for slot in (
-            eq.head, eq.neck, eq.torso, eq.finger_01, eq.finger_02, eq.legs, eq.foots
+            eq.head, eq.neck, eq.torso, eq.finger_01, eq.finger_02, eq.legs, eq.foots, eq.back
         )):
             print('\nНа персонаже нет вещей: ')
 
@@ -123,8 +124,22 @@ class Equipment:
                   f'{bonus_display} {item["characteristic"][0].title()} '
                   f'(Quality: {qual:,.2f})')
 
-        print('\n7. 🎯 Оптимизировать loadout (auto-equip)')
-        print('8. 💼 Управление preset\'ами экипировки')
+        # 4.51 — Рюкзак (слот 'back'): спец-формат «+N слотов» (от грейда, не bonus).
+        from bonus import BACKPACK_GRADE_SLOTS
+        if eq.back is None:
+            print('7. Спина (рюкзак):     Нет рюкзака')
+        else:
+            bp = eq.back
+            qual = bp["quality"][0]
+            is_broken = qual == 0
+            grade = bp["grade"][0]
+            slots = 0 if is_broken else BACKPACK_GRADE_SLOTS.get(grade, 0)
+            broken_marker = '🔨 СЛОМАН ' if is_broken else ''
+            print(f'7. Спина (рюкзак):     {broken_marker}{bp["item_name"][0].title()} {grade.title()}: '
+                  f'+{slots} слотов (Quality: {qual:,.2f})')
+
+        print('\n8. 🎯 Оптимизировать loadout (auto-equip)')
+        print('9. 💼 Управление preset\'ами экипировки')
         print('0. Назад')
         Equipment.equipment_change(self, state)
 
@@ -136,6 +151,7 @@ class Equipment:
             '4': ('палец левой руки', 'ring',     'equipment_finger_01'),
             '5': ('палец правой руки', 'ring',     'equipment_finger_02'),
             '6': ('ступни',           'shoes',    'equipment_foots'),
+            '7': ('спина',            'backpack', 'equipment_back'),  # 4.51
         }
         # Цикл retry на невалиде (1.5.2 — 0.2.1h, было: рекурсивный self-call).
         while True:
@@ -144,10 +160,10 @@ class Equipment:
                 item_name, item_type, item_slot = slot_map[ask]
                 Equipment.equipment_change_item_in_slot(self, item_name, item_type, item_slot, state)
                 return
-            if ask == '7':
+            if ask == '8':
                 Equipment.optimize_loadout_menu(self, state)
                 return
-            if ask == '8':
+            if ask == '9':
                 Equipment.preset_menu(self, state)
                 return
             if ask == '0':
@@ -255,6 +271,7 @@ class Equipment:
         'finger_02':  'Палец прав. руки ',
         'legs':       'Ноги             ',
         'foots':      'Ступни           ',
+        'back':       'Спина (рюкзак)   ',
     }
 
     def optimize_loadout_menu(self, state: GameState) -> None:

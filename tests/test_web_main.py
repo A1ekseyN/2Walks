@@ -1159,7 +1159,7 @@ def test_inventory_summary_shows_count():
 
 
 def test_equipment_summary_shows_worn_count():
-    """Summary экипировки показывает (N/7)."""
+    """Summary экипировки показывает (N/8) — 8 слотов с 4.51 (+ Спина)."""
     state = GameState.default_new_game()
     state.equipment.head = {
         "item_name": ["helmet"], "item_type": ["helmet"], "grade": ["a-grade"],
@@ -1173,8 +1173,8 @@ def test_equipment_summary_shows_worn_count():
     with TestClient(app) as client:
         response = client.get("/status")
     body = response.text
-    # 2 надетых из 7 → "(2/7)".
-    assert "(2/7)" in body
+    # 2 надетых из 8 → "(2/8)" (8-й слот «Спина» добавлен в 4.51).
+    assert "(2/8)" in body
 
 
 def test_equipment_summary_shows_only_nonzero_bonuses():
@@ -4140,14 +4140,15 @@ def test_inventory_view_applies_trader_to_sell_price():
 
 # ----- _build_equipment_view -----
 
-def test_equipment_view_all_seven_slots():
+def test_equipment_view_all_slots():
     from web.main import _build_equipment_view
     state = GameState.default_new_game()
     _setup_state(state)
     view = _build_equipment_view(state)
     slot_attrs = [s['slot_attr'] for s in view['slots']]
+    # 4.51 — добавлен слот 'back' (рюкзак) → 8 слотов.
     assert slot_attrs == ['head', 'neck', 'torso', 'finger_01',
-                          'finger_02', 'legs', 'foots']
+                          'finger_02', 'legs', 'foots', 'back']
 
 
 def test_equipment_view_can_unequip_false_for_empty_slot():
@@ -5845,3 +5846,48 @@ def test_forge_finalizes_in_dashboard(monkeypatch):
     assert st.forge.active is False
     assert len(st.inventory) == 1
     assert st.inventory[0]['quality'][0] == 60.0  # +10 (forge_repair_quality=0 → ×1.0)
+
+
+# ===== 4.51 — Рюкзак (web display + wear) =====
+
+def _make_backpack_inv(grade='a-grade', quality=80.0):
+    from bonus import BACKPACK_GRADE_SLOTS
+    return {'item_type': ['backpack'], 'item_name': ['backpack'], 'grade': [grade],
+            'characteristic': ['backpack_capacity'], 'bonus': [BACKPACK_GRADE_SLOTS[grade]],
+            'quality': [quality], 'price': [int(quality)]}
+
+
+def test_web_inventory_backpack_shows_slots():
+    """Рюкзак в инвентаре показывается как «+N слотов» + кнопка надеть."""
+    state = GameState.default_new_game()
+    state.inventory = [_make_backpack_inv(grade='a-grade')]
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'слотов' in body
+    assert '/web/equipment/wear' in body
+
+
+def test_web_equipment_wear_backpack_increases_capacity():
+    from bonus import backpack_capacity, BASE_BACKPACK_CAPACITY
+    state = GameState.default_new_game()
+    state.inventory = [_make_backpack_inv(grade='s-grade')]  # +8
+    _setup_state(state)
+    st = game.state
+    with TestClient(app) as client:
+        r = client.post("/web/equipment/wear",
+                        data={"inventory_index": "0", "slot_attr": "back", "sort": "default"})
+    assert r.status_code == 200
+    assert st.equipment.back is not None
+    assert st.equipment.back['item_type'][0] == 'backpack'
+    assert backpack_capacity(st) == BASE_BACKPACK_CAPACITY + 8
+
+
+def test_web_equipment_view_back_slot_shows_slots():
+    state = GameState.default_new_game()
+    state.equipment.back = _make_backpack_inv(grade='b-grade')  # +4
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'Спина' in body
+    assert 'слотов' in body

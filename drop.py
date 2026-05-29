@@ -5,12 +5,18 @@
 и не учитывал прокачку удачи).
 """
 
-from random import randint
+from random import randint, random
 from typing import Any, Optional
 
 from bonus import inventory_full
 from equipment_bonus import equipment_luck_bonus
 from state import GameState
+
+# 4.51 — Шанс, что выпавший предмет окажется рюкзаком (пре-гейт в item_type).
+# НЕ влияет на grade-гейт «выпадет ли что-то вообще» — только на распределение
+# типов среди выпавших. Рюкзак редкий относительно 5 обычных типов. Tunable;
+# 4.65 (ownership+luck) позже сделает этот шанс «умным».
+BACKPACK_DROP_CHANCE = 0.05
 
 
 # Вероятности выпадения (баланс — отдельная задача 4.19 / 3.2.2).
@@ -198,6 +204,11 @@ class Drop_Item:
             return 5
 
     def item_type(self, state: GameState):
+        # 4.51 — редкий пре-гейт рюкзака. Выполняется ТОЛЬКО когда уже решено,
+        # что предмет падает (item_type вызывается в item_collect). Не трогает
+        # «выпадет ли что-то» (grade-гейт), лишь делает рюкзак редким типом.
+        if random() < BACKPACK_DROP_CHANCE:
+            return 'backpack'
         luck = current_luck(state)
         ring = randint(1, 100 + luck)
         necklace = randint(1, 100 + luck)
@@ -275,11 +286,20 @@ class Drop_Item:
             'price': [],
         }
 
-        item['item_type'].append(Drop_Item.item_type(self, state))
-        item['item_name'].append(item['item_type'][0])
+        item_type_val = Drop_Item.item_type(self, state)
+        item['item_type'].append(item_type_val)
+        item['item_name'].append(item_type_val)
         item['grade'].append(Drop_Item.one_item_random_grade(self, hard=hard, state=state))
-        item['characteristic'].append(Drop_Item.characteristic_type(self, state))
-        item['bonus'].append(Drop_Item.item_bonus_value(self, grade=item['grade']))
+        # 4.51 — рюкзак: характеристика = вместимость, bonus = слоты по грейду
+        # (cosmetic; реальная capacity считается от грейда в bonus.backpack_capacity).
+        if item_type_val == 'backpack':
+            from bonus import BACKPACK_GRADE_SLOTS
+            grade_val = item['grade'][0]
+            item['characteristic'].append('backpack_capacity')
+            item['bonus'].append(BACKPACK_GRADE_SLOTS.get(grade_val, 0) if grade_val else 0)
+        else:
+            item['characteristic'].append(Drop_Item.characteristic_type(self, state))
+            item['bonus'].append(Drop_Item.item_bonus_value(self, grade=item['grade']))
         item['quality'].append(Drop_Item.item_quality(self, state))
         item['price'].append(Drop_Item.item_price(self, grade=item['grade'], quality=item['quality']))
 

@@ -39,6 +39,9 @@ _ITEM_TYPE_TO_SLOTS: dict[str, list[str]] = {
     't-shirt':  ['torso'],
     'ring':     ['finger_01', 'finger_02'],
     'shoes':    ['foots'],
+    # 4.51 — рюкзак (слот 'back') НАМЕРЕННО не в loadout: вместимость не
+    # optimizable-характеристика, оптимизатор/пресеты слот не трогают (игрок
+    # управляет рюкзаком вручную через Equipment menu).
 }
 
 # Reverse mapping: slot_attr → item_type. Используется для определения какой

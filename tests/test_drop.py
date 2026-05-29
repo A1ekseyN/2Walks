@@ -83,8 +83,9 @@ def test_one_item_random_grade_unknown_difficulty_returns_none():
 def test_item_type_returns_known_or_none():
     state = GameState.default_new_game()
     drop = Drop_Item()
-    valid = {None, 'ring', 'necklace', 'helmet', 'shoes', 't-shirt'}
-    for _ in range(50):
+    # 4.51 — добавлен 'backpack' (пре-гейт 5%).
+    valid = {None, 'ring', 'necklace', 'helmet', 'shoes', 't-shirt', 'backpack'}
+    for _ in range(200):
         assert drop.item_type(state) in valid
 
 

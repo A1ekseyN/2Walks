@@ -294,6 +294,7 @@ class Wear_Equipped_Items:
             'equipment_finger_02': eq.finger_02,
             'equipment_legs': eq.legs,
             'equipment_foots': eq.foots,
+            'equipment_back': eq.back,  # 4.51 — рюкзак изнашивается как все
         }
 
     def decrease_durability(self, steps: int) -> None:

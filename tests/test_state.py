@@ -305,7 +305,7 @@ def test_equipment_with_item_round_trip():
 
 
 def test_default_state_to_dict_has_all_legacy_keys():
-    """to_dict() возвращает все 74 ключа legacy save format (73 + last_modified)."""
+    """to_dict() возвращает все 75 ключей legacy save format (74 + last_modified)."""
     s = GameState.default_new_game()
     d = s.to_dict()
     expected_keys = {
@@ -350,6 +350,8 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'equipment_head', 'equipment_neck', 'equipment_torso',
         'equipment_finger_01', 'equipment_finger_02',
         'equipment_legs', 'equipment_foots',
+        # 4.51 — Backpack slot («Спина»)
+        'equipment_back',
         # Adventure
         'adventure', 'adventure_name',
         'adventure_start_timestamp', 'adventure_end_timestamp',
