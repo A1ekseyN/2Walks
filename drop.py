@@ -5,18 +5,30 @@
 и не учитывал прокачку удачи).
 """
 
-from random import randint, random
+from random import choices, randint
 from typing import Any, Optional
 
 from bonus import inventory_full
 from equipment_bonus import equipment_luck_bonus
 from state import GameState
 
-# 4.51 — Шанс, что выпавший предмет окажется рюкзаком (пре-гейт в item_type).
-# НЕ влияет на grade-гейт «выпадет ли что-то вообще» — только на распределение
-# типов среди выпавших. Рюкзак редкий относительно 5 обычных типов. Tunable;
-# 4.65 (ownership+luck) позже сделает этот шанс «умным».
+# 4.51 — базовый вес рюкзака в распределении типов дропа (5%). Рюкзак редкий
+# относительно 5 обычных типов. НЕ влияет на grade-гейт «выпадет ли что-то».
 BACKPACK_DROP_CHANCE = 0.05
+
+# 4.65 — выбор ТИПА дропа = взвешенная выборка. База: рюкзак 5, остальные по 19
+# (≈ прежнее распределение; сумма 100). Модификатор по luck (drop-modifier)
+# смещает к «нуждающимся» типам — см. _type_weights ниже.
+_DROP_TYPES = ('ring', 'necklace', 'helmet', 'shoes', 't-shirt', 'backpack')
+_BASE_TYPE_WEIGHTS: dict[str, float] = {
+    'ring': 19.0, 'necklace': 19.0, 'helmet': 19.0, 'shoes': 19.0, 't-shirt': 19.0,
+    'backpack': BACKPACK_DROP_CHANCE * 100,  # 5
+}
+# Грейд → тир (для «дистанции до S+»). Пусто/None → 0.
+_GRADE_TIER: dict[str, int] = {
+    'c-grade': 1, 'b-grade': 2, 'a-grade': 3, 's-grade': 4, 's+grade': 5,
+}
+_MAX_GRADE_TIER = 5  # s+grade
 
 
 # Вероятности выпадения (баланс — отдельная задача 4.19 / 3.2.2).
@@ -42,6 +54,60 @@ drop_percent_item_s_walk_30k = 35
 def current_luck(state: GameState) -> int:
     """Текущая удача = luck_skill (gym) + equipment + level. Pure (без побочных эффектов)."""
     return state.gym.luck_skill + equipment_luck_bonus(state) + state.char_level.skill_luck
+
+
+# ----- 4.65 Drop-modifier: буст шанса нужного типа по luck -----
+
+def _item_grade_tier(item: Optional[dict]) -> int:
+    """Грейд-тир item-dict'а (c=1..s+=5). None/без грейда → 0."""
+    if item is None:
+        return 0
+    return _GRADE_TIER.get((item.get('grade') or [None])[0], 0)
+
+
+def _best_owned_tier(state: GameState, item_type: str) -> int:
+    """Лучший грейд-тир предмета данного типа в наличии (equipment + inventory)."""
+    best = 0
+    eq = state.equipment
+    for slot in (eq.head, eq.neck, eq.torso, eq.finger_01, eq.finger_02,
+                 eq.legs, eq.foots, eq.back):
+        if slot is not None and (slot.get('item_type') or [None])[0] == item_type:
+            best = max(best, _item_grade_tier(slot))
+    for item in state.inventory:
+        if (item.get('item_type') or [None])[0] == item_type:
+            best = max(best, _item_grade_tier(item))
+    return best
+
+
+def _type_gap(state: GameState, item_type: str) -> int:
+    """«Нужность» типа = дистанция до S+ (5 − лучший тир). Чем больше — тем нужнее.
+
+    Кольца (4.65, вариант R2): по ХУДШЕМУ из двух надетых пальцев (пустой = 0) —
+    стимул заполнить оба finger-слота хорошими кольцами. Остальные типы —
+    по лучшему в наличии (equipment + inventory).
+    """
+    if item_type == 'ring':
+        worst_finger = min(_item_grade_tier(state.equipment.finger_01),
+                           _item_grade_tier(state.equipment.finger_02))
+        return _MAX_GRADE_TIER - worst_finger
+    return _MAX_GRADE_TIER - _best_owned_tier(state, item_type)
+
+
+def _type_weights(state: GameState) -> dict[str, float]:
+    """Веса выбора типа: base + drop-modifier по luck.
+
+    Относительная модель: худший слот (max gap) получает ПОЛНЫЙ luck-буст,
+    остальные — пропорционально `gap / max_gap`. Если всё S+ (max_gap=0) —
+    буста нет, базовое распределение. luck — сырой (без cap), линейно.
+    """
+    luck = current_luck(state)
+    gaps = {t: _type_gap(state, t) for t in _DROP_TYPES}
+    max_gap = max(gaps.values())
+    weights: dict[str, float] = {}
+    for t in _DROP_TYPES:
+        boost = (luck * gaps[t] / max_gap) if max_gap > 0 else 0.0
+        weights[t] = _BASE_TYPE_WEIGHTS[t] + boost
+    return weights
 
 
 def compute_grade_probabilities(adventure_name: str, state: GameState) -> dict[str, float]:
@@ -204,37 +270,11 @@ class Drop_Item:
             return 5
 
     def item_type(self, state: GameState):
-        # 4.51 — редкий пре-гейт рюкзака. Выполняется ТОЛЬКО когда уже решено,
-        # что предмет падает (item_type вызывается в item_collect). Не трогает
-        # «выпадет ли что-то» (grade-гейт), лишь делает рюкзак редким типом.
-        if random() < BACKPACK_DROP_CHANCE:
-            return 'backpack'
-        luck = current_luck(state)
-        ring = randint(1, 100 + luck)
-        necklace = randint(1, 100 + luck)
-        helmet = randint(1, 100 + luck)
-        shoes = randint(1, 100 + luck)
-        tshirt = randint(1, 100 + luck)
-
-        max_value = max(ring, necklace, helmet, shoes, tshirt)
-
-        if ring == max_value:
-            item_type = 'ring'
-        elif necklace == max_value:
-            item_type = 'necklace'
-        elif helmet == max_value:
-            item_type = 'helmet'
-        elif shoes == max_value:
-            item_type = 'shoes'
-        elif tshirt == max_value:
-            item_type = 't-shirt'
-        else:
-            return None
-
-        values = [ring, necklace, helmet, shoes, tshirt]
-        if values.count(max_value) > 1:
-            return None
-        return item_type
+        # 4.65 — взвешенная выборка типа (заменила «5 кубиков max»). Веса =
+        # base + drop-modifier по luck (см. _type_weights). Всегда возвращает
+        # валидный тип (ничьих/None больше нет — quirk «tie → None» убран).
+        weights = _type_weights(state)
+        return choices(_DROP_TYPES, weights=[weights[t] for t in _DROP_TYPES])[0]
 
     def characteristic_type(self, state: GameState):
         luck = current_luck(state)

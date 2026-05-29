@@ -78,17 +78,18 @@ def test_default_state_has_empty_back_slot():
 
 # ----- drop -----
 
-def test_item_type_pregate_returns_backpack(monkeypatch):
+def test_item_type_can_return_backpack(monkeypatch):
+    # 4.65 — backpack теперь один из типов взвешенной выборки (не пре-гейт).
     s = GameState.default_new_game()
     d = Drop_Item()
-    monkeypatch.setattr('drop.random', lambda: 0.01)  # < 0.05 → рюкзак
+    monkeypatch.setattr('drop.choices', lambda pop, weights=None: ['backpack'])
     assert d.item_type(s) == 'backpack'
 
 
-def test_item_type_pregate_miss_falls_through(monkeypatch):
+def test_item_type_can_return_non_backpack(monkeypatch):
     s = GameState.default_new_game()
     d = Drop_Item()
-    monkeypatch.setattr('drop.random', lambda: 0.5)  # > 0.05 → обычный ролл
+    monkeypatch.setattr('drop.choices', lambda pop, weights=None: ['ring'])
     assert d.item_type(s) != 'backpack'
 
 
@@ -100,7 +101,7 @@ def test_item_collect_backpack_has_capacity_characteristic(monkeypatch):
     """Выпавший рюкзак: characteristic='backpack_capacity', bonus=слоты по грейду."""
     s = GameState.default_new_game()
     d = Drop_Item()
-    monkeypatch.setattr('drop.random', lambda: 0.01)  # форсим backpack
+    monkeypatch.setattr('drop.choices', lambda pop, weights=None: ['backpack'])
     monkeypatch.setattr(Drop_Item, 'one_item_random_grade',
                         lambda self, hard, state: 'a-grade')
     item = d.item_collect('walk_easy', s)

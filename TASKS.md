@@ -5552,7 +5552,9 @@ Mypy ругается: `Argument "value_input_option"... has incompatible type "
 
 ---
 
-### 4.65. Drop-modifier: буст шанса нужного типа по luck `[M / M / todo — дизайн финализирован 29.05.2026]`
+### 4.65. Drop-modifier: буст шанса нужного типа по luck `[M / M / ✅ done 29.05.2026, 0.2.6l]`
+
+**✅ Реализовано (29.05.2026, 0.2.6l).** `item_type()` переведён с «5 кубиков max» на взвешенную выборку (`random.choices`); quirk «ничья → None» убран (тип всегда валиден). Веса = base (рюкзак 5 / прочие 19) + относительный luck-буст: худший слот (`max_gap`) → полный `current_luck`, остальные `luck × gap / max_gap`; `max_gap=0` → база. Нужность по ГРЕЙДУ (`5 − best_owned_tier`), кольца R2 (худший из 2 надетых пальцев, инвентарь игнор). Хелперы `_item_grade_tier` / `_best_owned_tier` / `_type_gap` / `_type_weights` + константы `_DROP_TYPES`/`_BASE_TYPE_WEIGHTS`/`_GRADE_TIER`. **Тесты:** +19 (`test_drop_modifier.py`) + 5 обновлено (item_type не None, backpack pre-gate → mock `drop.choices`). 1482 passed, mypy 0. Усиление — 4.66 (мульти-параметр).
 
 **Soft-pity / completion-incentive.** Смещает распределение ТИПОВ дропа к тем, которые игроку нужнее (пустой слот / низкий грейд), пропорционально `current_luck`. Стимул качать luck = быстрее закрывать/апгрейдить экипировку. Связана с **4.19 (Pity system)** — разные оси (4.19 — серия неудач; 4.65 — владение/грейд), могут сосуществовать или слиться.
 

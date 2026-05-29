@@ -80,11 +80,11 @@ def test_one_item_random_grade_unknown_difficulty_returns_none():
 
 # ----- item_type / characteristic_type -----
 
-def test_item_type_returns_known_or_none():
+def test_item_type_returns_known_type():
     state = GameState.default_new_game()
     drop = Drop_Item()
-    # 4.51 — добавлен 'backpack' (пре-гейт 5%).
-    valid = {None, 'ring', 'necklace', 'helmet', 'shoes', 't-shirt', 'backpack'}
+    # 4.65 — взвешенная выборка всегда возвращает валидный тип (None убран).
+    valid = {'ring', 'necklace', 'helmet', 'shoes', 't-shirt', 'backpack'}
     for _ in range(200):
         assert drop.item_type(state) in valid
 
@@ -109,8 +109,8 @@ def test_item_collect_appends_to_inventory_when_drop_succeeds(monkeypatch, capsy
     monkeypatch.setattr('drop.randint', lambda a, b: 1)
 
     result = drop.item_collect('walk_easy', state)
-    # При randint всегда=1 у item_type будет дубликат max_value → может вернуть None.
-    # Проверяем оба исхода: либо item записан в inventory, либо ничего.
+    # 4.65 — item_type (choices) всегда даёт валидный тип; result зависит от
+    # grade-гейта. Проверяем оба исхода: либо item записан, либо ничего.
     out = capsys.readouterr().out
     if result is not None:
         assert state.inventory == [result]
