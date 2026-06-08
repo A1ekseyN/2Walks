@@ -201,6 +201,13 @@ def auto_collect_pending_drop(state: GameState):
               bonus=(item.get('bonus') or [None])[0],
               quality=(item.get('quality') or [None])[0],
               price=(item.get('price') or [None])[0])
+    # 4.48.12 — web-уведомление об авто-подборе находки при освобождении места.
+    state.push_session_event(
+        'drop_auto_collected',
+        item_type=(item.get('item_type') or [None])[0],
+        grade=(item.get('grade') or [None])[0],
+        characteristic=(item.get('characteristic') or [None])[0],
+        bonus=(item.get('bonus') or [None])[0])
     return item
 
 

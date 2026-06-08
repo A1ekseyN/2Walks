@@ -1117,6 +1117,49 @@ def test_forge_check_done_craft_applies(monkeypatch):
     assert state.inventory[0]['grade'][0] == 'a-grade'
 
 
+def test_forge_check_done_repair_pushes_session_event(monkeypatch):
+    """4.48.12 — на OK финализации ремонта добавляется уведомление forge_repaired."""
+    monkeypatch.setattr('persistence.save_characteristic', lambda: "OK")
+    state = _forge_state()
+    item = _make_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    state.forge.end_ts = _time.time() - 1
+    forge_check_done(state)
+    evs = [e for e in state.session_events if e['kind'] == 'forge_repaired']
+    assert len(evs) == 1
+    assert evs[0]['item_type'] == 'shoes'
+    assert evs[0]['to_quality'] == pytest.approx(60.0)
+
+
+def test_forge_check_done_craft_pushes_session_event(monkeypatch):
+    """4.48.12 — на OK финализации крафта добавляется уведомление forge_crafted."""
+    monkeypatch.setattr('persistence.save_characteristic', lambda: "OK")
+    state = _forge_state()
+    a = _make_item('ring', 'b-grade', 60.0, 'luck', 2)
+    b = _make_item('ring', 'b-grade', 80.0, 'luck', 2)
+    state.inventory.extend([a, b])
+    start_craft_session(state, a, b)
+    state.forge.end_ts = _time.time() - 1
+    forge_check_done(state)
+    evs = [e for e in state.session_events if e['kind'] == 'forge_crafted']
+    assert len(evs) == 1
+    assert evs[0]['item_type'] == 'ring'
+    assert evs[0]['to_grade'] == 'a-grade'
+
+
+def test_forge_check_done_stale_no_session_event(monkeypatch):
+    """4.48.12 — на STALE-rollback уведомление НЕ добавляется."""
+    monkeypatch.setattr('persistence.save_characteristic', lambda: "STALE")
+    state = _forge_state()
+    item = _make_item(item_type='shoes', grade='a-grade', quality=50.0)
+    state.inventory.append(item)
+    start_repair_session(state, item, 10)
+    state.forge.end_ts = _time.time() - 1
+    forge_check_done(state)
+    assert state.session_events == []
+
+
 def test_forge_check_done_stale_rollback(monkeypatch):
     """save STALE → откат: сессия восстановлена, quality не применён."""
     monkeypatch.setattr('persistence.save_characteristic', lambda: "STALE")

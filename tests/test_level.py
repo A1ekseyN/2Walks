@@ -59,6 +59,33 @@ def test_update_level_no_change_no_points():
     assert state.char_level.up_skills == 5
 
 
+def test_update_level_pushes_session_event():
+    """4.48.12 — повышение уровня добавляет web-уведомление level_up."""
+    state = GameState.default_new_game()
+    state.steps.total_used = 50000  # → уровень 3
+    state.char_level.level = 0
+
+    CharLevel(state).update_level()
+
+    assert len(state.session_events) == 1
+    ev = state.session_events[0]
+    assert ev['kind'] == 'level_up'
+    assert ev['from_level'] == 0
+    assert ev['to_level'] == 3
+    assert ev['points_gained'] == 3
+
+
+def test_update_level_no_change_no_session_event():
+    """4.48.12 — без перехода уровня уведомление не добавляется."""
+    state = GameState.default_new_game()
+    state.steps.total_used = 25000
+    state.char_level.level = 2
+
+    CharLevel(state).update_level()
+
+    assert state.session_events == []
+
+
 def test_progress_to_next_level_at_zero():
     state = GameState.default_new_game()
     state.steps.total_used = 5000

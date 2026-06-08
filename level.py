@@ -89,6 +89,11 @@ class CharLevel:
             from history import log_event
             log_event('level_up', from_level=old_level, to_level=new_level,
                       points_gained=level_up_difference)
+            # 4.48.12 — web-уведомление о повышении уровня (с кнопкой
+            # «Распределить» в баннере, points_gained → up_skills).
+            self._state.push_session_event(
+                'level_up', from_level=old_level, to_level=new_level,
+                points_gained=level_up_difference)
 
     def progress_to_next_level(self) -> float:
         """Прогресс до следующего уровня в %, по эффективному XP (с учётом Inspiration)."""

@@ -1126,11 +1126,11 @@ Items с временным эффектом (требуют active_buffs system
 
 ---
 
-### 4.8. Webhook-уведомления о крутых дропах `[L / S / todo (отложено 13.05.2026 — нет Telegram bot / Discord сервера для интеграции)]`
+### 4.8. Webhook-уведомления о крутых дропах `[L / S / rejected (01.06.2026 — функционал не планируется; при добавлении Telegram-бота заводить отдельную задачу)]`
 
-Функция `notify(event)` шлёт POST в Telegram/Discord webhook на S+ дроп, lvl up, новое достижение. URL в `.env`. 30 строк кода, сильно повышает вовлечённость.
+**Отменена 01.06.2026.** Уведомления во внешние каналы пока не предполагаются. Если в будущем появится Telegram-бот — это будет отдельная задача под него (включая саму интеграцию webhook'а).
 
-**Отложено** до момента когда появится готовая внешняя инфраструктура для уведомлений (Telegram bot настроен через BotFather, или Discord-сервер создан, или другой channel). Технически — задача простая (S, hook в `history.log_event`, fire-and-forget threading, есть `httpx` в requirements). Когда возьмёмся — см. обсуждение 13.05.2026 в conversation history: Variant A (hook в log_event), threading.Thread fire-and-forget, поддержка Discord + Telegram + Generic, env vars `WEBHOOK_*` для конфига.
+Изначальная идея (для истории): функция `notify(event)` шлёт POST в Telegram/Discord webhook на S+ дроп / level up / новое достижение, URL в `.env`. Технический эскиз был — Variant A (hook в `history.log_event`), threading.Thread fire-and-forget, поддержка Discord + Telegram + Generic, env vars `WEBHOOK_*`.
 
 ---
 
@@ -1140,17 +1140,19 @@ Items с временным эффектом (требуют active_buffs system
 
 ---
 
-### 4.10. Dashboard в Google Sheets `[L / M / todo]`
+### 4.10. Dashboard в Google Sheets `[L / M / rejected (01.06.2026 — не нужна, замещена web-дашбордом 4.48.1)]`
 
-Уже есть интеграция с Sheets. Добавить отдельный лист `daily_stats`, куда пишется snapshot раз в день (шаги, энергия, уровень, деньги). В самой таблице — график средствами Sheets. Ноль нового UI-кода.
+**Отменена 01.06.2026.** web Dashboard (4.48.1) уже даёт нужную визуализацию прогресса в реальном времени; отдельный Sheets-дашборд избыточен.
 
-**⚠️ Частично замещается by 4.48.1 (2026-04-29):** web Dashboard (4.48.1) даст похожий UX в браузере. 4.10 остаётся как опциональный low-priority backup-визуализатор средствами самих Sheets.
+Изначальная идея (для истории): отдельный лист `daily_stats` со snapshot'ом раз в день (шаги, энергия, уровень, деньги) + нативный график Sheets, ноль нового UI-кода.
 
 ---
 
-### 4.11. Negative events / "налог на бездействие" `[L / S / todo]`
+### 4.11. Negative events / "налог на бездействие" `[L / S / rejected (01.06.2026 — риск демотивации)]`
 
-Если игрок не ходил 3 дня — маленькая потеря денег "за еду" + сброс стрика. Делает выбор "пройти 10k сегодня" более весомым. Риск: демотивация, нужно тестировать на себе.
+**Отменена 01.06.2026.** Штраф за простой демотивирует: игрок, вернувшись после паузы и увидев потерю денег / сброс стрика (в пределе — 0 золота), может бросить игру совсем вместо того чтобы продолжить. Награды-only подход безопаснее для habit-трекера.
+
+Изначальная идея (для истории): если игрок не ходил 3 дня — маленькая потеря денег "за еду" + сброс стрика, чтобы выбор "пройти 10k сегодня" имел больший вес.
 
 ---
 
@@ -1886,7 +1888,14 @@ Gym training (top-tier base 95 эн) → 76 эн при skill=20.
 
 ---
 
-### 4.32. Идея: Tavern Rest / Patience — бонусная энергия за idle-время в Home `[L / M / todo (отложено 14.05.2026 — хорошая идея, реализация позже)]`
+### 4.32. Идея: Tavern Rest / Patience — бонусная энергия за idle-время в Home `[L / M / rejected (02.06.2026 — не вписывается в текущую концепцию)]`
+
+**Отменена 02.06.2026.** Накопление энергии за бездействие / оффлайн не вписывается в текущую концепцию игры (прогресс должен идти от реальных шагов, а не от простоя). При желании вернуться к теме отдыха/восстановления — рассматривать заново в связке с общей rest-системой.
+
+---
+
+#### 4.32 (исходное описание, для истории)
+
 
 **Обсуждение 14.05.2026:** концепция нравится, но реализация пока не нужна. Рекомендованный paths при возврате к задаче — **объединить с 4.39 Meditation** в единую rest-систему (pool+spend pattern): Tavern копит `state.rest_buffer` пассивно, Meditation тратит буфер с выбором эффекта. Это убирает exploit-cycle Meditation и даёт целостную фичу. Variant 5 — расширить до полной Recovery-системы в Home location (наполняет также stub-локацию из 4.42). При возврате — см. полное обсуждение V1-V5 в conversation history 14.05.2026.
 
@@ -2350,7 +2359,7 @@ QoL-улучшение: чтобы ввести шаги, не нужно дел
 
 ---
 
-### 4.48. Web Interface + FastAPI backend (зонтичная) `[H / L+ / partial — 13/14 substasks done (28.05.2026, 0.2.6c); остался Shop (4.48.7, blocked by 4.7)]`
+### 4.48. Web Interface + FastAPI backend (зонтичная) `[H / L+ / partial — 14/15 substasks done (08.06.2026, 0.2.6m); остался Shop (4.48.7, blocked by 4.7)]`
 
 **Цель:** добавить веб-интерфейс игры как параллельный путь играть. Открываешь на iPhone после прогулки — управляешь через браузер. CLI остаётся **primary** (содержит больше функциональности), web нарастает incrementally.
 
@@ -3056,6 +3065,48 @@ User feedback 27.05.2026: хочется кликнуть по блоку акт
 **Тесты:** view builder (locked / repair list / craft groups), repair apply (ok / insufficient / bad key / over-max), craft preview + apply (ok / equipped auto-unequip / overflow / s+ cap), endpoints (Form+JSON, STALE).
 
 **Зависимость:** разблокирует 4.59.4 (таймеры надстраиваются на готовый web-UI).
+
+#### 4.48.12. Web: уведомления о завершении активностей `[M / M / done (08.06.2026, 0.2.6m)]`
+
+**✅ Реализовано (08.06.2026, 0.2.6m).** Runtime-only `state.session_events` + `push_session_event(kind, **payload)` (стабильные id для dismiss; не сериализуется). Финализаторы (`work_check_done` / `skill_training_check_done` / `forge_check_done` / `update_level` / `auto_collect_pending_drop` / adventure-wrapper) аппендят событие после OK commit'а (на STALE — нет). Web: `_build_session_events_view` рендерит стопку баннеров над Stats (висят до явного × / «Закрыть все»), `_build_drop_notification_view` добавил Надеть/Продать к дроп-баннеру (дроп остался отдельным). Endpoints `/web/notifications/dismiss[_all]` + `/api/notifications/dismiss`. CLI чистит буфер в `init_game_state`. Файлы: `state.py`, `work.py`, `gym.py`, `forge.py`, `level.py`, `bonus.py`, `characteristics.py`, `web/main.py`, `_status_fragment.html`. **Тесты:** +20. 1502 passed, mypy 0 issues.
+
+**Проблема.** На web таймерные активности (работа, обучение, приключение, кузница) и системные события (повышение уровня, авто-подбор находки) финализируются **молча** — единственный визуальный сигнал, что что-то завершилось, это исчезновение блока активной сессии из «⏱ Активные сессии». Если игрок не помнит, что именно запускал, он легко пропускает результат: сколько заработал, какой навык и до какого уровня прокачался, что выпало в приключении. В CLR это решено `print`-ами в финализаторах (`work.py:274` «🏭 Вы закончили работу и заработали: N $», `gym.py:392` «🏋 Навык X улучшен до N», `level.py:87` «Персонаж повысил свой уровень до N», `forge.py:777-781`), но на web stdout уходит в логи uvicorn и игроку не виден.
+
+**Что УЖЕ есть на web (не переделывать):** баннер дропа из приключения (`🎁 Из приключения выпало`, runtime-поле `state.last_adventure_drop`), баннер pending-drop (с кнопками «Продать/Отложить»), баннер несобранных триумфов (с `×`-dismiss + «Собрать все»), away-report (`🕒 Пока тебя не было`). Новая система — для активностей, которые сейчас завершаются без следа.
+
+**Цель.** Показывать на web баннер о каждом завершении (по аналогии со стилем баннера триумфов/away-report), с информацией о результате и, где осмысленно, с кнопкой действия. Висят до явного dismiss, чтобы игрок гарантированно не пропустил.
+
+**Дизайн (зафиксировано 08.06.2026, AskUserQuestion):**
+
+| Решение | Выбор |
+|---|---|
+| Поведение dismiss | **До явного `×`** (точечный dismiss каждого + «Закрыть все»). Переживают F5 и HTMX-свапы (runtime-поле в RAM uvicorn'а, как `last_adventure_drop`). НЕ стираются на пассивных `/reload`-свапах и НЕ стираются в `_persist_and_handle_stale` (в отличие от `last_adventure_drop`). |
+| Scope | Работа, Обучение (честный `from → to` из payload `skill_upgraded`), Приключение + дроп, Кузница (ремонт/крафт), Повышение уровня, Авто-подбор pending-drop. |
+| Действия в баннере | Дроп → кнопки «Надеть» / «Продать»; Уровень → кнопка-якорь «Распределить» (на секцию уровня). Остальные баннеры информационные (только текст + `×`). |
+
+**Архитектура (зеркалит проверенный паттерн `last_adventure_drop` / `startup_report`):**
+
+1. **`state.py`** — runtime-only поля: `session_events: list[dict] = field(default_factory=list, repr=False, compare=False)` + счётчик `_session_event_seq: int` (для стабильных id, нужных точечному dismiss). НЕ сериализуются (не в `to_dict`/`from_dict`, как `last_adventure_drop`). Хелпер `push_session_event(kind, **payload)` присваивает `id` и аппендит. Каждое событие: `{id, kind, ...payload}` (например `{'id': 3, 'kind': 'skill_upgraded', 'skill': 'stamina', 'from': 5, 'to': 6}`).
+
+2. **Финализаторы** добавляют событие **после успешного commit'а** (НЕ на STALE-rollback'е — тот же принцип, что `deferred_events` в Adventure, чтобы не было phantom-уведомлений):
+   - `work.py work_check_done` → `work_done` (salary, hours)
+   - `gym.py skill_training_check_done` → `skill_upgraded` (skill, from, to)
+   - `forge.py forge_check_done` → `forge_repaired` / `forge_crafted`
+   - `level.py update_level` → `level_up` (from, to, points)
+   - `bonus.py auto_collect_pending_drop` → `drop_auto_collected` (item)
+   - Adventure: переиспользовать существующий `state.last_adventure_drop` для дропа + добавить `adventure_done`. **Открытый под-вопрос:** объединять «🗺 Приключение пройдено» + «🎁 выпало X» в один баннер или оставить дроп отдельным (как сейчас) и рядом короткий «пройдено». Решить при реализации (дефолт — оставить дроп-баннер как есть, добавить отдельный краткий «пройдено»).
+
+3. **CLI** не трогаем — печатает как раньше. Буфер чистим на старте CLI-сессии (`init_game_state` / начало `play()`), чтобы не копился.
+
+4. **Web** (`web/main.py` + `_status_fragment.html`):
+   - `_build_session_events_view(state)` — pre-compute список баннеров (emoji, заголовок, текст, действия) из `state.session_events`.
+   - Рендер стопки баннеров над Stats (стиль триумф-баннера: цветной border-left, заголовок + текст, `×` в углу).
+   - Кнопки действий переиспользуют существующие хелперы: дроп → `_equip_from_inventory` / `_sell_item_at_index`; уровень → якорь на `#level`.
+   - Endpoints: `POST /web/notifications/dismiss` (по `id`, Form HTMX) + `/web/notifications/dismiss_all`; API-зеркала по необходимости. STALE через `_persist_and_handle_stale`, но **без** очистки `session_events` в нём.
+
+**Тесты:** `push_session_event` + seq id; каждый финализатор аппендит правильное событие на OK / НЕ аппендит на STALE; `_build_session_events_view` маппинг kind→баннер; dismiss по id + dismiss_all; round-trip `to_dict` НЕ содержит `session_events` (runtime-only). Web: endpoint'ы (Form, STALE).
+
+**Зависимость:** строится поверх готового web-стека финализаторов (4.48.3/4/5/11) и паттерна runtime-баннеров (`last_adventure_drop`, триумфы 4.62.7).
 
 #### 4.49.0. Депозиты (зонтичная) `[H / M / done (0.2.2, 06.05.2026 — все подзадачи 4.49.0.0/0.1/0.2 done)]`
 

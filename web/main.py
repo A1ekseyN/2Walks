@@ -1076,6 +1076,8 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # 4.48.3 — «🎁 Находка» banner: runtime-only state.last_adventure_drop.
         # Set в _finalize_adventure_with_drop_capture, cleared на mutation.
         "drop_notification": state.last_adventure_drop,
+        # 4.48.12 — action-метаданные для drop-баннера (Надеть/Продать).
+        "drop_notification_view": _build_drop_notification_view(state),
         # 4.48.6 — Inventory + Equipment mutation views (sell/wear/unwear UI).
         "inventory_view": _build_inventory_view(state, inventory_sort),
         "equipment_view": _build_equipment_view(state),
@@ -1107,6 +1109,12 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # structure для template rendering.
         "triumphs_view": _build_triumphs_view(state),
         "triumphs_error": triumphs_error,
+        # 4.48.12 — уведомления о завершении активностей (работа / обучение /
+        # приключение / кузница / уровень / авто-подбор). Стопка баннеров над
+        # Stats. Runtime-only state.session_events, чистятся ТОЛЬКО по явному
+        # dismiss (НЕ в _persist_and_handle_stale, НЕ здесь). Display-only —
+        # строится в обоих режимах defer_sync.
+        "session_events_view": _build_session_events_view(state),
     }
 
 
@@ -1121,6 +1129,126 @@ def _build_away_report_view(state) -> dict:
     # session. Следующий F5 не покажет (state.startup_report пустой).
     state.startup_report = []
     return view
+
+
+def _build_session_events_view(state) -> list:
+    """4.48.12 — Pre-compute баннеры о завершении активностей из
+    `state.session_events` (runtime-only).
+
+    Каждый элемент: {id, emoji, color, title, text, action}. `action` — None
+    или dict для кнопки в баннере (сейчас только level_up → {'type':'allocate'}).
+    Дроп остаётся ОТДЕЛЬНЫМ баннером (last_adventure_drop) — здесь его нет.
+
+    НЕ очищает буфер — dismiss только по явной кнопке игрока
+    (`/web/notifications/dismiss[_all]`). Display-only, строится в обоих
+    режимах defer_sync.
+    """
+    from functions_02 import format_money
+    out = []
+    for ev in state.session_events:
+        kind = ev.get('kind')
+        eid = ev.get('id')
+        if kind == 'work_done':
+            vac_title = _WORK_DISPLAY.get(ev.get('vacancy'), {}).get(
+                'title', ev.get('vacancy') or '?')
+            out.append({
+                'id': eid, 'emoji': '🏭', 'color': '#3b82f6',
+                'title': 'Смена завершена',
+                'text': (f"{vac_title} · заработано "
+                         f"{format_money(ev.get('earned', 0))} $ за "
+                         f"{ev.get('hours', 0)} ч."),
+                'action': None,
+            })
+        elif kind == 'skill_upgraded':
+            skill = ev.get('skill')
+            stitle = _GYM_SKILL_DISPLAY.get(skill, {}).get(
+                'title', (skill or '?').replace('_', ' ').title())
+            out.append({
+                'id': eid, 'emoji': '🏋', 'color': '#8b5cf6',
+                'title': 'Обучение завершено',
+                'text': (f"Навык {stitle}: "
+                         f"{ev.get('from_level')} → {ev.get('to_level')}"),
+                'action': None,
+            })
+        elif kind == 'adventure_done':
+            from adventure_data import ADVENTURE_RU_LABELS
+            name = ev.get('name')
+            label = ADVENTURE_RU_LABELS.get(name, name or '?')
+            out.append({
+                'id': eid, 'emoji': '🗺', 'color': '#10b981',
+                'title': 'Приключение пройдено',
+                'text': f"{label}",
+                'action': None,
+            })
+        elif kind == 'forge_repaired':
+            itype = (ev.get('item_type') or '?')
+            out.append({
+                'id': eid, 'emoji': '🔨', 'color': '#0891b2',
+                'title': 'Ремонт завершён',
+                'text': (f"{str(itype).title()} {ev.get('grade') or ''} · "
+                         f"quality {ev.get('from_quality')} → "
+                         f"{ev.get('to_quality')}"),
+                'action': None,
+            })
+        elif kind == 'forge_crafted':
+            itype = (ev.get('item_type') or '?')
+            out.append({
+                'id': eid, 'emoji': '🔨', 'color': '#0891b2',
+                'title': 'Крафт завершён',
+                'text': f"{str(itype).title()} {ev.get('to_grade') or ''}",
+                'action': None,
+            })
+        elif kind == 'level_up':
+            pts = ev.get('points_gained', 0)
+            out.append({
+                'id': eid, 'emoji': '⭐', 'color': '#f59e0b',
+                'title': 'Повышение уровня',
+                'text': (f"Уровень {ev.get('from_level')} → "
+                         f"{ev.get('to_level')} (+{pts} очк. навыков)"),
+                'action': {'type': 'allocate'},
+            })
+        elif kind == 'drop_auto_collected':
+            itype = (ev.get('item_type') or '?')
+            out.append({
+                'id': eid, 'emoji': '🎁', 'color': '#10b981',
+                'title': 'Находка подобрана',
+                'text': (f"Освободилось место — {str(itype).title()} "
+                         f"{ev.get('grade') or ''} в инвентаре"),
+                'action': None,
+            })
+    return out
+
+
+def _build_drop_notification_view(state) -> dict:
+    """4.48.12 — обогащает баннер «🎁 Из приключения выпало» кнопками
+    Надеть/Продать.
+
+    Находит индекс предмета в инвентаре по identity (`is`) — он там, если
+    инвентарь не был полон при дропе. Если предмет ушёл в pending_drop или
+    уже продан → `index=None` → кнопки скрыты (только инфо). Баннер сам по
+    себе остаётся в `drop_notification` (raw item для существующих полей
+    шаблона); этот view добавляет только action-метаданные.
+
+    Замечание про стабильность индекса: баннер дропа авто-чистится в
+    `_persist_and_handle_stale` на ЛЮБОМ успешном mutation, поэтому к моменту
+    клика по Надеть/Продать никакой другой mutation не сдвинул инвентарь
+    (иначе баннер бы уже исчез) — индекс валиден.
+    """
+    item = state.last_adventure_drop
+    if not item:
+        return {'active': False}
+    index = None
+    for i, inv_item in enumerate(state.inventory):
+        if inv_item is item:
+            index = i
+            break
+    item_type = (item.get('item_type') or [None])[0]
+    return {
+        'active': True,
+        'index': index,
+        'can_act': index is not None,
+        'is_ring': item_type == 'ring',
+    }
 
 
 def _build_low_quality_warning(state) -> dict:
@@ -1791,6 +1919,10 @@ def _finalize_adventure_with_drop_capture(state) -> None:
         from history import log_event
         for event_type, payload in deferred:
             log_event(event_type, **payload)
+        # 4.48.12 — web-уведомление «приключение пройдено». Дроп остаётся
+        # ОТДЕЛЬНЫМ баннером (state.last_adventure_drop) — здесь только факт
+        # прохождения. snap_adv[1] = имя приключения до финализации.
+        state.push_session_event('adventure_done', name=snap_adv[1])
 
 
 def _validate_and_apply_adventure(state, adv_name: str) -> Optional[str]:
@@ -2203,6 +2335,14 @@ class EquipmentUnwearRequest(BaseModel):
     slot_attr: str = Field(..., description="head/neck/torso/finger_01/finger_02/legs/foots")
 
 
+class NotificationDismissRequest(BaseModel):
+    """Body для POST /api/notifications/dismiss (4.48.12).
+
+    `id` — id уведомления из session_events; None → убрать все.
+    """
+    id: Optional[int] = Field(None, description="id уведомления; None → убрать все")
+
+
 @app.post("/web/inventory/sell", response_class=HTMLResponse)
 async def web_inventory_sell(request: Request, index: int = Form(...),
                               sort: str = Form('default')):
@@ -2292,6 +2432,49 @@ async def api_equipment_unwear(payload: EquipmentUnwearRequest):
     if err is not None:
         return JSONResponse({"ok": False, "error": err}, status_code=422)
     return JSONResponse({"ok": True, "inventory_size": len(state.inventory)})
+
+
+# ============================================================================
+# 4.48.12 — Web: dismiss уведомлений о завершении активностей.
+#
+# session_events — runtime-only буфер (не сериализуется), поэтому dismiss НЕ
+# требует persist'а в Sheets: просто убираем event(ы) из RAM и пере-рендерим
+# фрагмент. Висят до явного × / «Закрыть все» (см. поле session_events 4.48.12).
+# ============================================================================
+
+@app.post("/web/notifications/dismiss", response_class=HTMLResponse)
+async def web_notifications_dismiss(request: Request, id: int = Form(...)):
+    """Form-data: убрать одно уведомление о завершении по id (×)."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    state.session_events = [e for e in state.session_events if e.get('id') != id]
+    context = _dashboard_context(request)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/web/notifications/dismiss_all", response_class=HTMLResponse)
+async def web_notifications_dismiss_all(request: Request):
+    """Form-data: убрать все уведомления о завершении («Закрыть все»)."""
+    state = game.state
+    if state is None:
+        raise HTTPException(status_code=503, detail="state not initialized")
+    state.session_events = []
+    context = _dashboard_context(request)
+    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
+
+
+@app.post("/api/notifications/dismiss")
+async def api_notifications_dismiss(payload: "NotificationDismissRequest"):
+    """JSON: убрать одно уведомление по id (id=None → убрать все)."""
+    state = game.state
+    if state is None:
+        return JSONResponse({"ok": False, "error": "state not initialized"}, status_code=503)
+    if payload.id is None:
+        state.session_events = []
+    else:
+        state.session_events = [e for e in state.session_events if e.get('id') != payload.id]
+    return JSONResponse({"ok": True, "remaining": len(state.session_events)})
 
 
 # ============================================================================

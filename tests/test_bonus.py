@@ -333,6 +333,12 @@ def test_auto_collect_with_free_slot_appends_and_clears():
     assert state.pending_drop is None
     assert state.inventory[-1] is item
     assert len(state.inventory) == 6
+    # 4.48.12 — добавлено web-уведомление о подборе.
+    assert len(state.session_events) == 1
+    ev = state.session_events[0]
+    assert ev['kind'] == 'drop_auto_collected'
+    assert ev['item_type'] == 'ring'
+    assert ev['grade'] == 'a-grade'
 
 
 def test_auto_collect_after_skill_upgrade_makes_room():

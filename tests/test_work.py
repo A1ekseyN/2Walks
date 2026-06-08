@@ -186,6 +186,43 @@ def test_work_check_done_no_session_no_op():
     assert state.work.active is False
 
 
+def test_work_check_done_ok_pushes_session_event(monkeypatch):
+    """4.48.12 — на OK commit добавляется web-уведомление work_done."""
+    monkeypatch.setattr('work.save_characteristic', lambda: "OK")
+    state = GameState.default_new_game()
+    state.work.active = True
+    state.work.work_type = 'factory'
+    state.work.salary = 5
+    state.work.hours = 4
+    state.work.start = datetime.now() - timedelta(hours=2)
+    state.work.end = datetime.now() - timedelta(seconds=1)
+
+    work_check_done(state)
+
+    assert len(state.session_events) == 1
+    ev = state.session_events[0]
+    assert ev['kind'] == 'work_done'
+    assert ev['vacancy'] == 'factory'
+    assert ev['hours'] == 4
+    assert ev['earned'] == 20.0
+
+
+def test_work_check_done_stale_no_session_event(monkeypatch, capsys):
+    """4.48.12 — на STALE-rollback web-уведомление НЕ добавляется."""
+    monkeypatch.setattr('work.save_characteristic', lambda: "STALE")
+    state = GameState.default_new_game()
+    state.work.active = True
+    state.work.work_type = 'factory'
+    state.work.salary = 5
+    state.work.hours = 4
+    state.work.start = datetime.now() - timedelta(hours=2)
+    state.work.end = datetime.now() - timedelta(seconds=1)
+
+    work_check_done(state)
+
+    assert state.session_events == []
+
+
 def test_work_choice_recovers_from_invalid_input_without_recursion(monkeypatch):
     """1.5.1 regression: work_choice использует while True вместо рекурсии."""
     inputs = iter(['xxx', '99', '', '0'])

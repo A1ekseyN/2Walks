@@ -776,9 +776,21 @@ def forge_check_done(state: GameState) -> GameState:
     if op == 'repair':
         print(f'\n🔨 Кузница: ремонт завершён — quality '
               f'{log_payload["from_quality"]} → {log_payload["to_quality"]}.')
+        # 4.48.12 — web-уведомление о завершении ремонта.
+        state.push_session_event(
+            'forge_repaired',
+            item_type=log_payload['item_type'], grade=log_payload['grade'],
+            from_quality=log_payload['from_quality'],
+            to_quality=log_payload['to_quality'])
     else:
         print(f'\n🔨 Кузница: крафт завершён — '
               f'{str(log_payload["item_type"]).title()} {log_payload["to_grade"]}.')
+        # 4.48.12 — web-уведомление о завершении крафта.
+        state.push_session_event(
+            'forge_crafted',
+            item_type=log_payload['item_type'],
+            characteristic=log_payload['characteristic'],
+            to_grade=log_payload['to_grade'])
     return state
 
 

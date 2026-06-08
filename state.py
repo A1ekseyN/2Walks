@@ -344,6 +344,36 @@ class GameState:
     startup_report: list = field(default_factory=list, repr=False, compare=False)
     startup_report_since_ts: float = field(default=0.0, repr=False, compare=False)
 
+    # 4.48.12 — Web: уведомления о завершении активностей. Финализаторы
+    # (work_check_done / skill_training_check_done / forge_check_done /
+    # update_level / auto_collect_pending_drop / adventure) после успешного
+    # commit'а аппендят сюда событие через `push_session_event`. Web рендерит
+    # стопку баннеров над Stats и чистит их ТОЛЬКО по явному dismiss игрока
+    # (`/web/notifications/dismiss[_all]`) — НЕ на пассивных reload-свапах и
+    # НЕ в `_persist_and_handle_stale` (в отличие от last_adventure_drop).
+    # Так игрок гарантированно не пропустит «тихое» завершение активности.
+    # **Runtime-only** — НЕ сериализуются (живут в RAM uvicorn'а, переживают
+    # F5/swap, теряются на рестарте процесса — как last_adventure_drop). CLI
+    # не использует (там результат печатается финализаторами через print);
+    # буфер чистится на старте CLI-сессии чтобы не копился.
+    # `_session_event_seq` — монотонный счётчик для стабильных id (нужны
+    # точечному dismiss; индекс в списке не годится — сдвигается при удалении).
+    session_events: list = field(default_factory=list, repr=False, compare=False)
+    _session_event_seq: int = field(default=0, repr=False, compare=False)
+
+    def push_session_event(self, kind: str, **payload) -> dict:
+        """Добавляет уведомление о завершении активности в `session_events`.
+
+        Присваивает стабильный `id` (монотонный seq) для точечного dismiss.
+        Возвращает созданный event dict. См. поле `session_events` (4.48.12).
+        Вызывать ТОЛЬКО после успешного commit'а финализатора (не на STALE-
+        rollback'е) — иначе баннер покажет результат, который откатился.
+        """
+        self._session_event_seq += 1
+        event = {'id': self._session_event_seq, 'kind': kind, **payload}
+        self.session_events.append(event)
+        return event
+
     @classmethod
     def default_new_game(cls) -> "GameState":
         """Дефолтное состояние нового персонажа (energy=50, money=0, location=home)."""

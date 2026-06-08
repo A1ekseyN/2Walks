@@ -217,6 +217,43 @@ def test_bank_state_default_in_new_game():
     assert s.bank.deposit_last_interest_ts is None
 
 
+def test_push_session_event_assigns_incrementing_ids():
+    """4.48.12 — push_session_event присваивает монотонные id и аппендит."""
+    s = GameState.default_new_game()
+    e1 = s.push_session_event('work_done', earned=20, hours=4)
+    e2 = s.push_session_event('skill_upgraded', skill='stamina', from_level=5, to_level=6)
+    assert e1['id'] == 1
+    assert e2['id'] == 2
+    assert e1['kind'] == 'work_done'
+    assert e1['earned'] == 20
+    assert e2['skill'] == 'stamina'
+    assert s.session_events == [e1, e2]
+    # id монотонен даже после удаления (точечный dismiss не сбрасывает seq).
+    s.session_events = [e for e in s.session_events if e['id'] != 1]
+    e3 = s.push_session_event('level_up', from_level=1, to_level=2)
+    assert e3['id'] == 3
+
+
+def test_session_events_not_serialized_round_trip():
+    """4.48.12 — session_events runtime-only: НЕ в to_dict, defaults на from_dict."""
+    s1 = GameState.default_new_game()
+    s1.push_session_event('work_done', earned=10, hours=2)
+    d = s1.to_dict()
+    assert 'session_events' not in d
+    assert not any('session_event' in k for k in d)
+    s2 = GameState.from_dict(d)
+    assert s2.session_events == []
+    assert s2._session_event_seq == 0
+
+
+def test_session_events_excluded_from_equality():
+    """4.48.12 — compare=False: два state с разными session_events равны."""
+    s1 = GameState.default_new_game()
+    s2 = GameState.default_new_game()
+    s1.push_session_event('level_up', from_level=1, to_level=2)
+    assert s1 == s2
+
+
 def test_bank_state_round_trip():
     """Деньги на депозите + timestamp переживают to_dict / from_dict."""
     s1 = GameState(

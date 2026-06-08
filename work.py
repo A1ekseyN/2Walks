@@ -284,4 +284,7 @@ def work_check_done(state: GameState) -> GameState:
         log_event('work_done', vacancy=finished_vacancy, hours=finished_hours,
                   salary=round(earned, 2), salary_base=base_salary,
                   earnings_boost_pct=state.gym.earnings_boost)
+        # 4.48.12 — web-уведомление о завершении смены (после OK commit'а).
+        state.push_session_event('work_done', vacancy=finished_vacancy,
+                                 hours=finished_hours, earned=round(earned, 2))
     return state

@@ -204,3 +204,25 @@ def test_skill_training_check_done_stale_rollback(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert 'STALE' in out
     assert 'улучшен' not in out
+    # 4.48.12 — на STALE web-уведомление НЕ добавлено.
+    assert state.session_events == []
+
+
+def test_skill_training_check_done_ok_pushes_session_event(monkeypatch):
+    """4.48.12 — на OK commit добавляется web-уведомление skill_upgraded
+    с честным from→to."""
+    monkeypatch.setattr('gym.save_characteristic', lambda: "OK")
+    state = GameState.default_new_game()
+    state.training.active = True
+    state.training.skill_name = 'stamina'
+    state.training.time_end = datetime.now() - timedelta(seconds=1)
+    state.gym.stamina = 5
+
+    skill_training_check_done(state)
+
+    assert len(state.session_events) == 1
+    ev = state.session_events[0]
+    assert ev['kind'] == 'skill_upgraded'
+    assert ev['skill'] == 'stamina'
+    assert ev['from_level'] == 5
+    assert ev['to_level'] == 6

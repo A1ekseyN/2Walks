@@ -18,6 +18,45 @@
    в async-reload потоке GET / строит+очищает его (defer_sync), а swap GET /reload
    не должен его стирать. Здесь его больше нет. #}
 
+{# 4.48.12 — уведомления о завершении активностей (работа / обучение /
+   приключение / кузница / уровень / авто-подбор). Стопка баннеров над Stats.
+   Runtime-only state.session_events, висят до явного × / «Закрыть все» —
+   НЕ чистятся на пассивных reload-свапах (чтобы игрок не пропустил «тихое»
+   завершение). Дроп — ОТДЕЛЬНЫЙ баннер ниже. #}
+{% if session_events_view %}
+<section id="session-events" style="margin-bottom: 1rem;">
+    {% for ev in session_events_view %}
+    <article style="border-left: 4px solid {{ ev.color }}; padding: 0.5rem 0.75rem; margin: 0 0 0.5rem; position: relative;">
+        <form hx-post="/web/notifications/dismiss" hx-target="#status-bar" hx-swap="innerHTML"
+              style="position: absolute; top: 0.15rem; right: 0.35rem; margin: 0;">
+            <input type="hidden" name="id" value="{{ ev.id }}">
+            <button type="submit" title="Закрыть" aria-label="Закрыть"
+                    style="width: auto; background: none; border: none; padding: 0 0.35rem;
+                           margin: 0; font-size: 1.2em; line-height: 1; cursor: pointer;
+                           color: var(--pico-muted-color);">×</button>
+        </form>
+        <div style="padding-right: 1.4rem;">
+            <strong>{{ ev.emoji }} {{ ev.title }}</strong>
+            <small style="display: block; color: var(--pico-muted-color);">{{ ev.text }}</small>
+            {% if ev.action and ev.action.type == 'allocate' %}
+            <a href="#skills" role="button" class="outline"
+               style="display: inline-block; margin-top: 0.4rem; padding: 0.2rem 0.6rem; font-size: 0.85em;">
+                🎯 Распределить очки
+            </a>
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+    {% if session_events_view|length > 1 %}
+    <form hx-post="/web/notifications/dismiss_all" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+        <button type="submit" class="secondary outline" style="margin: 0; padding: 0.2rem 0.6rem; font-size: 0.8em;">
+            Закрыть все ({{ session_events_view|length }})
+        </button>
+    </form>
+    {% endif %}
+</section>
+{% endif %}
+
 {# 4.48.3 — «🎁 Находка» banner после авто-финализации приключения. Один
    render: state.last_adventure_drop set'ится в _finalize_adventure_with_drop_capture,
    очищается на любом успешном mutation (steps/work/gym/drop/skill_alloc). Banner
@@ -38,8 +77,47 @@
         <small style="color: var(--pico-muted-color);">
             Quality: {{ "%.1f"|format((drop_notification.quality|first)|float) if drop_notification.quality else '?' }}
             · Цена: {{ (drop_notification.price|first) if drop_notification.price else 0 }} $
-            · Любое действие закроет уведомление.
         </small>
+        {% if drop_error %}
+        <p style="color: var(--pico-color-pumpkin-600, #b45309); margin: 0.5rem 0 0;">❌ {{ drop_error }}</p>
+        {% endif %}
+        {# 4.48.12 — кнопки Надеть/Продать. can_act=False если предмет ушёл в
+           pending_drop / уже продан (index не найден в инвентаре). Любое из
+           этих действий = mutation → баннер авто-чистится. #}
+        {% if drop_notification_view.can_act %}
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap;">
+            {% if drop_notification_view.is_ring %}
+            <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                <input type="hidden" name="inventory_index" value="{{ drop_notification_view.index }}">
+                <input type="hidden" name="slot_attr" value="finger_01">
+                <button type="submit" style="margin: 0;">💍 На палец 1</button>
+            </form>
+            <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                <input type="hidden" name="inventory_index" value="{{ drop_notification_view.index }}">
+                <input type="hidden" name="slot_attr" value="finger_02">
+                <button type="submit" style="margin: 0;">💍 На палец 2</button>
+            </form>
+            {% else %}
+            <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                <input type="hidden" name="inventory_index" value="{{ drop_notification_view.index }}">
+                <button type="submit" style="margin: 0;">🧥 Надеть</button>
+            </form>
+            {% endif %}
+            <form hx-post="/web/inventory/sell" hx-target="#status-bar" hx-swap="innerHTML"
+                  hx-confirm="Продать за {{ (drop_notification.price|first) if drop_notification.price else 0 }} $?"
+                  style="margin: 0;">
+                <input type="hidden" name="index" value="{{ drop_notification_view.index }}">
+                <button type="submit" class="secondary outline" style="margin: 0;">💰 Продать</button>
+            </form>
+        </div>
+        <small style="display: block; margin-top: 0.4rem; color: var(--pico-muted-color);">
+            Любое другое действие тоже закроет уведомление.
+        </small>
+        {% else %}
+        <small style="display: block; margin-top: 0.4rem; color: var(--pico-muted-color);">
+            Любое действие закроет уведомление.
+        </small>
+        {% endif %}
     </article>
 </section>
 {% endif %}

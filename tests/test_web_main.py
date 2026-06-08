@@ -3719,6 +3719,143 @@ def test_drop_notification_banner_renders_when_set():
     assert 'Helmet' in body
 
 
+# ----- 4.48.12: session-events баннеры завершения активностей -----
+
+def test_session_events_banner_renders_work_and_level():
+    """Баннеры work_done + level_up рендерятся с текстом и кнопкой allocate."""
+    state = GameState.default_new_game()
+    state.push_session_event('work_done', vacancy='factory', hours=4, earned=20.0)
+    state.push_session_event('level_up', from_level=5, to_level=6, points_gained=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'Смена завершена' in body
+    assert 'Завод' in body  # _WORK_DISPLAY title для factory
+    assert 'Повышение уровня' in body
+    assert '5 → 6' in body
+    # level_up имеет кнопку «Распределить» (action=allocate).
+    assert 'Распределить' in body
+    # dismiss-кнопки присутствуют (по id).
+    assert '/web/notifications/dismiss' in body
+
+
+def test_session_events_skill_upgrade_shows_from_to():
+    """skill_upgraded баннер показывает честный from→to и название навыка."""
+    state = GameState.default_new_game()
+    state.push_session_event('skill_upgraded', skill='stamina',
+                             from_level=5, to_level=6)
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'Обучение завершено' in body
+    assert 'Stamina' in body
+    assert '5 → 6' in body
+
+
+def test_session_events_dismiss_one_removes_by_id():
+    """POST /web/notifications/dismiss убирает одно уведомление по id."""
+    state = GameState.default_new_game()
+    e1 = state.push_session_event('work_done', vacancy='factory', hours=4, earned=20.0)
+    e2 = state.push_session_event('level_up', from_level=1, to_level=2, points_gained=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        resp = client.post("/web/notifications/dismiss", data={"id": e1['id']})
+    assert resp.status_code == 200
+    remaining = [e['id'] for e in game.state.session_events]
+    assert remaining == [e2['id']]
+    # Оставшийся баннер всё ещё в выдаче.
+    assert 'Повышение уровня' in resp.text
+
+
+def test_session_events_dismiss_all_clears():
+    """POST /web/notifications/dismiss_all очищает буфер целиком."""
+    state = GameState.default_new_game()
+    state.push_session_event('work_done', vacancy='factory', hours=4, earned=20.0)
+    state.push_session_event('level_up', from_level=1, to_level=2, points_gained=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        resp = client.post("/web/notifications/dismiss_all")
+    assert resp.status_code == 200
+    assert game.state.session_events == []
+
+
+def test_api_notifications_dismiss_by_id_and_all():
+    """JSON dismiss: по id и (id=None) все."""
+    state = GameState.default_new_game()
+    e1 = state.push_session_event('work_done', vacancy='factory', hours=4, earned=20.0)
+    state.push_session_event('level_up', from_level=1, to_level=2, points_gained=1)
+    _setup_state(state)
+    with TestClient(app) as client:
+        r1 = client.post("/api/notifications/dismiss", json={"id": e1['id']})
+        assert r1.json() == {"ok": True, "remaining": 1}
+        r2 = client.post("/api/notifications/dismiss", json={})
+        assert r2.json() == {"ok": True, "remaining": 0}
+    assert game.state.session_events == []
+
+
+def test_drop_notification_banner_has_wear_and_sell_buttons():
+    """4.48.12 — дроп-баннер показывает Надеть/Продать когда предмет в инвентаре."""
+    state = _state_for_adventure()
+    item = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8], 'quality': [80.0], 'price': [50],
+    }
+    state.inventory = [item]
+    state.last_adventure_drop = item
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'Надеть' in body
+    assert 'Продать' in body
+    assert '/web/equipment/wear' in body
+    assert '/web/inventory/sell' in body
+
+
+def test_drop_notification_ring_shows_two_finger_buttons():
+    """4.48.12 — кольцо в дроп-баннере даёт две кнопки (палец 1 / палец 2)."""
+    state = _state_for_adventure()
+    ring = {
+        'item_name': ['ring'], 'item_type': ['ring'], 'grade': ['a-grade'],
+        'characteristic': ['luck'], 'bonus': [3], 'quality': [80.0], 'price': [60],
+    }
+    state.inventory = [ring]
+    state.last_adventure_drop = ring
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'finger_01' in body
+    assert 'finger_02' in body
+    assert 'На палец 1' in body
+
+
+def test_drop_notification_no_buttons_when_item_not_in_inventory():
+    """4.48.12 — если предмет ушёл в pending (нет в инвентаре) — без Надеть/Продать."""
+    state = _state_for_adventure()
+    item = {
+        'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
+        'characteristic': ['stamina'], 'bonus': [8], 'quality': [80.0], 'price': [50],
+    }
+    state.inventory = []  # предмет НЕ в инвентаре (например в pending_drop)
+    state.last_adventure_drop = item
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'Из приключения выпало' in body
+    assert '/web/equipment/wear' not in body
+
+
+def test_session_events_survive_status_render():
+    """4.48.12 — баннеры НЕ чистятся на обычном render (только по явному dismiss)."""
+    state = GameState.default_new_game()
+    state.push_session_event('work_done', vacancy='factory', hours=4, earned=20.0)
+    _setup_state(state)
+    with TestClient(app) as client:
+        client.get("/status")
+        client.get("/status")
+    # После двух рендеров уведомление всё ещё на месте.
+    assert len(game.state.session_events) == 1
+
+
 # ----- 4.48.5.1 (0.2.5a): adventure STALE rollback -----
 
 def test_finalize_adventure_stale_rollback(monkeypatch):
@@ -3757,6 +3894,8 @@ def test_finalize_adventure_stale_rollback(monkeypatch):
     assert state.last_adventure_drop is None
     # Флаг STALE поднят.
     assert state.finalize_stale is True
+    # 4.48.12 — на STALE уведомление adventure_done НЕ добавлено.
+    assert state.session_events == []
 
 
 def test_finalize_adventure_ok_commits(monkeypatch):
@@ -3792,6 +3931,11 @@ def test_finalize_adventure_ok_commits(monkeypatch):
     assert state.adventure.counters.get('walk_easy') == 1
     assert state.last_adventure_drop is test_item
     assert state.finalize_stale is False
+    # 4.48.12 — добавлено уведомление «приключение пройдено» (дроп — отдельно).
+    kinds = [e['kind'] for e in state.session_events]
+    assert 'adventure_done' in kinds
+    adv_ev = next(e for e in state.session_events if e['kind'] == 'adventure_done')
+    assert adv_ev['name'] == 'walk_easy'
 
 
 # ----- 4.48.5.1.1: deferred log_event (no phantom history on STALE) -----

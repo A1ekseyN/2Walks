@@ -393,6 +393,9 @@ def skill_training_check_done(state: GameState) -> None:
     # 4.6 — log_event значимого события прокачки навыка.
     from history import log_event
     log_event('skill_upgraded', skill=skill_name, from_level=old_level, to_level=new_level)
+    # 4.48.12 — web-уведомление о завершении обучения (честный from→to).
+    state.push_session_event('skill_upgraded', skill=skill_name,
+                             from_level=old_level, to_level=new_level)
 
 
 class Skill_Training:

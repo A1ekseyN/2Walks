@@ -193,6 +193,12 @@ def init_game_state(state: Optional[GameState] = None) -> GameState:
     except Exception:  # noqa: BLE001 — report не критичен
         s.startup_report = []
 
+    # 4.48.12 — буфер web-уведомлений о завершении активностей чистим на
+    # старте сессии чтобы не копился (CLI печатает результаты через print и
+    # буфер не читает; web — отдельный процесс со своим state).
+    s.session_events = []
+    s._session_event_seq = 0
+
     # 4.54.1 — Snapshot для optimistic concurrency. Берётся ПОСЛЕ всех
     # post-load fixups (timestamp_last_enter / loc / energy_max / max-merge)
     # чтобы snapshot отражал точно тот state, который мы считаем «synced с
