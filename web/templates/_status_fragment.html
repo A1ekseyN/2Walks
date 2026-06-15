@@ -38,6 +38,52 @@
         <div style="padding-right: 1.4rem;">
             <strong>{{ ev.emoji }} {{ ev.title }}</strong>
             <small style="display: block; color: var(--pico-muted-color);">{{ ev.text }}</small>
+            {# 4.48.12.1 — итог дропа в баннере «Приключение пройдено» (ev.drop
+               определён только у adventure_done; None = находок нет). Бывший
+               отдельный «🎁 Из приключения выпало» баннер объединён сюда. #}
+            {% if ev.drop is defined %}
+                {% if ev.drop %}
+                <small style="display: block; margin-top: 0.35rem;">
+                    🎁 Нашли: <strong>{{ ev.drop.item_type|title if ev.drop.item_type else '?' }}</strong>
+                    ({{ grade_short(ev.drop.grade) }})
+                    · +{{ ev.drop.bonus if ev.drop.bonus else 0 }} {{ ev.drop.characteristic|title if ev.drop.characteristic else '?' }}
+                    · качество {{ "%.1f"|format(ev.drop.quality|float) if ev.drop.quality is not none else '?' }}
+                    · {{ ev.drop.price if ev.drop.price else 0 }} $
+                </small>
+                {% if ev.drop_actions.can_act %}
+                <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
+                    {% if ev.drop_actions.is_ring %}
+                    <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                        <input type="hidden" name="inventory_index" value="{{ ev.drop_actions.index }}">
+                        <input type="hidden" name="slot_attr" value="finger_01">
+                        <button type="submit" style="margin: 0;">💍 На палец 1</button>
+                    </form>
+                    <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                        <input type="hidden" name="inventory_index" value="{{ ev.drop_actions.index }}">
+                        <input type="hidden" name="slot_attr" value="finger_02">
+                        <button type="submit" style="margin: 0;">💍 На палец 2</button>
+                    </form>
+                    {% else %}
+                    <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
+                        <input type="hidden" name="inventory_index" value="{{ ev.drop_actions.index }}">
+                        <button type="submit" style="margin: 0;">🧥 Надеть</button>
+                    </form>
+                    {% endif %}
+                    <form hx-post="/web/inventory/sell" hx-target="#status-bar" hx-swap="innerHTML"
+                          hx-confirm="Продать за {{ ev.drop.price if ev.drop.price else 0 }} $?"
+                          style="margin: 0;">
+                        <input type="hidden" name="index" value="{{ ev.drop_actions.index }}">
+                        <button type="submit" class="secondary outline" style="margin: 0;">💰 Продать</button>
+                    </form>
+                </div>
+                {% if drop_error %}
+                <p style="color: var(--pico-color-pumpkin-600, #b45309); margin: 0.4rem 0 0;">❌ {{ drop_error }}</p>
+                {% endif %}
+                {% endif %}
+                {% else %}
+                <small style="display: block; margin-top: 0.35rem; color: var(--pico-muted-color);">🔍 Находок нет</small>
+                {% endif %}
+            {% endif %}
             {% if ev.action and ev.action.type == 'allocate' %}
             <a href="#skills" role="button" class="outline"
                style="display: inline-block; margin-top: 0.4rem; padding: 0.2rem 0.6rem; font-size: 0.85em;">
@@ -57,70 +103,9 @@
 </section>
 {% endif %}
 
-{# 4.48.3 — «🎁 Находка» banner после авто-финализации приключения. Один
-   render: state.last_adventure_drop set'ится в _finalize_adventure_with_drop_capture,
-   очищается на любом успешном mutation (steps/work/gym/drop/skill_alloc). Banner
-   переживает F5 (drop_notification читается из runtime state), исчезает после
-   первого клика игрока. #}
-{% if drop_notification %}
-<section id="adventure-drop-notification" style="margin-bottom: 1rem;">
-    <article style="border-left: 4px solid var(--pico-color-green-500, #10b981); background: var(--pico-color-green-50, #f0fdf4);">
-        <header style="margin-bottom: 0.25rem;">
-            <strong>🎁 Из приключения выпало</strong>
-        </header>
-        <div class="stat-row">
-            <span>{{ (drop_notification.item_type|first)|title if drop_notification.item_type else '?' }}
-                  <em>{{ (drop_notification.grade|first) if drop_notification.grade else '?' }}</em></span>
-            <span>+{{ (drop_notification.bonus|first) if drop_notification.bonus else 0 }}
-                  {{ (drop_notification.characteristic|first)|title if drop_notification.characteristic else '?' }}</span>
-        </div>
-        <small style="color: var(--pico-muted-color);">
-            Quality: {{ "%.1f"|format((drop_notification.quality|first)|float) if drop_notification.quality else '?' }}
-            · Цена: {{ (drop_notification.price|first) if drop_notification.price else 0 }} $
-        </small>
-        {% if drop_error %}
-        <p style="color: var(--pico-color-pumpkin-600, #b45309); margin: 0.5rem 0 0;">❌ {{ drop_error }}</p>
-        {% endif %}
-        {# 4.48.12 — кнопки Надеть/Продать. can_act=False если предмет ушёл в
-           pending_drop / уже продан (index не найден в инвентаре). Любое из
-           этих действий = mutation → баннер авто-чистится. #}
-        {% if drop_notification_view.can_act %}
-        <div style="display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap;">
-            {% if drop_notification_view.is_ring %}
-            <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
-                <input type="hidden" name="inventory_index" value="{{ drop_notification_view.index }}">
-                <input type="hidden" name="slot_attr" value="finger_01">
-                <button type="submit" style="margin: 0;">💍 На палец 1</button>
-            </form>
-            <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
-                <input type="hidden" name="inventory_index" value="{{ drop_notification_view.index }}">
-                <input type="hidden" name="slot_attr" value="finger_02">
-                <button type="submit" style="margin: 0;">💍 На палец 2</button>
-            </form>
-            {% else %}
-            <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML" style="margin: 0;">
-                <input type="hidden" name="inventory_index" value="{{ drop_notification_view.index }}">
-                <button type="submit" style="margin: 0;">🧥 Надеть</button>
-            </form>
-            {% endif %}
-            <form hx-post="/web/inventory/sell" hx-target="#status-bar" hx-swap="innerHTML"
-                  hx-confirm="Продать за {{ (drop_notification.price|first) if drop_notification.price else 0 }} $?"
-                  style="margin: 0;">
-                <input type="hidden" name="index" value="{{ drop_notification_view.index }}">
-                <button type="submit" class="secondary outline" style="margin: 0;">💰 Продать</button>
-            </form>
-        </div>
-        <small style="display: block; margin-top: 0.4rem; color: var(--pico-muted-color);">
-            Любое другое действие тоже закроет уведомление.
-        </small>
-        {% else %}
-        <small style="display: block; margin-top: 0.4rem; color: var(--pico-muted-color);">
-            Любое действие закроет уведомление.
-        </small>
-        {% endif %}
-    </article>
-</section>
-{% endif %}
+{# 4.48.12.1 — бывший отдельный «🎁 Из приключения выпало» баннер объединён
+   в баннер «🗺 Приключение пройдено» (session-events выше): итог дропа +
+   кнопки Надеть/Продать рендерятся прямо там. #}
 
 {# 4.50.2 — Pending drop banner. Показывается над всем остальным когда
    state.pending_drop != None (drop при полном инвентаре). 3 опции:

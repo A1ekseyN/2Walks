@@ -3703,20 +3703,52 @@ def test_finalize_captures_pending_drop_when_inventory_full(monkeypatch):
     assert state.last_adventure_drop is pending_item
 
 
-def test_drop_notification_banner_renders_when_set():
+def _session_events_section(body: str) -> str:
+    """Вырезает <section id="session-events">…</section> для scoped-ассертов
+    (4.48.12.1 — кнопки дропа теперь внутри баннера «Приключение пройдено»,
+    а не в отдельной секции; нельзя ловить wear/sell из секций инвентаря)."""
+    start = body.find('id="session-events"')
+    if start == -1:
+        return ''
+    end = body.find('</section>', start)
+    return body[start:end if end != -1 else None]
+
+
+def test_adventure_done_banner_shows_drop_result():
+    """4.48.12.1 — баннер «Приключение пройдено» показывает итог дропа inline."""
     state = _state_for_adventure()
-    state.last_adventure_drop = {
+    item = {
         'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
-        'characteristic': ['stamina'], 'bonus': [8],
-        'quality': [80.0], 'price': [50],
+        'characteristic': ['stamina'], 'bonus': [8], 'quality': [80.0], 'price': [50],
     }
+    state.inventory = [item]
+    state.push_session_event(
+        'adventure_done', name='walk_easy',
+        drop={'disposition': 'inventory', 'item_type': 'helmet',
+              'grade': 'a-grade', 'characteristic': 'stamina', 'bonus': 8,
+              'quality': 80.0, 'price': 50},
+        drop_ref=item)
     _setup_state(state)
     with TestClient(app) as client:
-        response = client.get("/status")
-    body = response.text
-    assert '🎁' in body
-    assert 'Из приключения выпало' in body
-    assert 'Helmet' in body
+        body = client.get("/status").text
+    sec = _session_events_section(body)
+    assert 'Приключение пройдено' in sec
+    assert 'Нашли' in sec
+    assert 'Helmet' in sec
+
+
+def test_adventure_done_banner_shows_nothing_found():
+    """4.48.12.1 — drop=None → баннер пишет «Находок нет»."""
+    state = _state_for_adventure()
+    state.push_session_event('adventure_done', name='walk_easy',
+                             drop=None, drop_ref=None)
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    sec = _session_events_section(body)
+    assert 'Приключение пройдено' in sec
+    assert 'Находок нет' in sec
+    assert '/web/equipment/wear' not in sec
 
 
 # ----- 4.48.12: session-events баннеры завершения активностей -----
@@ -3793,55 +3825,74 @@ def test_api_notifications_dismiss_by_id_and_all():
     assert game.state.session_events == []
 
 
-def test_drop_notification_banner_has_wear_and_sell_buttons():
-    """4.48.12 — дроп-баннер показывает Надеть/Продать когда предмет в инвентаре."""
+def test_adventure_done_banner_has_wear_and_sell_buttons():
+    """4.48.12.1 — баннер дропа показывает Надеть/Продать когда предмет в инвентаре."""
     state = _state_for_adventure()
     item = {
         'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
         'characteristic': ['stamina'], 'bonus': [8], 'quality': [80.0], 'price': [50],
     }
     state.inventory = [item]
-    state.last_adventure_drop = item
+    state.push_session_event(
+        'adventure_done', name='walk_easy',
+        drop={'disposition': 'inventory', 'item_type': 'helmet',
+              'grade': 'a-grade', 'characteristic': 'stamina', 'bonus': 8,
+              'quality': 80.0, 'price': 50},
+        drop_ref=item)
     _setup_state(state)
     with TestClient(app) as client:
         body = client.get("/status").text
-    assert 'Надеть' in body
-    assert 'Продать' in body
-    assert '/web/equipment/wear' in body
-    assert '/web/inventory/sell' in body
+    sec = _session_events_section(body)
+    assert 'Надеть' in sec
+    assert 'Продать' in sec
+    assert '/web/equipment/wear' in sec
+    assert '/web/inventory/sell' in sec
 
 
-def test_drop_notification_ring_shows_two_finger_buttons():
-    """4.48.12 — кольцо в дроп-баннере даёт две кнопки (палец 1 / палец 2)."""
+def test_adventure_done_banner_ring_shows_two_finger_buttons():
+    """4.48.12.1 — кольцо в баннере дропа даёт две кнопки (палец 1 / палец 2)."""
     state = _state_for_adventure()
     ring = {
         'item_name': ['ring'], 'item_type': ['ring'], 'grade': ['a-grade'],
         'characteristic': ['luck'], 'bonus': [3], 'quality': [80.0], 'price': [60],
     }
     state.inventory = [ring]
-    state.last_adventure_drop = ring
+    state.push_session_event(
+        'adventure_done', name='walk_easy',
+        drop={'disposition': 'inventory', 'item_type': 'ring',
+              'grade': 'a-grade', 'characteristic': 'luck', 'bonus': 3,
+              'quality': 80.0, 'price': 60},
+        drop_ref=ring)
     _setup_state(state)
     with TestClient(app) as client:
         body = client.get("/status").text
-    assert 'finger_01' in body
-    assert 'finger_02' in body
-    assert 'На палец 1' in body
+    sec = _session_events_section(body)
+    assert 'finger_01' in sec
+    assert 'finger_02' in sec
+    assert 'На палец 1' in sec
 
 
-def test_drop_notification_no_buttons_when_item_not_in_inventory():
-    """4.48.12 — если предмет ушёл в pending (нет в инвентаре) — без Надеть/Продать."""
+def test_adventure_done_banner_no_buttons_when_item_not_in_inventory():
+    """4.48.12.1 — если находка ушла в pending/продана (нет в инвентаре) —
+    итог показывается, но без кнопок Надеть/Продать (drop_ref не в инвентаре)."""
     state = _state_for_adventure()
     item = {
         'item_name': ['helmet'], 'item_type': ['helmet'], 'grade': ['a-grade'],
         'characteristic': ['stamina'], 'bonus': [8], 'quality': [80.0], 'price': [50],
     }
     state.inventory = []  # предмет НЕ в инвентаре (например в pending_drop)
-    state.last_adventure_drop = item
+    state.push_session_event(
+        'adventure_done', name='walk_easy',
+        drop={'disposition': 'pending', 'item_type': 'helmet',
+              'grade': 'a-grade', 'characteristic': 'stamina', 'bonus': 8,
+              'quality': 80.0, 'price': 50},
+        drop_ref=None)
     _setup_state(state)
     with TestClient(app) as client:
         body = client.get("/status").text
-    assert 'Из приключения выпало' in body
-    assert '/web/equipment/wear' not in body
+    sec = _session_events_section(body)
+    assert 'Нашли' in sec
+    assert '/web/equipment/wear' not in sec
 
 
 def test_session_events_survive_status_render():

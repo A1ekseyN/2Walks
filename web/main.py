@@ -1073,11 +1073,6 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # 4.48.3 — Adventure section: list прогулок (locked/unlocked + costs + drop %).
         "adventure_view": _build_adventure_view(state),
         "adventure_error": adventure_error,
-        # 4.48.3 — «🎁 Находка» banner: runtime-only state.last_adventure_drop.
-        # Set в _finalize_adventure_with_drop_capture, cleared на mutation.
-        "drop_notification": state.last_adventure_drop,
-        # 4.48.12 — action-метаданные для drop-баннера (Надеть/Продать).
-        "drop_notification_view": _build_drop_notification_view(state),
         # 4.48.6 — Inventory + Equipment mutation views (sell/wear/unwear UI).
         "inventory_view": _build_inventory_view(state, inventory_sort),
         "equipment_view": _build_equipment_view(state),
@@ -1174,10 +1169,32 @@ def _build_session_events_view(state) -> list:
             from adventure_data import ADVENTURE_RU_LABELS
             name = ev.get('name')
             label = ADVENTURE_RU_LABELS.get(name, name or '?')
+            # 4.48.12.1 — итог дропа в баннере + кнопки Надеть/Продать.
+            # `drop` — статичный снапшот (переживает mutation, хранит «что
+            # нашли» как лог). Кнопки же завязаны на ЖИВОЙ инвентарь: индекс
+            # резолвится по identity (`is`) per-event ref — пока находка лежит
+            # в инвентаре. После продажи/надевания/любой mutation предмет
+            # уходит из инвентаря → index не найден → кнопки исчезают, текст
+            # «Нашли…» остаётся. Per-event ref (а не глобальный
+            # last_adventure_drop) корректен при нескольких adventure_done подряд.
+            drop = ev.get('drop')
+            ref = ev.get('drop_ref')
+            drop_index = None
+            if ref is not None:
+                for i, inv_item in enumerate(state.inventory):
+                    if inv_item is ref:
+                        drop_index = i
+                        break
             out.append({
                 'id': eid, 'emoji': '🗺', 'color': '#10b981',
                 'title': 'Приключение пройдено',
                 'text': f"{label}",
+                'drop': drop,
+                'drop_actions': {
+                    'can_act': drop_index is not None,
+                    'index': drop_index,
+                    'is_ring': bool(drop) and drop.get('item_type') == 'ring',
+                },
                 'action': None,
             })
         elif kind == 'forge_repaired':
@@ -1217,38 +1234,6 @@ def _build_session_events_view(state) -> list:
                 'action': None,
             })
     return out
-
-
-def _build_drop_notification_view(state) -> dict:
-    """4.48.12 — обогащает баннер «🎁 Из приключения выпало» кнопками
-    Надеть/Продать.
-
-    Находит индекс предмета в инвентаре по identity (`is`) — он там, если
-    инвентарь не был полон при дропе. Если предмет ушёл в pending_drop или
-    уже продан → `index=None` → кнопки скрыты (только инфо). Баннер сам по
-    себе остаётся в `drop_notification` (raw item для существующих полей
-    шаблона); этот view добавляет только action-метаданные.
-
-    Замечание про стабильность индекса: баннер дропа авто-чистится в
-    `_persist_and_handle_stale` на ЛЮБОМ успешном mutation, поэтому к моменту
-    клика по Надеть/Продать никакой другой mutation не сдвинул инвентарь
-    (иначе баннер бы уже исчез) — индекс валиден.
-    """
-    item = state.last_adventure_drop
-    if not item:
-        return {'active': False}
-    index = None
-    for i, inv_item in enumerate(state.inventory):
-        if inv_item is item:
-            index = i
-            break
-    item_type = (item.get('item_type') or [None])[0]
-    return {
-        'active': True,
-        'index': index,
-        'can_act': index is not None,
-        'is_ring': item_type == 'ring',
-    }
 
 
 def _build_low_quality_warning(state) -> dict:
@@ -1919,10 +1904,37 @@ def _finalize_adventure_with_drop_capture(state) -> None:
         from history import log_event
         for event_type, payload in deferred:
             log_event(event_type, **payload)
-        # 4.48.12 — web-уведомление «приключение пройдено». Дроп остаётся
-        # ОТДЕЛЬНЫМ баннером (state.last_adventure_drop) — здесь только факт
-        # прохождения. snap_adv[1] = имя приключения до финализации.
-        state.push_session_event('adventure_done', name=snap_adv[1])
+        # 4.48.12.1 — web-уведомление «приключение пройдено» с ИТОГОМ дропа
+        # прямо в баннере (бывший отдельный «🎁 Из приключения выпало» баннер
+        # объединён сюда). Источник правды — deferred-события item_collect:
+        # drop / drop_pending / drop_force_sold (их payload содержит все поля
+        # находки). Отсутствие любого из них = «находок нет». `drop_ref` —
+        # ссылка на dict предмета в инвентаре, нужна для кнопок Надеть/Продать;
+        # ставится только когда находка реально легла в инвентарь (для pending /
+        # force-sold кнопок нет — предмет не в инвентаре). session_events не
+        # сериализуются (runtime-only), поэтому хранить object-ref безопасно.
+        # snap_adv[1] = имя приключения до финализации.
+        _disposition = {'drop': 'inventory', 'drop_pending': 'pending',
+                        'drop_force_sold': 'sold'}
+        drop_summary = None
+        drop_ref = None
+        for event_type, payload in deferred:
+            if event_type in _disposition:
+                drop_summary = {
+                    'disposition': _disposition[event_type],
+                    'item_type': payload.get('item_type'),
+                    'grade': payload.get('grade'),
+                    'characteristic': payload.get('characteristic'),
+                    'bonus': payload.get('bonus'),
+                    'quality': payload.get('quality'),
+                    'price': payload.get('price'),
+                }
+                if event_type == 'drop':
+                    # last_adventure_drop уже = state.inventory[-1] (выставлено выше).
+                    drop_ref = state.last_adventure_drop
+                break
+        state.push_session_event('adventure_done', name=snap_adv[1],
+                                 drop=drop_summary, drop_ref=drop_ref)
 
 
 def _validate_and_apply_adventure(state, adv_name: str) -> Optional[str]:
