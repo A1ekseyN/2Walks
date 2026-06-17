@@ -1504,7 +1504,9 @@ def test_web_work_no_button_when_not_enough_resources():
     forwarder_block = work_section[forwarder_pos:article_end]
     # Нет hidden input forwarder → форма не сгенерирована (max_hours=0).
     assert 'value="forwarder"' not in forwarder_block
-    assert "не хватает" in forwarder_block
+    # Вместо общего текста — конкретный дефицит на +1 ч (steps/energy).
+    assert "Не хватает на +1 ч" in forwarder_block
+    assert "🏃 нужно 5000 (есть 100)" in forwarder_block
 
 
 def test_web_work_start_with_valid_params_starts_session():
@@ -2120,6 +2122,27 @@ def test_hour_options_python_helper_zero_max_hours_returns_empty():
     req = {'steps': 200, 'energy': 4, 'salary': 2}
     state = GameState.default_new_game()
     assert _build_hour_options(state, req, 0) == []
+
+
+def test_work_one_hour_shortfall_shows_deficit():
+    """_work_one_hour_shortfall возвращает конкретный дефицит когда не хватает."""
+    from web.main import _work_one_hour_shortfall
+    req = {'steps': 200, 'energy': 4, 'salary': 2}
+    state = GameState.default_new_game()
+    state.steps.can_use = 100  # < 200
+    state.energy = 2           # < 4
+    out = _work_one_hour_shortfall(state, req)
+    assert out == '🏃 нужно 200 (есть 100) · 🔋 нужно 4 (есть 2)'
+
+
+def test_work_one_hour_shortfall_empty_when_affordable():
+    """Когда ресурсов хватает на +1 ч → пустая строка."""
+    from web.main import _work_one_hour_shortfall
+    req = {'steps': 200, 'energy': 4, 'salary': 2}
+    state = GameState.default_new_game()
+    state.steps.can_use = 1000
+    state.energy = 50
+    assert _work_one_hour_shortfall(state, req) == ''
 
 
 def test_hour_options_python_helper_max_8():

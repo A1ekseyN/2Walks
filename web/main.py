@@ -50,7 +50,9 @@ from equipment_bonus import (
     equipment_stamina_bonus,
 )
 from functions import bonus_percentage, energy_time_charge, save_game_date_last_enter, total_bonus_steps
-from functions_02 import format_hours, format_minutes, format_money
+from functions_02 import (
+    format_hours, format_minutes, format_money, format_resource_shortfall,
+)
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from google_sheets_db import StepsLogRepo
 from inventory import Wear_Equipped_Items
@@ -138,6 +140,20 @@ def _build_hour_options(state, req: dict, max_hours: int) -> list:
     ]
 
 
+def _work_one_hour_shortfall(state, req: dict) -> str:
+    """Текст «чего не хватает на +1 ч работы» (steps/energy) или "" если хватает.
+
+    Energy через `apply_energy_optimization_work` (как в `_max_work_hours` /
+    check_requirements). Деньги в Work — доход, не расход, поэтому не участвуют.
+    Используется и для активной смены (+1 ч), и для вакансий с max_hours=0."""
+    from bonus import apply_energy_optimization_work
+    return format_resource_shortfall(
+        steps_need=req['steps'], steps_have=state.steps.can_use,
+        energy_need=apply_energy_optimization_work(req['energy'], state),
+        energy_have=state.energy,
+    )
+
+
 def _build_work_vacancies(state) -> list:
     """Собирает данные для меню выбора вакансии (не работаешь).
 
@@ -157,6 +173,8 @@ def _build_work_vacancies(state) -> list:
             "salary_per_hour": apply_earnings_boost(req['salary'], state),
             "max_hours": max_hours,
             "hour_options": _build_hour_options(state, req, max_hours),
+            # Дефицит на +1 ч (когда max_hours=0) — для осмысленного сообщения.
+            "shortfall": _work_one_hour_shortfall(state, req) if max_hours == 0 else "",
         })
     return vacancies
 
@@ -986,12 +1004,16 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
     # (когда уже работаешь). Расчёт max_hours и pre-computed hour_options
     # делаем в Python — Jinja остаётся тонким слоем рендера. Cap = 8 часов
     # (как в CLI Work.ask_hours).
+    work_add_shortfall = ""
     if state.work.active and state.work.work_type:
         work_vacancies = []
         work_helper = Work(state)
         cur_req = work_helper.work_requirements.get(state.work.work_type)
         work_max_add_hours = _max_work_hours(state, cur_req) if cur_req else 0
         work_add_hour_options = _build_hour_options(state, cur_req, work_max_add_hours) if cur_req else []
+        # Не хватает даже на +1 ч — показать конкретный дефицит (4.48.x).
+        if cur_req and work_max_add_hours == 0:
+            work_add_shortfall = _work_one_hour_shortfall(state, cur_req)
     else:
         work_vacancies = _build_work_vacancies(state)
         work_max_add_hours = 0
@@ -1065,6 +1087,7 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         "work_vacancies": work_vacancies,
         "work_max_add_hours": work_max_add_hours,
         "work_add_hour_options": work_add_hour_options,
+        "work_add_shortfall": work_add_shortfall,
         "work_error": work_error,
         # 4.50.2 — Pending drop UI: баннер + inline кнопки в инвентаре.
         # `active` = True если есть невыпавшая находка, `item` = parsed dict.

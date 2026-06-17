@@ -7,7 +7,7 @@ from colorama import Fore, Style
 
 from persistence import save_characteristic
 from settings import debug_mode
-from functions_02 import format_money, time
+from functions_02 import format_money, format_resource_shortfall, time
 from equipment_bonus import equipment_speed_skill_bonus
 from bonus import apply_earnings_boost, apply_energy_optimization_work, apply_move_optimization_work
 from inventory import Wear_Equipped_Items
@@ -151,8 +151,11 @@ class Work:
         )
 
         if not try_spend(state, steps=steps_cost, energy=energy_cost):
-            print('\nДописать функционал, который показывает, чего именно не хватило. Можно использовать метод класса.')
-            print('Не достаточно: 🏃 или 🔋')
+            shortfall = format_resource_shortfall(
+                steps_need=steps_cost, steps_have=state.steps.can_use,
+                energy_need=energy_cost, energy_have=state.energy,
+            )
+            print(f'\n{Fore.RED}Не хватает ресурсов:{Style.RESET_ALL} {shortfall}')
             return False
 
         # Подсчёт нового времени окончания смены с учётом уже накопленного.

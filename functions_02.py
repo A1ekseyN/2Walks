@@ -185,6 +185,29 @@ def format_money(amount: float, decimals: int = 2) -> str:
     return f"{amount:,.{decimals}f}"
 
 
+def format_resource_shortfall(steps_need: int = 0, steps_have: int = 0,
+                              energy_need: int = 0, energy_have: int = 0,
+                              money_need: float = 0.0, money_have: float = 0.0) -> str:
+    """Единый текст «чего и сколько не хватает» (CLI + web).
+
+    Показывает ТОЛЬКО дефицитные ресурсы в формате
+    `🏃 нужно X (есть Y) · 🔋 нужно X (есть Y) · 💰 нужно X (есть Y)`.
+    Если всех ресурсов хватает — возвращает пустую строку.
+
+    Plain text без colorama (идёт и в HTML, и в CLI print). Принимает сырые
+    `need`/`have` (а не GameState) — чтобы caller сам выбирал правильный
+    источник (steps.can_use vs energy vs money) и не было circular import.
+    Деньги форматируются через `format_money`."""
+    parts: list[str] = []
+    if steps_need > steps_have:
+        parts.append(f'🏃 нужно {steps_need} (есть {steps_have})')
+    if energy_need > energy_have:
+        parts.append(f'🔋 нужно {energy_need} (есть {energy_have})')
+    if money_need > money_have:
+        parts.append(f'💰 нужно {format_money(money_need)} (есть {format_money(money_have)})')
+    return ' · '.join(parts)
+
+
 def format_hours(hours: int) -> str:
     """Часы → "Y г. MO мес. D дн. H ч." с ведущими нулями. Plain text без colorama.
 

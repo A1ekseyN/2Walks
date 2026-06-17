@@ -540,7 +540,7 @@
                 {% endfor %}
             </form>
             {% else %}
-            <small class="equipment-empty">Не хватает ресурсов на +1 час.</small>
+            <small class="equipment-empty">⚠ Не хватает на +1 ч: {{ work_add_shortfall or '🏃 / 🔋' }}</small>
             {% endif %}
         {% else %}
             {# Не работаешь — список вакансий с кнопками выбора часов. #}
@@ -563,7 +563,7 @@
                     {% endfor %}
                 </form>
                 {% else %}
-                <small class="equipment-empty">— не хватает 🏃 / 🔋 —</small>
+                <small class="equipment-empty">⚠ Не хватает на +1 ч: {{ vacancy.shortfall or '🏃 / 🔋' }}</small>
                 {% endif %}
             </article>
             {% endfor %}

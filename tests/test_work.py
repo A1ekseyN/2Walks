@@ -55,7 +55,7 @@ def test_check_requirements_starts_work_session():
     assert state.work.end is not None
 
 
-def test_check_requirements_insufficient_resources_no_session():
+def test_check_requirements_insufficient_resources_no_session(capsys):
     state = GameState.default_new_game()
     state.gym.move_optimization_work = 0
     state.steps.can_use = 100  # Недостаточно для 1 часа watchman (200)
@@ -67,6 +67,10 @@ def test_check_requirements_insufficient_resources_no_session():
     assert result is False
     assert state.work.active is False
     assert state.steps.can_use == 100  # Не списано
+    # Сообщение показывает конкретный дефицит (нужно/есть), а не заглушку.
+    out = capsys.readouterr().out
+    assert 'Не хватает ресурсов' in out
+    assert '🏃 нужно 200 (есть 100)' in out
 
 
 def test_check_requirements_zero_hours_returns_false():

@@ -402,3 +402,40 @@ def test_format_minutes_no_colorama_codes():
         assert '\x1b' not in result
         assert '[' not in result or 'мес.' in result  # square bracket только если их нет
         assert result == result.encode('utf-8').decode('utf-8')  # pure str, no bytes
+
+
+# ----- format_resource_shortfall -----
+
+from functions_02 import format_resource_shortfall  # noqa: E402
+
+
+def test_shortfall_steps_and_energy():
+    assert format_resource_shortfall(
+        steps_need=600, steps_have=320, energy_need=4, energy_have=2
+    ) == '🏃 нужно 600 (есть 320) · 🔋 нужно 4 (есть 2)'
+
+
+def test_shortfall_empty_when_sufficient():
+    assert format_resource_shortfall(
+        steps_need=100, steps_have=500, energy_need=4, energy_have=10
+    ) == ''
+
+
+def test_shortfall_only_deficit_resource_shown():
+    # Шагов хватает, энергии нет → только 🔋.
+    assert format_resource_shortfall(
+        steps_need=100, steps_have=500, energy_need=10, energy_have=3
+    ) == '🔋 нужно 10 (есть 3)'
+
+
+def test_shortfall_money_uses_format_money():
+    assert format_resource_shortfall(
+        money_need=1234.5, money_have=10
+    ) == '💰 нужно 1,234.50 (есть 10.00)'
+
+
+def test_shortfall_no_ansi_codes():
+    out = format_resource_shortfall(steps_need=5, steps_have=0,
+                                    energy_need=5, energy_have=0,
+                                    money_need=5, money_have=0)
+    assert '\x1b' not in out
