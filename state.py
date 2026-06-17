@@ -139,6 +139,19 @@ class AdventureSession:
         'walk_25k': 0,
         'walk_30k': 0,
     })
+    # 4.19 — Pity (re-roll вариант 2). Per-walk счётчик ПОДРЯД пустых заходов:
+    # дроп → 0, полностью пустой заход → +1. На дропе делается (1 + pity)
+    # независимых грейд-роллов (см. drop.Drop_Item.item_collect). Round-trip
+    # через flat-ключи 'pity_walk_*'; legacy сейвы → старт с 0.
+    pity: dict[str, int] = field(default_factory=lambda: {
+        'walk_easy': 0,
+        'walk_normal': 0,
+        'walk_hard': 0,
+        'walk_15k': 0,
+        'walk_20k': 0,
+        'walk_25k': 0,
+        'walk_30k': 0,
+    })
 
 
 @dataclass
@@ -503,6 +516,16 @@ class GameState:
                     'walk_25k': int(d.get('adventure_walk_25k_counter', 0)),
                     'walk_30k': int(d.get('adventure_walk_30k_counter', 0)),
                 },
+                # 4.19 — pity counters (legacy сейвы без ключей → 0).
+                pity={
+                    'walk_easy': int(d.get('pity_walk_easy', 0)),
+                    'walk_normal': int(d.get('pity_walk_normal', 0)),
+                    'walk_hard': int(d.get('pity_walk_hard', 0)),
+                    'walk_15k': int(d.get('pity_walk_15k', 0)),
+                    'walk_20k': int(d.get('pity_walk_20k', 0)),
+                    'walk_25k': int(d.get('pity_walk_25k', 0)),
+                    'walk_30k': int(d.get('pity_walk_30k', 0)),
+                },
             ),
 
             # 4.59.4 — Forge session. flat-key 'forge_session' (dict; {} legacy).
@@ -726,6 +749,15 @@ class GameState:
             'adventure_walk_20k_counter': self.adventure.counters.get('walk_20k', 0),
             'adventure_walk_25k_counter': self.adventure.counters.get('walk_25k', 0),
             'adventure_walk_30k_counter': self.adventure.counters.get('walk_30k', 0),
+
+            # Pity counters (4.19 — re-roll вариант 2)
+            'pity_walk_easy': self.adventure.pity.get('walk_easy', 0),
+            'pity_walk_normal': self.adventure.pity.get('walk_normal', 0),
+            'pity_walk_hard': self.adventure.pity.get('walk_hard', 0),
+            'pity_walk_15k': self.adventure.pity.get('walk_15k', 0),
+            'pity_walk_20k': self.adventure.pity.get('walk_20k', 0),
+            'pity_walk_25k': self.adventure.pity.get('walk_25k', 0),
+            'pity_walk_30k': self.adventure.pity.get('walk_30k', 0),
 
             # Bank (4.49.0.0 / 4.49.2.1)
             'bank_deposit_amount': self.bank.deposit_amount,

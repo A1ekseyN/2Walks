@@ -1319,7 +1319,7 @@ Items с временным эффектом (требуют active_buffs system
 
 ---
 
-### 4.19. Pity system для дропа `[M / M / дизайн финализирован, todo реализация]`
+### 4.19. Pity system для дропа `[M / M / done (0.2.7a, 17.06.2026)]`
 
 Механика "подкручивания" шанса дропа после серии неудач. Известна как *pity system* / *bad luck protection* / *mercy mechanic* (термин из Genshin Impact и подобных).
 
@@ -1344,12 +1344,15 @@ Items с временным эффектом (требуют active_buffs system
 
 **Cap не нужен** — серии не выходят за ~8, `cap=10` в MC давал идентичные числа. Решено не вводить ради простоты.
 
-**Реализация (когда дойдём):**
-- `state.py`: 7 per-walk счётчиков (в `GameState`) + round-trip в **3 форматах** (state.json / Sheets JSON-blob / legacy CSV) — типичная ловушка, см. CLAUDE.md. Legacy сейвы → старт с 0.
-- `drop.py` / `adventure.py`: цикл `1 + c` попыток в финализаторе `adventure_check_done`; инкремент при полностью пустом заходе, reset при дропе. STALE-совместимость (см. `emit_or_defer`).
-- Тесты: счётчик инкрементится/сбрасывается; цикл попыток (mock `one_item_random_grade` на серию miss → дроп); round-trip полей в 3 форматах.
+**Реализация (0.2.7a):**
+- `state.py`: `AdventureSession.pity: dict[str,int]` (7 walk-ключей, зеркально `counters`) + round-trip через flat-ключи `pity_walk_*`. Legacy сейвы → старт с 0.
+- `drop.py`: цикл `1 + c` грейд-роллов + инкремент/reset в `Drop_Item.item_collect` (там есть `hard` и `state`); на STALE откатывается со state. Реролл касается ТОЛЬКО грейд-ролла; тип/качество/цена — один раз для выпавшего грейда.
+- Отображение %: `compute_grade_probabilities_with_pity` (CLI `adventure._format_reward` + web `_build_adventure_view`) поверх `apply_pity_to_probabilities` (rescale `(1−q^m)/(1−q)`, `nothing=q^m`). Базовая `compute_grade_probabilities` осталась single-attempt (MC-parity).
+- UX: pity невидим (счётчик не показывается), но % в меню Adventure растут с серией.
 
-**Разблокировано:** 3.2.1 (luck в сигнатуре) давно сделана — блокер снят. Анализ проведён отдельной сессией 17.06.2026.
+**Тесты:** +14 в `tests/test_drop.py` (математика rescale: pity=0/nothing=q^m/сумма=1/скаляр/границы q=0,q=1; `with_pity` читает счётчик; item_collect инкремент/reset/реролл-до-дропа/ровно 1+c попыток; round-trip + legacy defaults) + pity-ключи в test_state expected_keys. 1503 passed, mypy 0 issues.
+
+**Разблокировано:** 3.2.1 (luck в сигнатуре) давно сделана — блокер снят. Анализ + реализация — сессия 17.06.2026. Полный дизайн + статистика — [`docs/drop_mechanics.md`](../docs/drop_mechanics.md) §7.
 
 ---
 

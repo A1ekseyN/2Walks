@@ -177,6 +177,47 @@ def compute_grade_probabilities(adventure_name: str, state: GameState) -> dict[s
     return result
 
 
+# ----- 4.19 Pity (re-roll вариант 2) -----
+
+def apply_pity_to_probabilities(base: dict[str, float], pity: int) -> dict[str, float]:
+    """Пересчитывает вероятности грейдов под re-roll механику pity.
+
+    При pity=c делается m = 1 + c независимых грейд-роллов, останавливаемся на
+    первом дропе. Тогда (q = базовый P('nothing'), сумма грейдов = 1 − q):
+        P'('nothing') = q^m
+        P'(grade) = P(grade) × (1 − q^m) / (1 − q)
+    т.е. каждый грейд масштабируется одним скаляром, сумма остаётся 1.
+
+    pity ≤ 0 → возвращает базовые вероятности без изменений (factor=1).
+    Граничный случай q=1 (дроп невозможен) сохраняется как есть.
+    """
+    if pity <= 0:
+        return dict(base)
+    q = base.get('nothing', 0.0)
+    m = 1 + pity
+    result: dict[str, float] = {}
+    if q >= 1.0 or q <= 0.0:
+        # q=1: дропа нет даже с re-roll. q=0: дроп гарантирован — factor неважен.
+        result = dict(base)
+        result['nothing'] = q ** m
+        return result
+    factor = (1.0 - q ** m) / (1.0 - q)
+    for grade, p in base.items():
+        result[grade] = p * factor if grade != 'nothing' else q ** m
+    return result
+
+
+def compute_grade_probabilities_with_pity(adventure_name: str,
+                                           state: GameState) -> dict[str, float]:
+    """Как `compute_grade_probabilities`, но с поправкой на текущий pity-счётчик
+    приключения (`state.adventure.pity`). Используется для ОТОБРАЖЕНИЯ % в меню
+    Adventure (CLI + web) — игрок видит реальный шанс с учётом серии промахов.
+    Базовая `compute_grade_probabilities` остаётся single-attempt (MC-parity)."""
+    base = compute_grade_probabilities(adventure_name, state)
+    pity = state.adventure.pity.get(adventure_name, 0)
+    return apply_pity_to_probabilities(base, pity)
+
+
 class Drop_Item:
     """Генерация случайного item после Adventure. Все методы статичны по сути."""
 
@@ -326,10 +367,30 @@ class Drop_Item:
             'price': [],
         }
 
+        # 4.19 — Pity (re-roll вариант 2): делаем (1 + c) независимых грейд-роллов,
+        # останавливаемся на первом дропе. Счётчик c = серия ПОДРЯД пустых заходов.
+        # Реролл касается ТОЛЬКО грейд-ролла (gate + конкуренция тиеров) — тип /
+        # качество / цена считаются один раз для выпавшего грейда. Это совпадает с
+        # симулятором (scratch_pity_sim) и моделью в docs/drop_mechanics.md §7.
+        pity = state.adventure.pity.get(hard, 0)
+        grade_val = None
+        for _ in range(1 + pity):
+            grade_val = Drop_Item.one_item_random_grade(self, hard=hard, state=state)
+            if grade_val is not None:
+                break
+        # Инкремент/reset по результату ГРЕЙД-ролла (как в модели pity): дроп → 0,
+        # полностью пустой заход → +1. Редкий случай «грейд есть, но characteristic
+        # tie → None» ниже считается дропом (счётчик уже сброшен) — соответствует
+        # определению в симуляторе (pity ключуется на one_item_random_grade).
+        if grade_val is None:
+            state.adventure.pity[hard] = pity + 1
+        else:
+            state.adventure.pity[hard] = 0
+
         item_type_val = Drop_Item.item_type(self, state)
         item['item_type'].append(item_type_val)
         item['item_name'].append(item_type_val)
-        item['grade'].append(Drop_Item.one_item_random_grade(self, hard=hard, state=state))
+        item['grade'].append(grade_val)
         # 4.51 — рюкзак: характеристика = вместимость, bonus = слоты по грейду
         # (cosmetic; реальная capacity считается от грейда в bonus.backpack_capacity).
         if item_type_val == 'backpack':

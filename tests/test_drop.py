@@ -316,3 +316,155 @@ def test_compute_probabilities_matches_monte_carlo(adventure):
             f'{adventure} {grade}: analytical={p_analytical:.4f}, '
             f'MC={p_mc:.4f}, diff={diff:.4f}'
         )
+
+
+# ----- 4.19 Pity (re-roll вариант 2) -----
+
+from drop import (  # noqa: E402
+    apply_pity_to_probabilities,
+    compute_grade_probabilities,
+    compute_grade_probabilities_with_pity,
+)
+
+
+def test_apply_pity_zero_returns_base_unchanged():
+    base = {'c-grade': 0.6, 'nothing': 0.4}
+    assert apply_pity_to_probabilities(base, 0) == base
+
+
+def test_apply_pity_negative_returns_base_unchanged():
+    base = {'c-grade': 0.6, 'nothing': 0.4}
+    assert apply_pity_to_probabilities(base, -3) == base
+
+
+def test_apply_pity_nothing_is_q_pow_m():
+    # q=0.4, pity=2 → m=3 → nothing = 0.4^3 = 0.064
+    base = {'c-grade': 0.6, 'nothing': 0.4}
+    out = apply_pity_to_probabilities(base, 2)
+    assert out['nothing'] == pytest.approx(0.4 ** 3)
+
+
+def test_apply_pity_sum_stays_one():
+    base = {'a-grade': 0.25, 's-grade': 0.2, 's+grade': 0.12, 'nothing': 0.43}
+    for pity in (1, 3, 7):
+        out = apply_pity_to_probabilities(base, pity)
+        assert sum(out.values()) == pytest.approx(1.0)
+
+
+def test_apply_pity_grades_scaled_by_same_factor():
+    base = {'a-grade': 0.3, 's-grade': 0.2, 'nothing': 0.5}
+    out = apply_pity_to_probabilities(base, 1)  # m=2, factor=(1-0.25)/0.5=1.5
+    assert out['a-grade'] == pytest.approx(0.45)
+    assert out['s-grade'] == pytest.approx(0.30)
+    assert out['nothing'] == pytest.approx(0.25)
+
+
+def test_apply_pity_q_one_no_drop_possible():
+    base = {'nothing': 1.0}
+    out = apply_pity_to_probabilities(base, 5)
+    assert out['nothing'] == pytest.approx(1.0)
+
+
+def test_apply_pity_q_zero_guaranteed_drop():
+    base = {'c-grade': 1.0, 'nothing': 0.0}
+    out = apply_pity_to_probabilities(base, 5)
+    assert out['nothing'] == pytest.approx(0.0)
+    assert out['c-grade'] == pytest.approx(1.0)
+
+
+def test_with_pity_reads_state_counter():
+    state = GameState.default_new_game()
+    base = compute_grade_probabilities('walk_30k', state)
+    state.adventure.pity['walk_30k'] = 3
+    boosted = compute_grade_probabilities_with_pity('walk_30k', state)
+    # nothing должен упасть (re-roll даёт больше шансов на дроп).
+    assert boosted['nothing'] < base['nothing']
+    # для другого walk без серии — без изменений.
+    assert compute_grade_probabilities_with_pity('walk_easy', state) == \
+        compute_grade_probabilities('walk_easy', state)
+
+
+# --- item_collect: re-roll loop + счётчик ---
+
+def test_item_collect_increments_pity_on_empty_walk(monkeypatch, capsys):
+    """Полностью пустой заход → pity[walk] += 1."""
+    state = GameState.default_new_game()
+    state.adventure.pity['walk_easy'] = 2
+    monkeypatch.setattr(Drop_Item, 'one_item_random_grade',
+                        lambda self, hard, state: None)
+    result = Drop_Item().item_collect('walk_easy', state)
+    assert result is None
+    assert state.adventure.pity['walk_easy'] == 3
+
+
+def test_item_collect_resets_pity_on_drop(monkeypatch, capsys):
+    """Любой дроп → pity[walk] = 0."""
+    state = GameState.default_new_game()
+    state.inventory = []
+    state.adventure.pity['walk_hard'] = 5
+    _force_successful_drop(monkeypatch)
+    result = Drop_Item().item_collect('walk_hard', state)
+    assert result is not None
+    assert state.adventure.pity['walk_hard'] == 0
+
+
+def test_item_collect_rerolls_until_drop(monkeypatch, capsys):
+    """С pity=2 (→ 3 попытки) грейд-ролл вызывается до первого дропа.
+
+    Симулируем: первые 2 ролла miss, 3-й — дроп. Заход НЕ пустой → счётчик
+    сбрасывается в 0, предмет выпадает."""
+    state = GameState.default_new_game()
+    state.inventory = []
+    state.adventure.pity['walk_hard'] = 2
+    monkeypatch.setattr(Drop_Item, 'item_type', lambda self, state: 'ring')
+    monkeypatch.setattr(Drop_Item, 'characteristic_type', lambda self, state: 'luck')
+    monkeypatch.setattr(Drop_Item, 'item_quality', lambda self, state: 80)
+
+    seq = iter([None, None, 'a-grade'])
+    monkeypatch.setattr(Drop_Item, 'one_item_random_grade',
+                        lambda self, hard, state: next(seq))
+
+    result = Drop_Item().item_collect('walk_hard', state)
+    assert result is not None
+    assert result['grade'][0] == 'a-grade'
+    assert state.adventure.pity['walk_hard'] == 0
+    assert len(state.inventory) == 1
+
+
+def test_item_collect_pity_loop_capped_by_counter(monkeypatch, capsys):
+    """С pity=2 делается ровно 1+2=3 попытки; если все miss → пусто, +1."""
+    state = GameState.default_new_game()
+    state.adventure.pity['walk_30k'] = 2
+    calls = {'n': 0}
+
+    def counting_miss(self, hard, state):
+        calls['n'] += 1
+        return None
+    monkeypatch.setattr(Drop_Item, 'one_item_random_grade', counting_miss)
+
+    result = Drop_Item().item_collect('walk_30k', state)
+    assert result is None
+    assert calls['n'] == 3  # 1 + pity
+    assert state.adventure.pity['walk_30k'] == 3
+
+
+def test_pity_round_trip_through_dict():
+    """pity-счётчики переживают to_dict → from_dict."""
+    state = GameState.default_new_game()
+    state.adventure.pity['walk_25k'] = 4
+    state.adventure.pity['walk_easy'] = 1
+    restored = GameState.from_dict(state.to_dict())
+    assert restored.adventure.pity['walk_25k'] == 4
+    assert restored.adventure.pity['walk_easy'] == 1
+    assert restored.adventure.pity['walk_30k'] == 0
+
+
+def test_pity_legacy_save_defaults_to_zero():
+    """Сейв без pity-ключей (legacy) → счётчики 0."""
+    state = GameState.default_new_game()
+    d = state.to_dict()
+    for k in list(d):
+        if k.startswith('pity_'):
+            del d[k]
+    restored = GameState.from_dict(d)
+    assert all(v == 0 for v in restored.adventure.pity.values())

@@ -1744,7 +1744,7 @@ def _build_adventure_view(state) -> dict:
     """
     from adventure import Adventure
     from adventure_data import adventure_data_table
-    from drop import compute_grade_probabilities
+    from drop import compute_grade_probabilities_with_pity
 
     is_active = state.adventure.active
     active_name = state.adventure.name if is_active else None
@@ -1804,11 +1804,11 @@ def _build_adventure_view(state) -> dict:
             'energy': max(0, base_energy - state.energy),
         }
 
-        # Drop probabilities (учитывает current luck).
+        # Drop probabilities (учитывает current luck + pity-счётчик, 4.19).
         # Формат: list[(grade_label_human, percent_str)] для template.
         # Skip 'nothing' и грейды с p<0.0001 — чтобы не показывать «C-Grade 0.00%».
         # Labels — полные формы «X-Grade» / «S+ Grade» (consistent с CLI).
-        probs = compute_grade_probabilities(name, state)
+        probs = compute_grade_probabilities_with_pity(name, state)
         prob_pairs: list[tuple[str, str]] = []
         for grade, p in probs.items():
             if grade == 'nothing' or p < 0.0001:

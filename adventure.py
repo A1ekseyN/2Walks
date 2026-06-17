@@ -7,7 +7,7 @@ from colorama import Fore, Style
 
 from adventure_data import adventure_data_table
 from colors import steps_color, energy_color
-from drop import Drop_Item, compute_grade_probabilities
+from drop import Drop_Item, compute_grade_probabilities_with_pity
 from functions_02 import format_money, format_timedelta, time
 from skill_bonus import speed_skill_equipment_and_level_bonus
 from settings import debug_mode
@@ -163,11 +163,11 @@ class Adventure:
         """4.29-replacement (0.2.4f) — формирует строку наград с % выпадения.
 
         Пример: 'C-Grade (37.20%), B-Grade (33.36%)' для walk_normal.
-        Учитывает текущий luck игрока через compute_grade_probabilities.
-        Грейд 'nothing' (вероятность miss'а) не отображается — игрок видит
-        только потенциальные награды.
+        Учитывает текущий luck игрока через compute_grade_probabilities_with_pity
+        (4.19 — % растут с серией пустых заходов). Грейд 'nothing' (вероятность
+        miss'а) не отображается — игрок видит только потенциальные награды.
         """
-        probs = compute_grade_probabilities(adventure_name, self._state)
+        probs = compute_grade_probabilities_with_pity(adventure_name, self._state)
         parts = [
             f'{grade.title()} [{pct * 100:.2f}%]'
             for grade, pct in probs.items()

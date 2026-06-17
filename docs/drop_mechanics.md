@@ -8,7 +8,7 @@
 
 Источники правды в коде: [`drop.py`](../drop.py) (ролы + константы), [`adventure_data.py`](../adventure_data.py) (per-walk таблицы тиеров), [`drop_test_montecarlo.py`](../drop_test_montecarlo.py) (MC-симулятор баланса). Аналитический расчёт — `drop.compute_grade_probabilities(adv, state)`.
 
-Status: **актуально на 0.2.6n (17.06.2026)**. Pity (раздел 7) — **спроектировано, ещё НЕ реализовано** (task 4.19).
+Status: **актуально на 0.2.7a (17.06.2026)**. Pity (раздел 7) — **реализовано в 0.2.7a** (task 4.19).
 
 ---
 
@@ -152,7 +152,7 @@ walk_30k     s+=34.6%                             | nothing=65.4%
 
 ## 7. Pity-система (task 4.19) — дизайн + статистика
 
-**Status: спроектировано, НЕ реализовано.** Финализировано в ходе анализа 17.06.2026.
+**Status: реализовано в 0.2.7a (17.06.2026).** Дизайн финализирован тем же днём по итогам анализа ниже.
 
 ### Проблема
 
@@ -203,11 +203,13 @@ luck   easy      normal    hard      15k       20k       25k       30k
 
 **Не нужен.** Серии и так не выходят за ~8; `cap=10` в MC давал идентичные числа. Решено не вводить ради простоты логики.
 
-### План реализации (когда дойдём)
+### Реализация (0.2.7a)
 
-- `state.py`: 7 счётчиков (per-walk) + round-trip в 3 форматах (state.json / Sheets JSON-blob / legacy CSV) — типичная ловушка, см. CLAUDE.md.
-- `drop.py` / `adventure.py`: цикл `1 + c` попыток в финализаторе; инкремент при полностью пустом заходе, reset при дропе. STALE-совместимость финализатора (см. `adventure_check_done` + `emit_or_defer`).
-- Тесты: счётчик инкрементится/сбрасывается; цикл попыток; round-trip полей.
+- `state.py`: `AdventureSession.pity: dict[str,int]` (7 walk-ключей, зеркально `counters`); round-trip через flat-ключи `pity_walk_*` (legacy сейвы → 0).
+- `drop.py`: цикл `1 + c` грейд-роллов + инкремент/reset в `Drop_Item.item_collect` (есть `hard` и `state`); на STALE откатывается со state. Реролл касается ТОЛЬКО грейд-ролла — тип/качество/цена считаются один раз для выпавшего грейда.
+- Отображение %: `compute_grade_probabilities_with_pity` (CLI `adventure._format_reward` + web `_build_adventure_view`) поверх `apply_pity_to_probabilities`. Базовая `compute_grade_probabilities` осталась single-attempt (MC-parity).
+- UX: pity невидим (счётчик не показывается), но % растут с серией.
+- Тесты: `tests/test_drop.py` — математика rescale, чтение счётчика, re-roll loop, инкремент/reset, round-trip + legacy defaults.
 
 ---
 

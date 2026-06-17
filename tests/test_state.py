@@ -397,6 +397,9 @@ def test_default_state_to_dict_has_all_legacy_keys():
         'adventure_walk_hard_counter', 'adventure_walk_15k_counter',
         'adventure_walk_20k_counter', 'adventure_walk_25k_counter',
         'adventure_walk_30k_counter',
+        # Pity counters (4.19 — re-roll вариант 2)
+        'pity_walk_easy', 'pity_walk_normal', 'pity_walk_hard',
+        'pity_walk_15k', 'pity_walk_20k', 'pity_walk_25k', 'pity_walk_30k',
         # Bank (4.49.0.0 / 4.49.2.1)
         'bank_deposit_amount', 'bank_deposit_last_interest_ts',
         'bank_loan_amount', 'bank_loan_last_interest_ts',
