@@ -2138,6 +2138,18 @@ _EQUIPMENT_SLOT_LABELS: dict[str, str] = {
 # Set всех валидных slot_attr (для wear/unwear validation).
 _VALID_SLOT_ATTRS: frozenset[str] = frozenset(_EQUIPMENT_SLOT_LABELS.keys())
 
+# Группировка инвентаря по типу (UI «вариант C»). Порядок = канонический
+# (как слоты экипировки). item_type → (emoji, заголовок-множественное).
+# Типы вне списка попадают в fallback-группу в конце.
+_ITEM_TYPE_GROUP_LABELS: tuple[tuple[str, str, str], ...] = (
+    ('helmet',   '🪖', 'Шлемы'),
+    ('necklace', '📿', 'Ожерелья'),
+    ('t-shirt',  '👕', 'Футболки'),
+    ('ring',     '💍', 'Кольца'),
+    ('shoes',    '👟', 'Обувь'),
+    ('backpack', '🎒', 'Рюкзаки'),
+)
+
 
 def _sort_inventory_view(
     inventory: list[dict], sort_key: str
@@ -2235,8 +2247,26 @@ def _build_inventory_view(state, sort_key: str = 'default') -> dict:
             'backpack_slots': _backpack_slots_for(item),
         })
 
+    # Вариант C — группировка по типу. items_view уже отсортирован по sort_key;
+    # раскладываем по корзинам (порядок внутри сохраняется), эмитим группы в
+    # каноническом порядке; пустые типы пропускаем. Неизвестные типы — в конец.
+    buckets: dict[str, list[dict]] = {}
+    for entry in items_view:
+        buckets.setdefault(entry['item_type'], []).append(entry)
+    groups: list[dict] = []
+    for type_key, emoji, label in _ITEM_TYPE_GROUP_LABELS:
+        bucket = buckets.pop(type_key, None)
+        if bucket:
+            groups.append({'type': type_key, 'emoji': emoji, 'label': label,
+                           'count': len(bucket), 'items': bucket})
+    for type_key in sorted(buckets):  # fallback: типы вне канона
+        bucket = buckets[type_key]
+        groups.append({'type': type_key, 'emoji': '📦', 'label': type_key.title(),
+                       'count': len(bucket), 'items': bucket})
+
     return {
         'items': items_view,
+        'groups': groups,
         'sort_options': list(_INVENTORY_SORT_OPTIONS),
         'current_sort': sort_key if sort_key in _VALID_SORT_KEYS else 'default',
     }

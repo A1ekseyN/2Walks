@@ -46,6 +46,15 @@
             flex-wrap: wrap;
         }
         #inventory .inv-buttons form { margin: 0; }
+        /* Вариант C — группы инвентаря по типу (вложенные <details>). Лёгкий
+           отступ + кликабельный заголовок с count, отделяет от плоского списка. */
+        #inventory .inv-group { margin: 0.35rem 0; }
+        #inventory .inv-group > summary {
+            font-size: 0.9em;
+            padding: 0.3rem 0;
+            cursor: pointer;
+        }
+        #inventory .inv-group[open] > summary { margin-bottom: 0.4rem; }
         .equipment-empty { color: var(--pico-muted-color); font-style: italic; }
         section { margin-bottom: 1.25rem; }
 

@@ -4372,6 +4372,83 @@ def test_inventory_view_applies_trader_to_sell_price():
     assert view['items'][0]['price_raw'] == 100
 
 
+# ----- _build_inventory_view: группировка по типу (вариант C) -----
+
+def test_inventory_view_groups_by_type_canonical_order():
+    """groups: типы в каноническом порядке (helmet → necklace → ... → backpack),
+    каждая группа с emoji/label/count, пустые типы пропущены."""
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.inventory = [
+        _make_inv_item(item_type='shoes'),
+        _make_inv_item(item_type='helmet'),
+        _make_inv_item(item_type='ring'),
+        _make_inv_item(item_type='ring'),
+    ]
+    _setup_state(state)
+    groups = _build_inventory_view(state, 'default')['groups']
+    # Канонический порядок: helmet перед ring перед shoes; necklace/t-shirt/backpack отсутствуют.
+    assert [g['type'] for g in groups] == ['helmet', 'ring', 'shoes']
+    by_type = {g['type']: g for g in groups}
+    assert by_type['ring']['count'] == 2
+    assert by_type['helmet']['count'] == 1
+    assert by_type['ring']['label'] == 'Кольца'
+    assert by_type['ring']['emoji'] == '💍'
+    # Сумма по группам == плоскому списку.
+    assert sum(g['count'] for g in groups) == len(state.inventory)
+
+
+def test_inventory_view_groups_preserve_sorted_order_within_group():
+    """Внутри группы порядок следует выбранной сортировке (по bonus desc)."""
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.inventory = [
+        _make_inv_item(item_type='ring', bonus=1),
+        _make_inv_item(item_type='ring', bonus=5),
+        _make_inv_item(item_type='ring', bonus=3),
+    ]
+    _setup_state(state)
+    groups = _build_inventory_view(state, 'bonus')['groups']
+    ring_items = groups[0]['items']
+    assert [i['bonus'] for i in ring_items] == [5, 3, 1]
+
+
+def test_inventory_view_groups_empty_inventory():
+    """Пустой инвентарь → groups == []."""
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.inventory = []
+    _setup_state(state)
+    assert _build_inventory_view(state, 'default')['groups'] == []
+
+
+def test_inventory_view_groups_unknown_type_fallback():
+    """Тип вне канона (food) попадает в fallback-группу в конце с 📦."""
+    from web.main import _build_inventory_view
+    state = GameState.default_new_game()
+    state.inventory = [
+        _make_inv_item(item_type='helmet'),
+        _make_inv_item(item_type='cheeseburger'),  # не equipment, вне канона
+    ]
+    _setup_state(state)
+    groups = _build_inventory_view(state, 'default')['groups']
+    assert groups[0]['type'] == 'helmet'
+    assert groups[-1]['type'] == 'cheeseburger'
+    assert groups[-1]['emoji'] == '📦'
+
+
+def test_dashboard_renders_inventory_group_header():
+    """Render: при helmet в инвентаре в HTML появляется групповой заголовок
+    «Шлемы» и класс inv-group (защита шаблона от регрессии)."""
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='helmet')]
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/").text
+    assert "inv-group" in body
+    assert "Шлемы" in body
+
+
 # ----- _build_equipment_view -----
 
 def test_equipment_view_all_slots():

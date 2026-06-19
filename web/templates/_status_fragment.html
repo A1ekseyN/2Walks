@@ -1099,12 +1099,18 @@
         </form>
         {% endif %}
 
-        {% if inventory_view['items'] %}
-            {# 22.05.2026 — mobile-friendly стэк: текст на полной строке,
-               кнопки в .inv-buttons на следующей строке. Линия-разделитель
-               между items (CSS в dashboard.html). grade_short для consistency
-               с Equipment. #}
-            {% for item in inventory_view['items'] %}
+        {% if inventory_view['groups'] %}
+            {# Вариант C — группировка по типу: каждый тип в своём <details>.
+               Свёрнуто по умолчанию (компактный обзор с counts); при active
+               pending-drop баннере раскрываем все группы, чтобы кнопки «Продать
+               + взять находку» были доступны без лишних кликов. Нумерация
+               (loop.index) — внутри группы. Mobile-friendly стэк: текст на
+               полной строке, кнопки в .inv-buttons ниже; grade_short для
+               consistency с Equipment. #}
+            {% for group in inventory_view['groups'] %}
+            <details class="inv-group" {% if pending_drop_view.banner %}open{% endif %}>
+                <summary>{{ group.emoji }} <strong>{{ group.label }}</strong> ({{ group.count }})</summary>
+                {% for item in group['items'] %}
                 <div class="item-row">
                     <span>
                         {{ loop.index }}. {{ item.item_type|title }} <em>{{ grade_short(item.grade) }}</em>
@@ -1160,6 +1166,8 @@
                     {% endif %}
                     </div>
                 </div>
+                {% endfor %}
+            </details>
             {% endfor %}
         {% else %}
             <small class="equipment-empty">— пусто —</small>
