@@ -109,8 +109,10 @@
 
 {# 4.50.2 — Pending drop banner. Показывается над всем остальным когда
    state.pending_drop != None (drop при полном инвентаре). 3 опции:
-   sell-existing (кнопки в инвентаре ниже), sell-new, skip. #}
-{% if pending_drop_view.active %}
+   sell-existing (кнопки в инвентаре ниже), sell-new, skip. «Отложить» прячет
+   баннер (pending_drop_view.banner=False) — находка остаётся, кнопки sell в
+   инвентаре доступны по pending_drop_view.active. #}
+{% if pending_drop_view.banner %}
 <section id="pending-drop" style="margin-bottom: 1rem;">
     <article style="border-left: 4px solid var(--pico-color-orange-500, #f97316);">
         <header style="margin-bottom: 0.5rem;">
@@ -1077,9 +1079,10 @@
 </section>
 
 <section id="inventory">
-    {# 4.50.2 — auto-expand details при active pending, чтобы игрок видел список
-       со sell-buttons без лишнего клика. Без pending — сворачиваем по умолчанию. #}
-    <details {% if pending_drop_view.active %}open{% endif %}>
+    {# 4.50.2 — auto-expand details пока баннер находки активен, чтобы игрок видел
+       список со sell-buttons без лишнего клика. После «Отложить» (banner=False)
+       не форсим open. Без pending — свёрнуто по умолчанию. #}
+    <details {% if pending_drop_view.banner %}open{% endif %}>
         <summary>🎒 <strong>Инвентарь</strong> ({{ state.inventory|length }}/{{ inventory_capacity }})</summary>
 
         {% if inventory_view['items'] %}

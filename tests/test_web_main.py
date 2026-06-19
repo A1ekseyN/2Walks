@@ -3065,11 +3065,24 @@ def _state_with_pending_and_full_inventory():
 
 
 def test_pending_drop_view_inactive_when_no_pending():
-    """_build_pending_drop_view: pending=None → active=False."""
+    """_build_pending_drop_view: pending=None → active=False, banner=False."""
     from web.main import _build_pending_drop_view
     state = GameState.default_new_game()
     view = _build_pending_drop_view(state)
-    assert view == {"active": False, "item": None}
+    assert view == {"active": False, "banner": False, "item": None}
+
+
+def test_pending_drop_view_banner_hidden_after_dismiss():
+    """После «Отложить» (pending_drop_banner_dismissed=True): active=True
+    (находка есть, inventory-кнопки доступны), но banner=False (скрыт)."""
+    from web.main import _build_pending_drop_view
+    state = GameState.default_new_game()
+    state.pending_drop = _make_pending_item()
+    assert _build_pending_drop_view(state)["banner"] is True
+    state.pending_drop_banner_dismissed = True
+    view = _build_pending_drop_view(state)
+    assert view["active"] is True
+    assert view["banner"] is False
 
 
 def test_pending_drop_view_parses_item_fields():
@@ -3188,8 +3201,9 @@ def test_post_web_drop_sell_existing_invalid_index_returns_error():
     assert "Неверный индекс" in response.text
 
 
-def test_post_web_drop_skip_keeps_pending():
-    """skip: pending остаётся, fragment просто перерисовался."""
+def test_post_web_drop_skip_hides_banner_keeps_pending():
+    """skip («Отложить»): pending сохраняется, но баннер скрывается (флаг
+    pending_drop_banner_dismissed=True); находка остаётся для авто-подбора."""
     state = _state_with_pending_and_full_inventory()
     pending = state.pending_drop
     initial_inv_len = len(state.inventory)
@@ -3197,10 +3211,12 @@ def test_post_web_drop_skip_keeps_pending():
     with TestClient(app) as client:
         response = client.post("/web/drop/skip")
     assert response.status_code == 200
+    # Находка не тронута.
     assert state.pending_drop is pending
     assert len(state.inventory) == initial_inv_len
-    # Banner всё ещё показан.
-    assert 'id="pending-drop"' in response.text
+    # Флаг выставлен, большой баннер пропал из фрагмента.
+    assert state.pending_drop_banner_dismissed is True
+    assert 'id="pending-drop"' not in response.text
 
 
 # ----- POST /api/drop/* endpoints -----

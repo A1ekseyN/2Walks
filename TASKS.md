@@ -3405,6 +3405,8 @@ Logика «при full inventory не append, а сохранить в `state.p
 - При успехе: state.pending_drop=None, persist_state_to_cloud, HTMX swap.
 - 5-7 тестов на web flow + integration с auto-finalize.
 
+**✅ Follow-up fix (19.06.2026, 0.2.7c) — кнопка «Отложить» работала как no-op.** `/web/drop/skip` просто ре-рендерил фрагмент, а баннер показывался всегда при `pending_drop != None` → после клика возвращался, выглядел мёртвым. Фикс: runtime-only флаг `state.pending_drop_banner_dismissed` (НЕ сериализуется, как `session_events`; переживает F5/swap, сброс на рестарте). `_build_pending_drop_view` отдаёт `active` (находка есть → sell-existing кнопки в инвентаре) + `banner` = `active AND not dismissed` (большой баннер + auto-expand инвентаря). `/web/drop/skip` ставит флаг без мутации pending и без persist — находка остаётся и авто-подберётся через `auto_collect_pending_drop`. Web-финализатор приключения сбрасывает флаг при появлении НОВОЙ находки (`pending_before is None and now not None`, OK-commit only). Файлы: `state.py`, `web/main.py`, `_status_fragment.html`. **Тесты:** +1 (banner hidden after dismiss), обновлены skip- и inactive-тесты. 1525 passed, mypy 0 issues.
+
 **`state.pending_drop`** — общее поле для CLI и web, добавляется в 4.50.1.
 
 #### Связь с другими

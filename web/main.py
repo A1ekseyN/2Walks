@@ -677,7 +677,7 @@ def _build_pending_drop_view(state) -> dict:
     на каждом рендере, выполнение копеечное.
     """
     if state.pending_drop is None:
-        return {"active": False, "item": None}
+        return {"active": False, "banner": False, "item": None}
     p = state.pending_drop
 
     def _first(values):
@@ -693,7 +693,14 @@ def _build_pending_drop_view(state) -> dict:
         "quality": _first(p.get("quality")),
         "price": _first(p.get("price")) or 0,
     }
-    return {"active": True, "item": item}
+    # `active` — находка существует (inventory sell-existing кнопки всегда доступны).
+    # `banner` — показывать большой баннер + auto-expand инвентаря: только пока
+    # игрок не нажал «Отложить» (4.50.2 follow-up — runtime flag).
+    return {
+        "active": True,
+        "banner": not state.pending_drop_banner_dismissed,
+        "item": item,
+    }
 
 
 def _build_skill_options(state) -> list:
@@ -1923,6 +1930,9 @@ def _finalize_adventure_with_drop_capture(state) -> None:
         # + нет triumph-инкремента).
         print('[adventure finalize] STALE — drop откатан, fresh reload подтянет state.')
     else:
+        # Новая находка ушла в pending → показать баннер снова (сброс «Отложить»).
+        if pending_before is None and state.pending_drop is not None:
+            state.pending_drop_banner_dismissed = False
         # OK commit — теперь безопасно логировать (history + triumph register_event).
         from history import log_event
         for event_type, payload in deferred:
@@ -3763,12 +3773,15 @@ async def web_drop_sell_new(request: Request):
 
 @app.post("/web/drop/skip", response_class=HTMLResponse)
 async def web_drop_skip(request: Request):
-    """Form-data skip: pending остаётся, баннер появится снова на следующем
-    рендере. По сути — просто re-render, но симметрично CLI flow и явный
-    «отложить» для UI. Никаких мутаций / persist."""
+    """Form-data skip: «Отложить» — скрывает pending-drop баннер до прихода
+    новой находки (runtime flag `pending_drop_banner_dismissed`). Сам pending
+    НЕ трогается: находка остаётся и авто-подберётся при освобождении слота.
+    Никакого persist (флаг runtime-only) — переживает F5/swap, сброс на новой
+    находке делает web-финализатор приключения."""
     state = game.state
     if state is None:
         raise HTTPException(status_code=503, detail="state not initialized")
+    state.pending_drop_banner_dismissed = True
     context = _dashboard_context(request)
     return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
