@@ -13,8 +13,9 @@ SERVICE    ?= 2walks
 .PHONY: deploy status logs help
 
 ## deploy: git pull + pip install + restart сервиса на сервере
+# ssh -t — выделяет TTY, иначе `sudo` не может запросить пароль ("a terminal is required").
 deploy:
-	ssh $(HOST) "cd $(REMOTE_DIR) && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart $(SERVICE) && echo '--- STATUS ---' && systemctl is-active $(SERVICE)"
+	ssh -t $(HOST) "cd $(REMOTE_DIR) && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart $(SERVICE) && echo '--- STATUS ---' && systemctl is-active $(SERVICE)"
 
 ## status: показать состояние systemd-юнита на сервере
 status:

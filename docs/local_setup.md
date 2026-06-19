@@ -217,10 +217,10 @@ make status                                      # systemctl status юнита
 make logs                                        # journalctl -n 50 (FOLLOW=-f для live-хвоста)
 ```
 
-`make deploy` разворачивается в ту же ssh-команду:
+`make deploy` разворачивается в ту же ssh-команду (флаг `-t` обязателен — выделяет TTY, иначе `sudo` не сможет запросить пароль: «a terminal is required»):
 
 ```bash
-ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && systemctl is-active 2walks"
+ssh -t aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && systemctl is-active 2walks"
 ```
 
 `sudo` попросит пароль один раз. Если в обновлении не было новых зависимостей — `pip install` отрабатывает за секунду (все packages already satisfied). Downtime ~2-3 секунды, для single-user'а невидимо.
@@ -230,7 +230,7 @@ ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r r
 Чтобы не печатать длинную команду — добавь в `~/.zshrc`:
 
 ```bash
-alias 2walks-deploy='ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && sudo systemctl status 2walks"'
+alias 2walks-deploy='ssh -t aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && sudo systemctl status 2walks"'
 alias 2walks-logs='ssh aleksey@192.168.0.155 "sudo journalctl -u 2walks -n 50 --no-pager"'
 alias 2walks-status='ssh aleksey@192.168.0.155 "sudo systemctl status 2walks --no-pager"'
 ```
