@@ -208,8 +208,19 @@ sudo systemctl start 2walks
 
 ### Workflow обновлений (с MacBook'а в одну команду)
 
+Из корня проекта — обёртка в `Makefile`:
+
 ```bash
-ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && sudo systemctl status 2walks"
+make deploy                                      # git pull + pip install + restart + is-active
+make deploy HOST=aleksey@aleksey-H61M-DS2H.local # через mDNS, если IP недоступен
+make status                                      # systemctl status юнита
+make logs                                        # journalctl -n 50 (FOLLOW=-f для live-хвоста)
+```
+
+`make deploy` разворачивается в ту же ssh-команду:
+
+```bash
+ssh aleksey@192.168.0.155 "cd ~/2Walks && git pull && .venv/bin/pip install -r requirements.txt && sudo systemctl restart 2walks && systemctl is-active 2walks"
 ```
 
 `sudo` попросит пароль один раз. Если в обновлении не было новых зависимостей — `pip install` отрабатывает за секунду (все packages already satisfied). Downtime ~2-3 секунды, для single-user'а невидимо.
