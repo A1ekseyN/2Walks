@@ -374,14 +374,6 @@ class GameState:
     session_events: list = field(default_factory=list, repr=False, compare=False)
     _session_event_seq: int = field(default=0, repr=False, compare=False)
 
-    # 4.50.2 follow-up — игрок нажал «Отложить» на pending-drop баннере (web).
-    # Скрывает большой баннер находки (и auto-expand инвентаря), пока приходит
-    # новая находка — тогда web-финализатор сбрасывает флаг и баннер снова виден.
-    # Сам pending_drop НЕ трогается (находка авто-подберётся при освобождении
-    # слота). **Runtime-only** — НЕ сериализуется (как session_events): переживает
-    # F5/swap, сбрасывается на рестарте процесса. CLI не использует.
-    pending_drop_banner_dismissed: bool = field(default=False, repr=False, compare=False)
-
     def push_session_event(self, kind: str, **payload) -> dict:
         """Добавляет уведомление о завершении активности в `session_events`.
 

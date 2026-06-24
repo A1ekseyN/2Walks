@@ -110,9 +110,8 @@ http://192.168.0.201:8008
 | `POST /api/preset/delete` / `POST /web/preset/delete` | `{name}` | **Удалить preset (4.63.3, 0.2.4v).** |
 | `POST /api/bank/{deposit,withdraw,take_loan,repay_loan}` / `POST /web/bank/*` | `{amount: int, gt=0}` | **Bank: amount-based операции (4.48.9, 0.2.4w).** Skill-gated (Banking Interest Rate / Loan Capacity). |
 | `POST /api/bank/{deposit_all,withdraw_all,repay_all}` / `POST /web/bank/*` | `{}` (без body) | **Bank: «всё»-операции (4.48.9, 0.2.4w).** Перенос всего кошелька / снятие всего депозита / погашение всего долга. |
-| `POST /api/drop/sell_existing` / `POST /web/drop/sell_existing` | `{index}` | Pending drop resolve: продать item инвентаря + положить находку. |
-| `POST /api/drop/sell_new` / `POST /web/drop/sell_new` | `{}` | Pending drop resolve: продать находку. |
-| `POST /web/drop/skip` | `{}` (Form only) | Pending drop resolve: отложить. |
+| `POST /api/drop/sell_existing` / `POST /web/drop/sell_existing` | `{index}` | Pending drop resolve: продать item инвентаря + положить находку. **API-зеркало** — с 0.2.7e из web-UI не вызывается (инвентарь показывает обычные Надеть/Продать, авто-подбор сам кладёт находку). |
+| `POST /api/drop/sell_new` / `POST /web/drop/sell_new` | `{}` | Pending drop resolve: продать находку (кнопка в pending-баннере). |
 
 **Concurrent safety (4.54, 0.2.4p):** все mutation endpoint'ы проходят через `_persist_and_handle_stale()` — на STALE отвечают 409 (api) или HTML-фрагмент с auto-reload script (web). См. раздел «Concurrent CLI ↔ web» ниже.
 

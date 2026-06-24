@@ -108,10 +108,11 @@
    кнопки Надеть/Продать рендерятся прямо там. #}
 
 {# 4.50.2 — Pending drop banner. Показывается над всем остальным когда
-   state.pending_drop != None (drop при полном инвентаре). 3 опции:
-   sell-existing (кнопки в инвентаре ниже), sell-new, skip. «Отложить» прячет
-   баннер (pending_drop_view.banner=False) — находка остаётся, кнопки sell в
-   инвентаре доступны по pending_drop_view.active. #}
+   state.pending_drop != None (drop при полном инвентаре) и НЕ закрывается
+   вручную — висит, пока находка не разрешена. Два пути разрешения:
+   (1) продать находку (sell_new в баннере); (2) освободить слот в инвентаре
+   (продать/надеть любой предмет) — тогда auto_collect_pending_drop подберёт
+   находку автоматически и баннер исчезнет. Кнопки «Отложить» больше нет. #}
 {% if pending_drop_view.banner %}
 <section id="pending-drop" style="margin-bottom: 1rem;">
     <article style="border-left: 4px solid var(--pico-color-orange-500, #f97316);">
@@ -129,7 +130,7 @@
         </div>
         <small style="color: var(--pico-muted-color);">
             Quality: {{ "%.1f"|format(pending_drop_view.item.quality) if pending_drop_view.item.quality is number else pending_drop_view.item.quality }}
-            · Цена: {{ pending_drop_view.item.price }} $
+            · Цена: {{ format_money(pending_drop_view.item.sell_price) }} $
         </small>
 
         {% if drop_error %}
@@ -138,16 +139,10 @@
 
         <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap;">
             <form hx-post="/web/drop/sell_new" hx-target="#status-bar" hx-swap="innerHTML"
-                  hx-confirm="Продать находку за {{ pending_drop_view.item.price }} $?"
+                  hx-confirm="Продать находку за {{ format_money(pending_drop_view.item.sell_price) }} $?"
                   style="margin: 0;">
                 <button type="submit" style="margin: 0;">
-                    💰 Продать находку ({{ pending_drop_view.item.price }} $)
-                </button>
-            </form>
-            <form hx-post="/web/drop/skip" hx-target="#status-bar" hx-swap="innerHTML"
-                  style="margin: 0;">
-                <button type="submit" class="secondary outline" style="margin: 0;">
-                    ⏭ Отложить
+                    💰 Продать находку ({{ format_money(pending_drop_view.item.sell_price) }} $)
                 </button>
             </form>
         </div>
@@ -1079,9 +1074,9 @@
 </section>
 
 <section id="inventory">
-    {# 4.50.2 — auto-expand details пока баннер находки активен, чтобы игрок видел
-       список со sell-buttons без лишнего клика. После «Отложить» (banner=False)
-       не форсим open. Без pending — свёрнуто по умолчанию. #}
+    {# 4.50.2 — auto-expand details пока есть невыпавшая находка (banner=active),
+       чтобы игрок сразу видел список и мог освободить слот. Без pending —
+       свёрнуто по умолчанию. #}
     <details {% if pending_drop_view.banner %}open{% endif %}>
         <summary>🎒 <strong>Инвентарь</strong> ({{ state.inventory|length }}/{{ inventory_capacity }})</summary>
 
@@ -1121,17 +1116,11 @@
                     </span>
 
                     <div class="inv-buttons">
-                    {% if pending_drop_view.active %}
-                    {# 4.50.2 — sell-existing-and-keep-new кнопка при active pending. #}
-                    <form hx-post="/web/drop/sell_existing" hx-target="#status-bar" hx-swap="innerHTML"
-                          hx-confirm="Продать «{{ item.item_type|title }} {{ grade_short(item.grade) }}» за {{ item.price_raw }} $ и положить находку в инвентарь?">
-                        <input type="hidden" name="index" value="{{ item.orig_index }}">
-                        <button type="submit" class="secondary outline"
-                                style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
-                            Продать + взять находку
-                        </button>
-                    </form>
-                    {% else %}
+                    {# 4.50.2 follow-up — при active pending больше НЕ показываем
+                       спец-кнопку «Продать + взять находку». Обычные кнопки
+                       Надеть / Продать доступны всегда; продажа (или надевание)
+                       освобождает слот, и auto_collect_pending_drop в
+                       _dashboard_context сам кладёт находку в инвентарь. #}
                     {# 4.48.6 — Wear button(s): один для non-ring, два для ring. #}
                     {% if item.is_equipment %}
                         {% for slot_attr in item.eligible_slots %}
@@ -1153,7 +1142,7 @@
                         </form>
                         {% endfor %}
                     {% endif %}
-                    {# 4.48.6 — Sell button (всегда видна, кроме active pending). #}
+                    {# 4.48.6 — Sell button (всегда видна). #}
                     <form hx-post="/web/inventory/sell" hx-target="#status-bar" hx-swap="innerHTML"
                           hx-confirm="Продать «{{ item.item_type|title }} {{ grade_short(item.grade) }}» за {{ format_money(item.sell_price) }} $?">
                         <input type="hidden" name="index" value="{{ item.orig_index }}">
@@ -1163,7 +1152,6 @@
                             💰 Продать ({{ format_money(item.sell_price) }} $)
                         </button>
                     </form>
-                    {% endif %}
                     </div>
                 </div>
                 {% endfor %}

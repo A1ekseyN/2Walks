@@ -685,20 +685,27 @@ def _build_pending_drop_view(state) -> dict:
             return None
         return values[0]
 
+    from bonus import apply_trader
+    price_raw = _first(p.get("price")) or 0
     item = {
         "type": _first(p.get("item_type")),
         "grade": _first(p.get("grade")),
         "characteristic": _first(p.get("characteristic")),
         "bonus": _first(p.get("bonus")),
         "quality": _first(p.get("quality")),
-        "price": _first(p.get("price")) or 0,
+        "price": price_raw,
+        # 4.28 — фактическая выплата при продаже находки учитывает навык
+        # «Торговец» (как _resolve_pending_drop_sell_new и строки инвентаря).
+        # Баннер показывает sell_price, чтобы сумма совпадала с реальной.
+        "sell_price": apply_trader(float(price_raw), state),
     }
-    # `active` — находка существует (inventory sell-existing кнопки всегда доступны).
-    # `banner` — показывать большой баннер + auto-expand инвентаря: только пока
-    # игрок не нажал «Отложить» (4.50.2 follow-up — runtime flag).
+    # `active` — находка существует. Баннер находки не закрывается вручную:
+    # висит, пока находка не разрешена (продана через sell_new ИЛИ авто-подобрана
+    # при освобождении слота). `banner` оставлен как алиас `active` для шаблона
+    # (auto-expand инвентаря + показ баннера) — механизм «Отложить» убран.
     return {
         "active": True,
-        "banner": not state.pending_drop_banner_dismissed,
+        "banner": True,
         "item": item,
     }
 
@@ -1930,9 +1937,6 @@ def _finalize_adventure_with_drop_capture(state) -> None:
         # + нет triumph-инкремента).
         print('[adventure finalize] STALE — drop откатан, fresh reload подтянет state.')
     else:
-        # Новая находка ушла в pending → показать баннер снова (сброс «Отложить»).
-        if pending_before is None and state.pending_drop is not None:
-            state.pending_drop_banner_dismissed = False
         # OK commit — теперь безопасно логировать (history + triumph register_event).
         from history import log_event
         for event_type, payload in deferred:
@@ -3798,21 +3802,6 @@ async def web_drop_sell_new(request: Request):
     if err == STALE_MARKER:
         return _stale_response()
     context = _dashboard_context(request, drop_error=err)
-    return _render_dashboard_or_stale(request, "_status_fragment.html", context)
-
-
-@app.post("/web/drop/skip", response_class=HTMLResponse)
-async def web_drop_skip(request: Request):
-    """Form-data skip: «Отложить» — скрывает pending-drop баннер до прихода
-    новой находки (runtime flag `pending_drop_banner_dismissed`). Сам pending
-    НЕ трогается: находка остаётся и авто-подберётся при освобождении слота.
-    Никакого persist (флаг runtime-only) — переживает F5/swap, сброс на новой
-    находке делает web-финализатор приключения."""
-    state = game.state
-    if state is None:
-        raise HTTPException(status_code=503, detail="state not initialized")
-    state.pending_drop_banner_dismissed = True
-    context = _dashboard_context(request)
     return _render_dashboard_or_stale(request, "_status_fragment.html", context)
 
 

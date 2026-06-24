@@ -3072,17 +3072,14 @@ def test_pending_drop_view_inactive_when_no_pending():
     assert view == {"active": False, "banner": False, "item": None}
 
 
-def test_pending_drop_view_banner_hidden_after_dismiss():
-    """После «Отложить» (pending_drop_banner_dismissed=True): active=True
-    (находка есть, inventory-кнопки доступны), но banner=False (скрыт)."""
+def test_pending_drop_view_banner_always_shown_while_pending():
+    """Баннер находки не закрывается вручную: пока pending активен, banner=True."""
     from web.main import _build_pending_drop_view
     state = GameState.default_new_game()
     state.pending_drop = _make_pending_item()
-    assert _build_pending_drop_view(state)["banner"] is True
-    state.pending_drop_banner_dismissed = True
     view = _build_pending_drop_view(state)
     assert view["active"] is True
-    assert view["banner"] is False
+    assert view["banner"] is True
 
 
 def test_pending_drop_view_parses_item_fields():
@@ -3092,10 +3089,22 @@ def test_pending_drop_view_parses_item_fields():
     state.pending_drop = _make_pending_item()
     view = _build_pending_drop_view(state)
     assert view["active"] is True
+    # sell_price учитывает «Торговец»; при skill=0 (default) == price.
     assert view["item"] == {
         "type": "ring", "grade": "a-grade", "characteristic": "luck",
-        "bonus": 3, "quality": 80.0, "price": 120,
+        "bonus": 3, "quality": 80.0, "price": 120, "sell_price": 120.0,
     }
+
+
+def test_pending_drop_view_sell_price_applies_trader():
+    """sell_price в баннере учитывает навык «Торговец» (как реальная продажа)."""
+    from web.main import _build_pending_drop_view
+    state = GameState.default_new_game()
+    state.gym.trader = 50  # +50% к цене продажи
+    state.pending_drop = _make_pending_item(price=120)
+    view = _build_pending_drop_view(state)
+    assert view["item"]["price"] == 120          # сырая цена не тронута
+    assert view["item"]["sell_price"] == 180.0   # 120 × 1.5
 
 
 def test_dashboard_renders_pending_banner_when_active():
@@ -3106,10 +3115,12 @@ def test_dashboard_renders_pending_banner_when_active():
     body = response.text
     assert 'id="pending-drop"' in body
     assert "Найдена находка" in body
-    # Кнопка sell-new с ценой
-    assert "💰 Продать находку (120 $)" in body
+    # Кнопка sell-new с ценой (format_money, trader skill=0 → 120.00).
+    assert "💰 Продать находку (120.00 $)" in body
     assert 'hx-post="/web/drop/sell_new"' in body
-    assert 'hx-post="/web/drop/skip"' in body
+    # Кнопки «Отложить» больше нет — баннер не закрывается вручную.
+    assert 'hx-post="/web/drop/skip"' not in body
+    assert "Отложить" not in body
 
 
 def test_dashboard_no_banner_when_pending_none():
@@ -3132,19 +3143,20 @@ def test_inventory_section_auto_opens_when_pending_active():
     assert "<details open" in inv_section
 
 
-def test_inventory_renders_sell_keep_buttons_when_pending():
-    """Каждый предмет инвентаря рядом получает кнопку «Продать + взять находку»."""
+def test_inventory_renders_normal_buttons_when_pending():
+    """4.50.2 follow-up — при active pending инвентарь показывает ОБЫЧНЫЕ
+    кнопки (Надеть/Продать), а не спец-кнопку «Продать + взять находку».
+    Освобождение слота авто-подбирает находку через auto_collect_pending_drop."""
     _setup_state(_state_with_pending_and_full_inventory())
     with TestClient(app) as client:
         response = client.get("/status")
     body = response.text
-    # 10 кнопок sell-existing.
     import re
-    forms = re.findall(r'hx-post="/web/drop/sell_existing"', body)
-    assert len(forms) == 10
-    # Hidden index input от 0 до 9.
-    indices = re.findall(r'name="index" value="(\d+)"', body)
-    assert indices == [str(i) for i in range(10)]
+    # Спец-кнопки sell_existing в инвентаре больше нет.
+    assert 'hx-post="/web/drop/sell_existing"' not in body
+    # Зато есть обычные sell-кнопки — по одной на каждый из 10 предметов.
+    sell_forms = re.findall(r'hx-post="/web/inventory/sell"', body)
+    assert len(sell_forms) == 10
 
 
 def test_inventory_no_sell_keep_buttons_without_pending():
@@ -3201,22 +3213,12 @@ def test_post_web_drop_sell_existing_invalid_index_returns_error():
     assert "Неверный индекс" in response.text
 
 
-def test_post_web_drop_skip_hides_banner_keeps_pending():
-    """skip («Отложить»): pending сохраняется, но баннер скрывается (флаг
-    pending_drop_banner_dismissed=True); находка остаётся для авто-подбора."""
-    state = _state_with_pending_and_full_inventory()
-    pending = state.pending_drop
-    initial_inv_len = len(state.inventory)
-    _setup_state(state)
+def test_post_web_drop_skip_endpoint_removed():
+    """Эндпоинт «Отложить» удалён — баннер находки не закрывается вручную."""
+    _setup_state(_state_with_pending_and_full_inventory())
     with TestClient(app) as client:
         response = client.post("/web/drop/skip")
-    assert response.status_code == 200
-    # Находка не тронута.
-    assert state.pending_drop is pending
-    assert len(state.inventory) == initial_inv_len
-    # Флаг выставлен, большой баннер пропал из фрагмента.
-    assert state.pending_drop_banner_dismissed is True
-    assert 'id="pending-drop"' not in response.text
+    assert response.status_code == 404
 
 
 # ----- POST /api/drop/* endpoints -----
@@ -3286,6 +3288,8 @@ def test_auto_collect_fires_in_dashboard_when_room_freed():
     assert state.pending_drop is None
     assert len(state.inventory) == 11
     assert 'id="pending-drop"' not in response.text
+    # Игрок должен УВИДЕТЬ, что находка подобрана — баннер в session-events.
+    assert "Находка подобрана" in response.text
 
 
 # ----- 4.54.6 — Web STALE response (Form + JSON) -----
