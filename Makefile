@@ -3,10 +3,12 @@
 # Деплой = обновление web 24/7 на Ubuntu-сервере (см. CLAUDE.md «Production: web 24/7»).
 # SSH интерактивный (ключ/пароль) — запускать вручную: `make deploy`.
 #
-# Переопределение хоста (mDNS вместо IP):
-#   make deploy HOST=aleksey@aleksey-H61M-DS2H.local
+# HOST по умолчанию — mDNS-имя сервера: переживает смену IP в локальной сети
+# (роутер при перезагрузке может выдать другой адрес — было 192.168.0.155,
+# стало 192.168.1.155). Если mDNS почему-то не резолвится, переопредели IP-ом:
+#   make deploy HOST=aleksey@192.168.1.155
 
-HOST       ?= aleksey@192.168.0.155
+HOST       ?= aleksey@aleksey-H61M-DS2H.local
 REMOTE_DIR ?= ~/2Walks
 SERVICE    ?= 2walks
 
