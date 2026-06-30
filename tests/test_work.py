@@ -143,7 +143,9 @@ def test_work_check_done_timer_expired_pays_and_clears(monkeypatch, capsys):
     assert state.work.start is None
     assert len(saves) == 1
     assert state.finalize_stale is False
-    assert 'заработали' in capsys.readouterr().out.lower()
+    out = capsys.readouterr().out
+    assert 'заработали' in out.lower()
+    assert '4ч' in out  # формат отработанного времени (< 1 дня; colorama между «за» и «4ч»)
 
 
 def test_work_check_done_stale_rollback(monkeypatch, capsys):

@@ -7,7 +7,7 @@ from colorama import Fore, Style
 
 from persistence import save_characteristic
 from settings import debug_mode
-from functions_02 import format_money, format_resource_shortfall, time
+from functions_02 import format_money, format_resource_shortfall, format_shift_hours, time
 from equipment_bonus import equipment_speed_skill_bonus
 from bonus import apply_earnings_boost, apply_energy_optimization_work, apply_move_optimization_work
 from inventory import Wear_Equipped_Items
@@ -274,7 +274,8 @@ def work_check_done(state: GameState) -> GameState:
             return state
 
         # Commit подтверждён — фаерим log_event + печатаем для CLI.
-        print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{format_money(earned)}{Style.RESET_ALL} $.')
+        print(f'\n🏭 Вы закончили работу и заработали: {Fore.LIGHTYELLOW_EX}{format_money(earned)}{Style.RESET_ALL} $ '
+              f'за {Fore.LIGHTBLUE_EX}{format_shift_hours(finished_hours)}{Style.RESET_ALL}.')
         # 4.62.1.5.1 — Iron Worker triumph (metric-based). Обновляем
         # state.work.longest_shift_hours = max(current, this shift) ПЕРЕД
         # log_event чтобы register_event auto-hook увидел свежее значение и

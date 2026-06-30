@@ -3796,6 +3796,17 @@ def test_adventure_done_banner_shows_nothing_found():
 
 # ----- 4.48.12: session-events баннеры завершения активностей -----
 
+def test_session_events_long_shift_shows_days_and_total():
+    """work_done баннер с долгой сменой показывает дни + всего часов."""
+    state = GameState.default_new_game()
+    state.push_session_event('work_done', vacancy='factory',
+                             hours=1578, earned=3440.04)
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    assert 'за 65д 18ч (1578ч)' in body
+
+
 def test_session_events_banner_renders_work_and_level():
     """Баннеры work_done + level_up рендерятся с текстом и кнопкой allocate."""
     state = GameState.default_new_game()
@@ -3805,6 +3816,7 @@ def test_session_events_banner_renders_work_and_level():
     with TestClient(app) as client:
         body = client.get("/status").text
     assert 'Смена завершена' in body
+    assert 'за 4ч' in body  # <1 дня → просто часы
     assert 'Завод' in body  # _WORK_DISPLAY title для factory
     assert 'Повышение уровня' in body
     assert '5 → 6' in body

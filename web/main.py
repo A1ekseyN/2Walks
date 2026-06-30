@@ -1175,7 +1175,7 @@ def _build_session_events_view(state) -> list:
     (`/web/notifications/dismiss[_all]`). Display-only, строится в обоих
     режимах defer_sync.
     """
-    from functions_02 import format_money
+    from functions_02 import format_money, format_shift_hours
     out = []
     for ev in state.session_events:
         kind = ev.get('kind')
@@ -1188,7 +1188,7 @@ def _build_session_events_view(state) -> list:
                 'title': 'Смена завершена',
                 'text': (f"{vac_title} · заработано "
                          f"{format_money(ev.get('earned', 0))} $ за "
-                         f"{ev.get('hours', 0)} ч."),
+                         f"{format_shift_hours(ev.get('hours', 0))}"),
                 'action': None,
             })
         elif kind == 'skill_upgraded':

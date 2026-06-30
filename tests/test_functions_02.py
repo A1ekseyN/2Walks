@@ -12,7 +12,7 @@ shift, training, adventure).
 import re
 from datetime import timedelta
 
-from functions_02 import format_hours, format_money, format_timedelta, time as time_fmt
+from functions_02 import format_hours, format_money, format_shift_hours, format_timedelta, time as time_fmt
 
 
 # ----- Edge cases -----
@@ -293,6 +293,35 @@ def test_format_hours_no_colorama():
     """Plain text — никаких ANSI-escape, идёт прямо в HTML."""
     out = format_hours(71)
     assert '\x1b[' not in out
+
+
+# ---------------------------------------------------------------------------
+# format_shift_hours(total_hours) — отработанное время для сообщения о
+# завершённой смене (CLI + web). Компактный формат 'Nд Mч' / '(Tч)'.
+# ---------------------------------------------------------------------------
+
+def test_format_shift_hours_under_one_day():
+    """< 1 дня → просто часы без дней."""
+    assert format_shift_hours(4) == '4ч'
+    assert format_shift_hours(23) == '23ч'
+    assert format_shift_hours(0) == '0ч'
+
+
+def test_format_shift_hours_under_three_days():
+    """< 3 дней → 'Nд Mч' без часов в скобках."""
+    assert format_shift_hours(24) == '1д 0ч'
+    assert format_shift_hours(62) == '2д 14ч'  # пример из тикета
+
+
+def test_format_shift_hours_three_days_or_more():
+    """>= 3 дней → 'Nд Mч (Tч)' с суммарными часами в скобках."""
+    assert format_shift_hours(72) == '3д 0ч (72ч)'
+    assert format_shift_hours(1578) == '65д 18ч (1578ч)'
+
+
+def test_format_shift_hours_invalid_input():
+    """None / мусор → 0ч (без исключения)."""
+    assert format_shift_hours(None) == '0ч'
 
 
 # ---------------------------------------------------------------------------

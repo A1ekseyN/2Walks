@@ -238,3 +238,26 @@ def format_hours(hours: int) -> str:
     mo, rest = divmod(rest, _HOURS_PER_MONTH)
     d, h = divmod(rest, _HOURS_PER_DAY)
     return f"{y} г. {mo} мес. {d} дн. {h} ч."
+
+
+def format_shift_hours(total_hours) -> str:
+    """Отработанное время для сообщения о завершённой смене (CLI + web).
+
+    >= 3 дней → 'Nд Mч (Tч)' — дни+часы плюс точное число часов в скобках,
+    чтобы был виден и масштаб в днях, и исходная цифра. < 3 дней → 'Nд Mч'.
+    < 1 дня → просто 'Mч' (без ведущего '0д').
+
+    Компактный формат (без точек/пробелов внутри единиц), отличается от
+    `format_hours` — тот используется для сводки активной смены.
+    """
+    try:
+        total = int(total_hours)
+    except (TypeError, ValueError):
+        total = 0
+    days, hours = divmod(total, _HOURS_PER_DAY)
+    if days == 0:
+        return f"{hours}ч"
+    base = f"{days}д {hours}ч"
+    if days >= 3:
+        return f"{base} ({total}ч)"
+    return base
