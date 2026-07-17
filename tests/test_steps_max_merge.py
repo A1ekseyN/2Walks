@@ -117,7 +117,8 @@ def test_max_merge_recomputes_can_use_with_bonuses(monkeypatch):
 
     apply_steps_log_max_merge(state)
 
-    # После max-merge: today=10000, used=1000, stamina_bonus = round(10000/100)*5 = 500.
-    # can_use = 10000 - 1000 + 500 = 9500.
+    # После max-merge: today=10000, used=1000, stamina_bonus = round(10000/100)*5 = 500,
+    # live daily bonus (10k сегодня → эффективный стрик 1) = 100.
+    # can_use = 10000 - 1000 + 500 + 100 = 9600.
     assert state.steps.today == 10000
-    assert state.steps.can_use == 9500
+    assert state.steps.can_use == 9600

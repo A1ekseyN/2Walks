@@ -5709,6 +5709,16 @@ Mypy ругается: `Argument "value_input_option"... has incompatible type "
 
 **Скоуп реализации (когда выберем модель):** правка `today_steps_to_yesterday_steps` + (опц.) cap-helper + отдельный consecutive-счётчик в `StepsState` с round-trip (3 формата) + правка On Fire metric + тесты (декей по выбранной модели, пол 0, cap, consecutive-счётчик не ломается) + changelog. Display CLI/web: `daily_bonus` уже показывается; решить, показывать ли «стрик упал N→M».
 
+### 4.68. Daily bonus — same-day активация (эффективный стрик) `[M / S / done (17.07.2026, 0.2.7h)]`
+
+**Проблема (замечена игроком 17.07.2026):** бонус за 10k+ шагов активировался только **на следующий день** — инкремент `daily_bonus` жил исключительно в rollover (`today_steps_to_yesterday_steps`: вчера ≥ 10k → +1). Прошёл 10k сегодня — эффект получишь завтра. Нелогично: награда должна включаться в момент достижения.
+
+**Реализовано (17.07.2026, 0.2.7h) — derived «эффективный стрик» (вариант 2 из 2 рассмотренных):**
+- `bonus.effective_daily_bonus(state) = state.steps.daily_bonus + (1 if steps.today >= DAILY_BONUS_THRESHOLD else 0)` — хранимое поле мутируется ТОЛЬКО на rollover (как раньше), сегодняшний вклад — pure computed из `steps.today`. Прошёл 10k сегодня → +1% шагов и +1 energy max **сразу**; на rollover live +1 «запекается» в хранимый стрик — значение непрерывно через полночь. Не прошёл 10k — на rollover сброс в 0 (обнуление сохранено, decay — отдельная 4.67).
+- **Почему derived, а не хранимый флаг «сегодня начислено» (вариант 1):** стрик завершённых дней — исторический факт (обязан храниться), сегодняшний вклад — вычислим из `steps.today` (хранить = дублировать состояние + инвариант на каждый из ~5 каналов ввода шагов + участие в STALE-роллбеках двух конкурентных писателей CLI/web). Прецеденты паттерна в проекте: `compute_energy_max` (4.48.4.1), `_effective_xp` (4.27).
+- Потребители переведены на effective: `daily_steps_bonus`, `compute_energy_max`, CLI status_bar «Daily 🔋» + char_info, web «📈 Бонусы» (context-key `daily_bonus_effective`). Rollover/save-формат/On Fire не тронуты (рекорд догоняет на rollover без потерь). Литерал 10000 в rollover заменён константой `DAILY_BONUS_THRESHOLD`.
+- **Тесты:** 7 новых (порог 9999/10000, нулевой стрик первый день, непрерывность через rollover, сброс, live-вклад в energy max) + 5 существующих обновлены под новую семантику. 1551 passed, mypy чисто.
+
 ---
 
 ## Большая цель

@@ -67,18 +67,18 @@ def test_bonus_percentage_with_bonus():
     state = GameState.default_new_game()
     state.steps.today = 10000
     state.gym.stamina = 5  # stamina bonus def: round(10000/100)*5 = 500
-    # base 10000, bonus 500 → 5%
-    assert bonus_percentage(state) == 5.0
+    # base 10000, bonus 500 stamina + 100 live daily (10k сегодня → +1%) → 6%
+    assert bonus_percentage(state) == 6.0
 
 
 def test_total_bonus_steps_sums_all_sources():
     state = GameState.default_new_game()
     state.steps.today = 10000
     state.gym.stamina = 3              # stamina bonus: 100*3 = 300
-    state.steps.daily_bonus = 2        # daily: 100*2 = 200
+    state.steps.daily_bonus = 2        # daily effective: 2 + 1 live (10k) = 3 → 300
     state.char_level.skill_stamina = 1  # level: 100*1 = 100
-    # total = 300 + 0 (equipment) + 200 + 100 = 600
-    assert total_bonus_steps(state) == 600
+    # total = 300 + 0 (equipment) + 300 + 100 = 700
+    assert total_bonus_steps(state) == 700
 
 
 # ----- today_steps_to_yesterday_steps -----

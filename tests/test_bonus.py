@@ -5,6 +5,7 @@ from bonus import (
     apply_money_saving,
     equipment_bonus_stamina_steps,
     daily_steps_bonus,
+    effective_daily_bonus,
     level_steps_bonus,
     apply_move_optimization_adventure,
     apply_move_optimization_gym,
@@ -36,7 +37,17 @@ def test_daily_steps_bonus():
     state = GameState.default_new_game()
     state.steps.today = 10000
     state.steps.daily_bonus = 5
-    # 10000 / 100 * 5 = 500
+    # Эффективный стрик = 5 (хранимый) + 1 (сегодня >= 10k, live) = 6.
+    # 10000 / 100 * 6 = 600
+    assert daily_steps_bonus(state) == 600
+
+
+def test_daily_steps_bonus_below_threshold_uses_stored_only():
+    """Сегодня < 10k → только хранимый стрик (без live-вклада)."""
+    state = GameState.default_new_game()
+    state.steps.today = 9999
+    state.steps.daily_bonus = 5
+    # 9999 / 100 * 5 = 499.95 → round 500
     assert daily_steps_bonus(state) == 500
 
 
@@ -45,6 +56,67 @@ def test_daily_steps_bonus_zero_below_10k():
     state.steps.today = 5000
     state.steps.daily_bonus = 0
     assert daily_steps_bonus(state) == 0
+
+
+# ---------------------------------------------------------------------------
+# effective_daily_bonus — same-day активация daily-стрика (derived, без
+# хранимого флага). Хранимый daily_bonus мутируется только на rollover.
+# ---------------------------------------------------------------------------
+
+def test_effective_daily_bonus_below_threshold():
+    state = GameState.default_new_game()
+    state.steps.today = 9999
+    state.steps.daily_bonus = 3
+    assert effective_daily_bonus(state) == 3
+
+
+def test_effective_daily_bonus_at_threshold_adds_live():
+    """Ровно 10 000 — порог включительно, live +1 в тот же день."""
+    state = GameState.default_new_game()
+    state.steps.today = 10000
+    state.steps.daily_bonus = 3
+    assert effective_daily_bonus(state) == 4
+
+
+def test_effective_daily_bonus_zero_streak_first_day():
+    """Нулевой стрик + сегодняшние 10k → бонус 1 сразу (не завтра)."""
+    state = GameState.default_new_game()
+    state.steps.today = 12000
+    state.steps.daily_bonus = 0
+    assert effective_daily_bonus(state) == 1
+
+
+def test_effective_daily_bonus_continuous_through_rollover():
+    """Live +1 на rollover «запекается» в хранимый стрик — без скачка.
+
+    Вечер: стрик 3 + live (12k сегодня) = 4. Rollover: today → yesterday,
+    хранимый стрик 3 → 4, today = 0 → live 0. Эффективное значение
+    остаётся 4 до и после полуночи.
+    """
+    from functions import today_steps_to_yesterday_steps
+    state = GameState.default_new_game()
+    state.steps.today = 12000
+    state.steps.daily_bonus = 3
+    assert effective_daily_bonus(state) == 4  # вечер
+
+    today_steps_to_yesterday_steps(state)
+    state.steps.today = 0  # новый день (как save_game_date_last_enter)
+    assert state.steps.daily_bonus == 4
+    assert effective_daily_bonus(state) == 4  # утро — то же значение
+
+
+def test_effective_daily_bonus_reset_on_failed_day():
+    """День без 10k: live не начисляется, rollover сбрасывает стрик в 0."""
+    from functions import today_steps_to_yesterday_steps
+    state = GameState.default_new_game()
+    state.steps.today = 8000
+    state.steps.daily_bonus = 5
+    assert effective_daily_bonus(state) == 5  # live-вклада нет
+
+    today_steps_to_yesterday_steps(state)
+    state.steps.today = 0
+    assert state.steps.daily_bonus == 0
+    assert effective_daily_bonus(state) == 0
 
 
 def test_level_steps_bonus():
@@ -106,6 +178,15 @@ def test_compute_energy_max_with_all_sources():
     state.char_level.skill_energy_max = 2
     # 50 + 10 + 5 + 3 + 2 = 70
     assert compute_energy_max(state) == 70
+
+
+def test_compute_energy_max_includes_live_daily_bonus():
+    """Пересечение 10k сегодня даёт +1 к energy max в тот же день."""
+    state = GameState.default_new_game()
+    state.steps.daily_bonus = 3
+    state.steps.today = 10000
+    # 50 + 0 + 0 + (3 стрик + 1 live) + 0 = 54
+    assert compute_energy_max(state) == 54
 
 
 def test_compute_energy_max_ignores_state_field():

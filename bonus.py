@@ -7,6 +7,24 @@ from state import GameState
 # Базовый максимум энергии нового персонажа. Все бонусы добавляются поверх.
 ENERGY_MAX_BASE = 50
 
+# Дневной порог шагов для daily bonus (стрик 10k+ дней). Единая точка правды —
+# rollover в functions.py и live-активация ниже используют эту константу.
+DAILY_BONUS_THRESHOLD = 10000
+
+
+def effective_daily_bonus(state: GameState) -> int:
+    """Эффективный daily-стрик: завершённые дни + сегодняшний live-вклад.
+
+    `state.steps.daily_bonus` хранит стрик ЗАВЕРШЁННЫХ дней (мутируется только
+    на rollover). Сегодняшний день — derived: как только steps.today пересекает
+    порог, бонус активируется сразу (тот же день), без хранимого флага — нечему
+    рассинхронизироваться при STALE-роллбеках / нескольких каналах ввода шагов.
+    На rollover live +1 «запекается» в хранимый стрик — значение непрерывно.
+    Паттерн как compute_energy_max (pure computed, 4.48.4.1).
+    """
+    live = 1 if state.steps.today >= DAILY_BONUS_THRESHOLD else 0
+    return state.steps.daily_bonus + live
+
 
 def compute_energy_max(state: GameState) -> int:
     """Вычисляет актуальный максимум энергии из всех источников.
@@ -20,7 +38,7 @@ def compute_energy_max(state: GameState) -> int:
         ENERGY_MAX_BASE
         + state.gym.energy_max_skill
         + equipment_energy_max_bonus(state)
-        + state.steps.daily_bonus
+        + effective_daily_bonus(state)
         + state.char_level.skill_energy_max
     )
 
@@ -31,8 +49,9 @@ def equipment_bonus_stamina_steps(state: GameState) -> int:
 
 
 def daily_steps_bonus(state: GameState) -> int:
-    # Бонус за пройденное кол-во шагов, более 10к.
-    return round((state.steps.today / 100) * state.steps.daily_bonus)
+    # Бонус за пройденное кол-во шагов, более 10к (эффективный стрик — включая
+    # сегодняшний день, если порог уже пройден).
+    return round((state.steps.today / 100) * effective_daily_bonus(state))
 
 
 def level_steps_bonus(state: GameState) -> int:

@@ -7,7 +7,8 @@ from colorama import Fore, Style
 from datetime import datetime
 
 from adventure import Adventure
-from bonus import energy_regen_interval, equipment_bonus_stamina_steps, daily_steps_bonus, level_steps_bonus
+from bonus import (DAILY_BONUS_THRESHOLD, daily_steps_bonus, effective_daily_bonus,
+                   energy_regen_interval, equipment_bonus_stamina_steps, level_steps_bonus)
 from functions_02 import format_money, format_timedelta
 from locations import icon_loc
 from settings import debug_mode
@@ -87,7 +88,7 @@ def status_bar(state: GameState) -> None:
           f'(Total steps used 🏃: {Fore.LIGHTCYAN_EX}{format_steps(state.steps.total_used)}{Style.RESET_ALL})'
           f'\nEnergy 🔋: {Fore.GREEN}{state.energy} / {energy_max_now}{Style.RESET_ALL} '
           f'(Bonus: Equipment 🔋: + {Fore.GREEN}{equipment_energy_max_bonus(state)}{Style.RESET_ALL} / '
-          f'Daily 🔋: + {Fore.GREEN}{state.steps.daily_bonus}{Style.RESET_ALL} / '
+          f'Daily 🔋: + {Fore.GREEN}{effective_daily_bonus(state)}{Style.RESET_ALL} / '
           f'Level: + {Fore.GREEN}{state.char_level.skill_energy_max}{Style.RESET_ALL})', end='')
     if debug_mode:
         print(f'(+ 1 эн. через: {abs(energy_regen_interval(60, state) - (timestamp_now() - state.energy_time_stamp)):,.0f} sec.)', end='')
@@ -262,8 +263,8 @@ def char_info(state: GameState) -> None:
           f'\n\t- Luck: + {equipment_luck_bonus(state)} %')
 
     print(f'\n### Бонусы за прохождение каждый день 10к+ шагов:'
-          f'\n\t- Steps: + {state.steps.daily_bonus} %'
-          f'\n\t- Energy Max: + {state.steps.daily_bonus} эд.')
+          f'\n\t- Steps: + {effective_daily_bonus(state)} %'
+          f'\n\t- Energy Max: + {effective_daily_bonus(state)} эд.')
 
     print(f"\n### Прокачка навыков от уровня персонажа ###"
           f"\n\t- Stamina: {state.char_level.skill_stamina}"
@@ -306,6 +307,9 @@ def today_steps_to_yesterday_steps(state: GameState) -> tuple[int, int]:
     """На новый день переносит steps_today → steps_yesterday и обновляет daily_bonus.
 
     Если за вчера >= 10k шагов — daily_bonus += 1, иначе сбрасывается в 0.
+    Live-вклад сегодняшнего дня (активация в тот же день) — derived, НЕ здесь:
+    см. `bonus.effective_daily_bonus`. Этот инкремент «запекает» вчерашний live
+    +1 в хранимый стрик — эффективное значение через полночь непрерывно.
     Возвращает (yesterday, daily_bonus) — кортеж новых значений.
     """
     state.steps.yesterday = state.steps.today
@@ -317,7 +321,7 @@ def today_steps_to_yesterday_steps(state: GameState) -> tuple[int, int]:
     # = +1 уникальный день игры. Forward-only, дедуп естественный (раз на день).
     if state.steps.yesterday >= 1:
         state.days_played += 1
-    if state.steps.yesterday >= 10000:
+    if state.steps.yesterday >= DAILY_BONUS_THRESHOLD:
         state.steps.daily_bonus += 1
     else:
         state.steps.daily_bonus = 0

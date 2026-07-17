@@ -6117,8 +6117,12 @@ def test_web_forge_repair_success():
     state.inventory.append(_forge_item(quality=50.0))
     _setup_state(state)
     st = game.state
-    pre_steps = st.steps.can_use
     with TestClient(app) as client:
+        # Baseline после первого рендера — can_use уже пересчитан с бонусами
+        # (включая live daily +1% за today >= 10k), иначе recompute в POST
+        # перекрыл бы стоимость ремонта и assert ниже ложно падал.
+        client.get("/status")
+        pre_steps = st.steps.can_use
         r = client.post("/web/forge/repair",
                         data={"item_key": "inv:0", "percent": "10"})
     assert r.status_code == 200
