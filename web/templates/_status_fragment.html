@@ -884,7 +884,9 @@
             {% endif %}
         </summary>
         {# 4.48.6 — slots из equipment_view с can_unequip flag + кнопкой Снять.
-           4.61 — broken items (quality=0) с маркером 🔨 СЛОМАН + +0 bonus. #}
+           4.61 — broken items (quality=0) с маркером 🔨 СЛОМАН + +0 bonus.
+           4.48.6.1 — «Надеть» / «Заменить» прямо из секции: пустой слот с
+           candidates рендерит select+Надеть, занятый — select+🔄 (auto-swap). #}
         {% for slot in equipment_view.slots %}
             {% set is_broken = slot.item and slot.item['quality'] and slot.item['quality'][0] == 0 %}
             <div class="item-row" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
@@ -896,7 +898,7 @@
                         {% if slot.backpack_slots is not none %}+{{ slot.backpack_slots }} слотов
                         {%- else %}{% if is_broken %}+0{% else %}+{{ slot.item['bonus'][0] }}{% endif %} {{ slot.item['characteristic'][0].title() }}{% endif %}
                         (Q: {{ "%.1f"|format(slot.item['quality'][0]) if slot.item['quality'][0] is number else slot.item['quality'][0] }})
-                    {% else %}
+                    {% elif not slot.candidates %}
                         <span class="equipment-empty">— пусто —</span>
                     {% endif %}
                 </span>
@@ -919,6 +921,30 @@
                         🗑 Снять
                     </button>
                     {% endif %}
+                {% endif %}
+                {% if slot.candidates %}
+                    <form hx-post="/web/equipment/wear" hx-target="#status-bar" hx-swap="innerHTML"
+                          style="display: flex; align-items: center; gap: 0.4rem; margin: 0; flex-wrap: nowrap;">
+                        <input type="hidden" name="slot_attr" value="{{ slot.slot_attr }}">
+                        <input type="hidden" name="sort" value="{{ inventory_sort }}">
+                        <select name="inventory_index"
+                                style="margin: 0; padding: 0.25rem 1.8rem 0.25rem 0.5rem; font-size: 0.85em; width: auto; max-width: 60vw;">
+                            {% for c in slot.candidates %}
+                            <option value="{{ c.index }}">{{ c.label }}</option>
+                            {% endfor %}
+                        </select>
+                        {% if slot.item %}
+                        <button type="submit" class="secondary outline" title="Заменить (текущий уйдёт в инвентарь)"
+                                style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                            🔄
+                        </button>
+                        {% else %}
+                        <button type="submit"
+                                style="margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85em;">
+                            🧥 Надеть
+                        </button>
+                        {% endif %}
+                    </form>
                 {% endif %}
             </div>
         {% endfor %}

@@ -2128,6 +2128,13 @@ _ITEM_TYPE_TO_SLOTS: dict[str, list[str]] = {
 # Set всех equipment item_types (для wear button visibility).
 _EQUIPMENT_ITEM_TYPES: frozenset[str] = frozenset(_ITEM_TYPE_TO_SLOTS.keys())
 
+# Обратная карта slot_attr → item_types (для «Надеть» из секции Экипировки).
+# Слот `legs` отсутствует намеренно — предметов этого типа в игре нет.
+_SLOT_TO_ITEM_TYPES: dict[str, tuple[str, ...]] = {}
+for _it, _slots in _ITEM_TYPE_TO_SLOTS.items():
+    for _s in _slots:
+        _SLOT_TO_ITEM_TYPES[_s] = _SLOT_TO_ITEM_TYPES.get(_s, ()) + (_it,)
+
 # slot_attr → human-readable label (для UI).
 _EQUIPMENT_SLOT_LABELS: dict[str, str] = {
     'head':       'Голова',
@@ -2276,16 +2283,44 @@ def _build_inventory_view(state, sort_key: str = 'default') -> dict:
     }
 
 
+def _equipment_candidate_label(item: dict) -> str:
+    """Компактный label предмета для `<select>` в секции Экипировки.
+
+    «Necklace S +4 Energy_Max · Q 32» — по образцу строк слотов, но короче
+    (селект на iPhone узкий). Рюкзак → «+N слотов» вместо characteristic.
+    Broken (quality 0) — префикс 🔨.
+    """
+    def _f(field, default=None):
+        vals = item.get(field)
+        return vals[0] if vals else default
+
+    name = str(_f('item_name', '?')).title()
+    grade = grade_short(_f('grade'))
+    quality = _f('quality', 0)
+    q_label = f"{quality:.1f}" if isinstance(quality, float) else str(quality)
+    backpack_slots = _backpack_slots_for(item)
+    if backpack_slots is not None:
+        bonus_label = f"+{backpack_slots} слотов"
+    else:
+        bonus_label = f"+{_f('bonus', 0)} {str(_f('characteristic', '?')).title()}"
+    broken = '🔨 ' if quality == 0 else ''
+    return f"{broken}{name} {grade} {bonus_label} · Q {q_label}"
+
+
 def _build_equipment_view(state) -> dict:
     """Pre-compute UI данные для Equipment секции с unwear buttons.
 
     Returns dict:
-    - `slots`: list of dict per slot (все 7 — head/neck/torso/finger_01/02/legs/foots):
+    - `slots`: list of dict per slot (все 8 — head/neck/torso/finger_01/02/legs/foots/back):
         - slot_attr (для form value)
         - slot_label (human — «Голова», «Палец 1», etc.)
         - item (dict | None)
         - can_unequip (bool — false если slot пуст или inventory_full)
         - block_reason (str | None — для tooltip)
+        - candidates (list[{index, label}] — предметы инвентаря, подходящие
+          в этот слот; для пустого слота → форма «Надеть», для занятого →
+          форма «Заменить» (auto-swap в `_equip_from_inventory`, net-zero
+          по вместимости — работает и при полном рюкзаке))
     - `inventory_full` (bool — для UI hint о причине disabled кнопок)
     """
     from bonus import backpack_capacity, inventory_full as is_inv_full
@@ -2304,12 +2339,24 @@ def _build_equipment_view(state) -> dict:
         else:
             can_unequip = True
             block_reason = None
+        # Кандидаты на надевание из инвентаря (лучшие сверху: bonus ↓, quality ↓).
+        types_for_slot = _SLOT_TO_ITEM_TYPES.get(slot_attr, ())
+        candidates = [
+            {'index': idx,
+             'label': _equipment_candidate_label(inv_item),
+             '_bonus': (inv_item.get('bonus') or [0])[0] or 0,
+             '_quality': (inv_item.get('quality') or [0])[0] or 0}
+            for idx, inv_item in enumerate(state.inventory)
+            if (inv_item.get('item_type') or [None])[0] in types_for_slot
+        ]
+        candidates.sort(key=lambda c: (-float(c['_bonus']), -float(c['_quality'])))
         slots_view.append({
             'slot_attr': slot_attr,
             'slot_label': label,
             'item': item,
             'can_unequip': can_unequip,
             'block_reason': block_reason,
+            'candidates': [{'index': c['index'], 'label': c['label']} for c in candidates],
             # 4.51 — +N слотов для рюкзака (None если в слоте не рюкзак) → display.
             'backpack_slots': _backpack_slots_for(item),
         })

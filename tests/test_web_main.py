@@ -4513,6 +4513,126 @@ def test_equipment_view_blocks_unequip_when_inventory_full():
     assert view['inventory_full'] is True
 
 
+# ----- 4.48.6.1: candidates — «Надеть»/«Заменить» из секции Экипировки -----
+
+def test_equipment_view_candidates_filtered_by_slot_type():
+    """Кандидаты слота — только предметы подходящего item_type."""
+    from web.main import _build_equipment_view
+    state = GameState.default_new_game()
+    state.inventory = [
+        _make_inv_item(item_type='necklace', characteristic='energy_max', bonus=4),
+        _make_inv_item(item_type='helmet', characteristic='stamina', bonus=5),
+        _make_inv_item(item_type='ring', characteristic='luck', bonus=2),
+    ]
+    _setup_state(state)
+    view = _build_equipment_view(state)
+    by_attr = {s['slot_attr']: s for s in view['slots']}
+    assert [c['index'] for c in by_attr['neck']['candidates']] == [0]
+    assert [c['index'] for c in by_attr['head']['candidates']] == [1]
+    # Кольцо предлагается в оба ring-слота.
+    assert [c['index'] for c in by_attr['finger_01']['candidates']] == [2]
+    assert [c['index'] for c in by_attr['finger_02']['candidates']] == [2]
+    # legs — нет типа в игре, torso/foots/back — нет предметов.
+    for attr in ('legs', 'torso', 'foots', 'back'):
+        assert by_attr[attr]['candidates'] == []
+
+
+def test_equipment_view_candidates_sorted_bonus_then_quality():
+    """Лучшие кандидаты сверху: bonus desc, потом quality desc."""
+    from web.main import _build_equipment_view
+    state = GameState.default_new_game()
+    state.inventory = [
+        _make_inv_item(item_type='necklace', bonus=2, quality=90.0),
+        _make_inv_item(item_type='necklace', bonus=4, quality=30.0),
+        _make_inv_item(item_type='necklace', bonus=4, quality=70.0),
+    ]
+    _setup_state(state)
+    view = _build_equipment_view(state)
+    neck = next(s for s in view['slots'] if s['slot_attr'] == 'neck')
+    assert [c['index'] for c in neck['candidates']] == [2, 1, 0]
+
+
+def test_equipment_candidate_label_format():
+    """Label кандидата: имя, короткий grade, bonus+характеристика, качество."""
+    from web.main import _equipment_candidate_label
+    label = _equipment_candidate_label(_make_inv_item(
+        item_type='necklace', grade='s-grade', characteristic='energy_max',
+        bonus=4, quality=32.0))
+    assert 'Necklace' in label
+    assert 'S' in label
+    assert '+4 Energy_Max' in label
+    assert 'Q 32.0' in label
+
+
+def test_equipment_candidate_label_backpack_and_broken():
+    """Рюкзак — «+N слотов»; broken (quality=0) — префикс 🔨."""
+    from web.main import _equipment_candidate_label
+    label = _equipment_candidate_label(_make_inv_item(
+        item_type='backpack', grade='b-grade', characteristic='backpack_capacity',
+        bonus=4, quality=50.0))
+    assert '+4 слотов' in label
+    broken = _equipment_candidate_label(_make_inv_item(quality=0))
+    assert broken.startswith('🔨')
+
+
+def test_equipment_empty_slot_with_candidates_renders_wear_form():
+    """Пустой слот с кандидатами → select + «Надеть» вместо «— пусто —»."""
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='necklace',
+                                      characteristic='energy_max', bonus=4)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    eq_section = body.split('<section id="equipment">')[1].split('</section>')[0]
+    assert '🧥 Надеть' in eq_section
+    assert 'name="inventory_index"' in eq_section
+    # Слот neck больше не показывает плейсхолдер (там форма).
+    assert eq_section.count('— пусто —') < 8
+
+
+def test_equipment_occupied_slot_with_candidates_renders_swap_button():
+    """Занятый слот с кандидатами → кнопка 🔄 (заменить) рядом со Снять."""
+    state = GameState.default_new_game()
+    state.equipment.neck = _make_inv_item(item_type='necklace',
+                                          characteristic='stamina', bonus=4)
+    state.inventory = [_make_inv_item(item_type='necklace',
+                                      characteristic='energy_max', bonus=4)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    eq_section = body.split('<section id="equipment">')[1].split('</section>')[0]
+    assert '🔄' in eq_section
+    assert '🗑 Снять' in eq_section
+
+
+def test_equipment_empty_slot_without_candidates_keeps_placeholder():
+    """Пустой слот без кандидатов — прежний «— пусто —», без форм."""
+    state = GameState.default_new_game()
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    eq_section = body.split('<section id="equipment">')[1].split('</section>')[0]
+    assert eq_section.count('— пусто —') == 8  # все слоты пустые, инвентарь пуст
+    assert '🧥 Надеть' not in eq_section
+    assert '🔄' not in eq_section
+
+
+def test_equipment_wear_from_section_endpoint_flow():
+    """Полный flow: POST /web/equipment/wear с select-параметрами надевает в слот."""
+    state = GameState.default_new_game()
+    state.inventory = [_make_inv_item(item_type='necklace',
+                                      characteristic='energy_max', bonus=4)]
+    _setup_state(state)
+    with TestClient(app) as client:
+        resp = client.post("/web/equipment/wear",
+                           data={'inventory_index': 0, 'slot_attr': 'neck',
+                                 'sort': 'default'})
+    assert resp.status_code == 200
+    assert state.equipment.neck is not None
+    assert state.equipment.neck['characteristic'] == ['energy_max']
+    assert state.inventory == []
+
+
 # ----- _validate_and_apply_sell -----
 
 def test_validate_sell_rejects_invalid_index():
