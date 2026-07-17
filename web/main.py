@@ -32,6 +32,7 @@ from bonus import (
     apply_money_saving,
     apply_move_optimization_gym,
     backpack_capacity,
+    DAILY_BONUS_THRESHOLD,
     daily_steps_bonus,
     effective_daily_bonus,
     equipment_bonus_stamina_steps,
@@ -1057,6 +1058,14 @@ def _dashboard_context(request: Request, steps_error: Optional[str] = None,
         # Energy + equipment bonuses
         # Эффективный daily-стрик (включая live-вклад сегодняшних 10k+).
         "daily_bonus_effective": effective_daily_bonus(state),
+        # 4.68.1 — строка «🔥 Стрик» в Stats: days = effective (до 10k равен
+        # хранимому стрику, после — уже с сегодняшним днём), active = порог
+        # сегодня пройден, remaining = шагов до активации.
+        "streak_view": {
+            "days": effective_daily_bonus(state),
+            "active": state.steps.today >= DAILY_BONUS_THRESHOLD,
+            "remaining": max(0, DAILY_BONUS_THRESHOLD - state.steps.today),
+        },
         "equipment_stamina_bonus": equipment_stamina_bonus(state),
         "equipment_energy_max_bonus": equipment_energy_max_bonus(state),
         "equipment_speed_skill_bonus": equipment_speed_skill_bonus(state),

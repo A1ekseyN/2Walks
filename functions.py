@@ -92,6 +92,14 @@ def status_bar(state: GameState) -> None:
           f'Level: + {Fore.GREEN}{state.char_level.skill_energy_max}{Style.RESET_ALL})', end='')
     if debug_mode:
         print(f'(+ 1 эн. через: {abs(energy_regen_interval(60, state) - (timestamp_now() - state.energy_time_stamp)):,.0f} sec.)', end='')
+    # 4.68.1 — стрик дней с 10k+: до бонуса / активен ✓ (зеркало web Stats).
+    streak = effective_daily_bonus(state)
+    if state.steps.today >= DAILY_BONUS_THRESHOLD:
+        print(f'\n🔥 Стрик: {Fore.LIGHTRED_EX}{streak} дн ✓{Style.RESET_ALL} '
+              f'(+{streak}% 🏃 / +{streak} 🔋)', end='')
+    else:
+        print(f'\n🔥 Стрик: {Fore.LIGHTRED_EX}{streak} дн{Style.RESET_ALL} '
+              f'(до бонуса: {DAILY_BONUS_THRESHOLD - state.steps.today:,} шагов)', end='')
     print(f'\nMoney 💰: {Fore.LIGHTYELLOW_EX}{format_money(state.money)}{Style.RESET_ALL} $.')
 
     # 4.61 — Warning о низком quality equipped items (< 20%) или broken (=0).

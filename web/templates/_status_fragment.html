@@ -279,6 +279,15 @@
         </div>
         <progress value="{{ char_level_progress }}" max="100"></progress>
 
+        {# 4.68.1 — компактный стрик после Level, только при активном стрике.
+           Детали (до бонуса / проценты) — в разделе «📈 Бонусы». #}
+        {% if streak_view.days > 0 %}
+        <div class="stat-row" style="margin-top: 0.5rem;">
+            <span class="stat-label">🔥 Streak</span>
+            <span>{{ streak_view.days }} day(s)</span>
+        </div>
+        {% endif %}
+
         {# 4.61 — Warning о низком quality / сломанных equipped items.
            Показывается только когда есть items с quality < 20% (включая broken=0). #}
         {% if low_quality_warning.broken or low_quality_warning.low %}
@@ -865,6 +874,15 @@
             equipment +{{ equipment_energy_max_bonus }} ·
             daily +{{ daily_bonus_effective }} ·
             level +{{ state.char_level.skill_energy_max }}
+        </p>
+        {# 4.68.1 — детали daily-стрика (компактная строка в Stats — только N day(s)). #}
+        <p>
+            🔥 <strong>Стрик</strong>:
+            {% if streak_view.active %}
+                {{ streak_view.days }} дн ✓ — сегодняшние 10k засчитаны (+{{ streak_view.days }}% 🏃 · +{{ streak_view.days }} 🔋)
+            {% else %}
+                {{ streak_view.days }} дн · до бонуса {{ "{:,}".format(streak_view.remaining) }} шагов
+            {% endif %}
         </p>
     </details>
 </section>

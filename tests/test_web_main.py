@@ -346,6 +346,63 @@ def test_dashboard_shows_location_icon_and_name():
     assert "Gym" in body
 
 
+def _stats_section(body: str) -> str:
+    return body.split('<section id="stats">')[1].split('</section>')[0]
+
+
+def _bonuses_section(body: str) -> str:
+    return body.split('<section id="bonuses">')[1].split('</section>')[0]
+
+
+def test_stats_streak_row_compact_when_streak_active():
+    """4.68.1 — Stats: компактная строка «🔥 Streak: N day(s)» после Level,
+    без деталей; детали (до бонуса) — в «📈 Бонусы»."""
+    state = GameState.default_new_game()
+    state.steps.today = 8000
+    state.steps.daily_bonus = 2
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    stats = _stats_section(body)
+    assert '🔥 Streak' in stats
+    assert '2 day(s)' in stats
+    assert 'до бонуса' not in stats  # деталей в Stats нет
+    bonuses = _bonuses_section(body)
+    assert '🔥' in bonuses
+    assert 'до бонуса 2,000 шагов' in bonuses
+
+
+def test_stats_streak_row_hidden_when_no_streak():
+    """4.68.1 — стрик 0: строки в Stats нет вообще, детали в Бонусах есть."""
+    state = GameState.default_new_game()
+    state.steps.today = 5000
+    state.steps.daily_bonus = 0
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    stats = _stats_section(body)
+    assert '🔥 Streak' not in stats
+    bonuses = _bonuses_section(body)
+    assert 'до бонуса 5,000 шагов' in bonuses
+
+
+def test_stats_streak_active_after_threshold():
+    """4.68.1 — 10k пройдено: Stats показывает effective (live +1) компактно,
+    Бонусы — ✓ и размер бонуса."""
+    state = GameState.default_new_game()
+    state.steps.today = 10500
+    state.steps.daily_bonus = 2
+    _setup_state(state)
+    with TestClient(app) as client:
+        body = client.get("/status").text
+    stats = _stats_section(body)
+    assert '🔥 Streak' in stats
+    assert '3 day(s)' in stats
+    bonuses = _bonuses_section(body)
+    assert '3 дн ✓' in bonuses
+    assert '+3% 🏃' in bonuses
+
+
 # ----- GET /status (HTMX fragment) -----
 
 def test_status_fragment_returns_html_without_full_page_wrapper():

@@ -522,6 +522,40 @@ def test_status_bar_smoke_no_active_sessions(tmp_path, monkeypatch, capsys):
     assert 'Home' in out
 
 
+def test_status_bar_streak_shows_remaining_below_threshold(tmp_path, monkeypatch, capsys):
+    """4.68.1 — до 10k: строка стрика с хранимым значением + шагами до бонуса."""
+    monkeypatch.chdir(tmp_path)
+    state = GameState.default_new_game()
+    state.date_last_enter = str(datetime.now().date())
+    state.steps.today = 8000
+    state.steps.daily_bonus = 2
+
+    status_bar(state)
+
+    out = capsys.readouterr().out
+    assert '🔥 Стрик' in out
+    assert '2 дн' in out
+    assert 'до бонуса: 2,000 шагов' in out
+    assert '✓' not in out
+
+
+def test_status_bar_streak_active_after_threshold(tmp_path, monkeypatch, capsys):
+    """4.68.1 — 10k пройдено: стрик с live +1, галочка и размер бонуса."""
+    monkeypatch.chdir(tmp_path)
+    state = GameState.default_new_game()
+    state.date_last_enter = str(datetime.now().date())
+    state.steps.today = 10500
+    state.steps.daily_bonus = 2
+
+    status_bar(state)
+
+    out = capsys.readouterr().out
+    assert '🔥 Стрик' in out
+    assert '3 дн ✓' in out
+    assert '+3% 🏃' in out
+    assert 'до бонуса' not in out
+
+
 def test_status_bar_with_training_active(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     state = GameState.default_new_game()
